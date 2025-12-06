@@ -25,7 +25,7 @@ const Comparison: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {data.map((row, index) => (
+                {data?.map((row, index) => (
                   <tr key={index} className="hover:bg-slate-100 dark:hover:bg-white/5 transition-colors">
                     <td className="p-6 text-slate-700 dark:text-slate-300 font-medium border-b border-slate-200 dark:border-white/5">{row.aspect}</td>
                     <td className="p-6 text-slate-600 dark:text-slate-400 border-b border-slate-200 dark:border-white/5">{row.sewa}</td>

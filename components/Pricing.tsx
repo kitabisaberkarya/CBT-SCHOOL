@@ -51,7 +51,7 @@ Please provide more information regarding feature details and ordering procedure
         </div>
 
         <div className="grid md:grid-cols-2 gap-8 lg:gap-12 max-w-5xl mx-auto">
-          {pricingPlans.map((plan, index) => (
+          {pricingPlans?.map((plan, index) => (
             <div 
               key={index}
               data-aos="flip-left"
@@ -77,7 +77,7 @@ Please provide more information regarding feature details and ordering procedure
               </div>
 
               <div className="flex-grow space-y-4 mb-8">
-                {plan.features.map((feature, idx) => (
+                {plan.features?.map((feature, idx) => (
                   <div key={idx} className="flex items-start">
                     <div className="flex-shrink-0 w-6 h-6 rounded-full bg-green-500/10 flex items-center justify-center mt-0.5">
                       <Check className="w-4 h-4 text-green-500 dark:text-green-400" />

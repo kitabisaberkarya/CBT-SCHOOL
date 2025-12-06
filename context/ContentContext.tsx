@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { Feature, DocItem, PricingPlan, Client } from '../types';
@@ -35,8 +34,8 @@ interface ContentContextType {
   setHeroImage2: (url: string) => void;
   heroImage3: string;
   setHeroImage3: (url: string) => void;
-  heroVideo: string; // New Video State
-  setHeroVideo: (url: string) => void; // New Video Setter
+  heroVideo: string;
+  setHeroVideo: (url: string) => void;
   heroContent: HeroContent;
   setHeroContent: (content: HeroContent) => void;
   
@@ -64,8 +63,6 @@ interface ContentContextType {
   // System
   isAdminOpen: boolean;
   setIsAdminOpen: (open: boolean) => void;
-  
-  // Storage
   uploadImage: (file: File, folder: string) => Promise<string | null>;
 }
 
@@ -77,10 +74,10 @@ export const ContentProvider: React.FC<{ children: React.ReactNode }> = ({ child
   
   // 1. Hero Section
   const [heroImage, setHeroImageState] = useState(INITIAL_HERO_IMAGE);
-  const [heroImage2, setHeroImage2State] = useState("https://images.unsplash.com/photo-1552664730-d307ca884978?q=80&w=2070&auto=format&fit=crop");
-  const [heroImage3, setHeroImage3State] = useState("https://images.unsplash.com/photo-1516321318423-f06f85e504b3?q=80&w=1740&auto=format&fit=crop");
-  const [heroVideo, setHeroVideoState] = useState(""); // Default empty
-  
+  const [heroImage2, setHeroImage2State] = useState("https://images.unsplash.com/photo-1522202176988-66273c2fd55f?q=80&w=1742&auto=format&fit=crop");
+  const [heroImage3, setHeroImage3State] = useState("https://images.unsplash.com/photo-1517048676732-d65bc937f952?q=80&w=1740&auto=format&fit=crop");
+  const [heroVideo, setHeroVideoState] = useState("");
+
   const [heroContent, setHeroContentState] = useState<HeroContent>({
     title: "CBT SCHOOL",
     subtitle: "Hemat, Aman, Berintegritas",
@@ -100,7 +97,7 @@ export const ContentProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [contactInfo, setContactInfoState] = useState<ContactInfo>(COMPANY_CONTACT);
 
   // 5. Clients
-  const [clients, setClients] = useState<Client[]>(CLIENTS_DATA.map((c, i) => ({ ...c, id: i + 1 })));
+  const [clients, setClients] = useState<Client[]>(CLIENTS_DATA);
 
   // --- FETCH DATA FROM SUPABASE ---
   useEffect(() => {
@@ -121,10 +118,8 @@ export const ContentProvider: React.FC<{ children: React.ReactNode }> = ({ child
           ctaText: heroData.cta_text
         });
         setHeroImageState(heroData.image_url);
-        // Load additional images
         if (heroData.image_url_2) setHeroImage2State(heroData.image_url_2);
         if (heroData.image_url_3) setHeroImage3State(heroData.image_url_3);
-        // Load Video
         if (heroData.video_url) setHeroVideoState(heroData.video_url);
       }
 
@@ -153,11 +148,25 @@ export const ContentProvider: React.FC<{ children: React.ReactNode }> = ({ child
       if (docsData && docsData.length > 0) {
         setStudentDocs(prev => prev.map(item => {
           const dbItem = docsData.find((d: any) => d.id === item.id);
-          return dbItem ? { ...item, ...dbItem, imageUrl: dbItem.image_url } : item;
+          // Trust the DB data if it exists, especially for gallery and points
+          // Ensure points and gallery are never null/undefined
+          return dbItem ? { 
+            ...item, 
+            ...dbItem, 
+            imageUrl: dbItem.image_url, 
+            gallery: dbItem.gallery || [],
+            points: dbItem.points || item.points || [] 
+          } : item;
         }));
         setAdminDocs(prev => prev.map(item => {
           const dbItem = docsData.find((d: any) => d.id === item.id);
-          return dbItem ? { ...item, ...dbItem, imageUrl: dbItem.image_url } : item;
+          return dbItem ? { 
+            ...item, 
+            ...dbItem, 
+            imageUrl: dbItem.image_url, 
+            gallery: dbItem.gallery || [],
+            points: dbItem.points || item.points || [] 
+          } : item;
         }));
       }
 
@@ -165,21 +174,22 @@ export const ContentProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const { data: pricingData } = await supabase.from('pricing').select('*').order('id', { ascending: true });
       if (pricingData && pricingData.length > 0) {
         setPricingPlans(prev => prev.map((plan, idx) => {
-          const dbPlan = pricingData[idx]; 
+          const dbPlan = pricingData[idx]; // Assuming order matches
           if (!dbPlan) return plan;
           return {
             ...plan,
             name: dbPlan.name,
             price: dbPlan.price,
             period: dbPlan.period,
+            // Only update simple fields, features handled by code/constants currently
           };
         }));
       }
 
       // 6. Fetch Clients
-      const { data: clientsData, error: clientsError } = await supabase.from('clients').select('*').order('id', { ascending: true });
-      if (!clientsError && clientsData) {
-        setClients(clientsData.map(c => ({
+      const { data: clientsData } = await supabase.from('clients').select('*').order('created_at', { ascending: true });
+      if (clientsData && clientsData.length > 0) {
+        setClients(clientsData.map((c: any) => ({
           id: c.id,
           name: c.name,
           logoUrl: c.logo_url
@@ -198,37 +208,6 @@ export const ContentProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const cleanPhone = phone.replace(/\D/g, '');
     const waNumber = cleanPhone.startsWith('0') ? '62' + cleanPhone.slice(1) : cleanPhone;
     return `https://wa.me/${waNumber}`;
-  };
-
-  const uploadImage = async (file: File, folder: string): Promise<string | null> => {
-    try {
-      const fileExt = file.name.split('.').pop();
-      // Generate random filename
-      const fileName = `${folder}/${Date.now()}_${Math.floor(Math.random() * 1000)}.${fileExt}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from('cbt_assets')
-        .upload(fileName, file, {
-          cacheControl: '3600',
-          upsert: false
-        });
-
-      if (uploadError) {
-        console.error('Upload error:', uploadError);
-        alert(`Gagal upload: ${uploadError.message}`);
-        return null;
-      }
-
-      const { data } = supabase.storage
-        .from('cbt_assets')
-        .getPublicUrl(fileName);
-
-      return data.publicUrl;
-
-    } catch (err) {
-      console.error('Unexpected upload error:', err);
-      return null;
-    }
   };
 
   // --- UPDATERS (Write to Supabase) ---
@@ -265,26 +244,34 @@ export const ContentProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const updateFeature = async (id: string, updates: Partial<Feature>) => {
     setFeatures(prev => prev.map(f => f.id === id ? { ...f, ...updates } : f));
+    
     const dbPayload: any = {};
     if (updates.title) dbPayload.title = updates.title;
     if (updates.description) dbPayload.description = updates.description;
     if (updates.imageUrl) dbPayload.image_url = updates.imageUrl;
+
     await supabase.from('features').update(dbPayload).eq('id', id);
   };
 
   const updateStudentDoc = async (id: string, updates: Partial<DocItem>) => {
     setStudentDocs(prev => prev.map(d => d.id === id ? { ...d, ...updates } : d));
+    
     const dbPayload: any = {};
     if (updates.title) dbPayload.title = updates.title;
     if (updates.imageUrl) dbPayload.image_url = updates.imageUrl;
+    if (updates.gallery) dbPayload.gallery = updates.gallery;
+
     await supabase.from('docs').update(dbPayload).eq('id', id);
   };
 
   const updateAdminDoc = async (id: string, updates: Partial<DocItem>) => {
     setAdminDocs(prev => prev.map(d => d.id === id ? { ...d, ...updates } : d));
+    
     const dbPayload: any = {};
     if (updates.title) dbPayload.title = updates.title;
     if (updates.imageUrl) dbPayload.image_url = updates.imageUrl;
+    if (updates.gallery) dbPayload.gallery = updates.gallery;
+
     await supabase.from('docs').update(dbPayload).eq('id', id);
   };
 
@@ -294,11 +281,13 @@ export const ContentProvider: React.FC<{ children: React.ReactNode }> = ({ child
       newPlans[index] = { ...newPlans[index], ...updates };
       return newPlans;
     });
+
     const dbId = index + 1; 
     const dbPayload: any = {};
     if (updates.name) dbPayload.name = updates.name;
     if (updates.price) dbPayload.price = updates.price;
     if (updates.period) dbPayload.period = updates.period;
+
     await supabase.from('pricing').update(dbPayload).eq('id', dbId);
   };
 
@@ -308,6 +297,7 @@ export const ContentProvider: React.FC<{ children: React.ReactNode }> = ({ child
       newInfo.whatsappUrl = generateWaUrl(updates.phone);
     }
     setContactInfoState(newInfo);
+
     await supabase.from('contact').update({
       name: newInfo.name,
       role: newInfo.role,
@@ -315,24 +305,39 @@ export const ContentProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }).eq('id', 1);
   };
 
-  // --- CLIENTS LOGIC ---
   const addClient = async (name: string, logoUrl: string) => {
-    const { data, error } = await supabase.from('clients').insert({ name, logo_url: logoUrl }).select().single();
-    if (error) {
-      console.error("Error adding client:", error);
-      alert("Gagal menambah client.");
-      return;
-    }
-    if (data) {
-      setClients(prev => [...prev, { id: data.id, name: data.name, logoUrl: data.logo_url }]);
+    const tempId = Date.now();
+    const newClient: Client = { id: tempId, name, logoUrl };
+    setClients(prev => [...prev, newClient]);
+
+    const { data, error } = await supabase.from('clients').insert([{ name, logo_url: logoUrl }]).select().single();
+    if (data && !error) {
+        setClients(prev => prev.map(c => c.id === tempId ? { id: data.id, name: data.name, logoUrl: data.logo_url } : c));
     }
   };
 
   const deleteClient = async (id: number) => {
     setClients(prev => prev.filter(c => c.id !== id));
-    const { error } = await supabase.from('clients').delete().eq('id', id);
-    if (error) {
-      console.error("Error deleting client:", error);
+    await supabase.from('clients').delete().eq('id', id);
+  };
+
+  const uploadImage = async (file: File, folder: string): Promise<string | null> => {
+    try {
+        const fileExt = file.name.split('.').pop();
+        const fileName = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}.${fileExt}`;
+        const filePath = `${folder}/${fileName}`;
+
+        const { error: uploadError } = await supabase.storage
+            .from('images') // Assuming 'images' bucket exists
+            .upload(filePath, file);
+
+        if (uploadError) throw uploadError;
+
+        const { data } = supabase.storage.from('images').getPublicUrl(filePath);
+        return data.publicUrl;
+    } catch (error) {
+        console.error("Upload failed", error);
+        return null;
     }
   };
 
@@ -342,7 +347,7 @@ export const ContentProvider: React.FC<{ children: React.ReactNode }> = ({ child
       heroImage, setHeroImage,
       heroImage2, setHeroImage2,
       heroImage3, setHeroImage3,
-      heroVideo, setHeroVideo, // Exported
+      heroVideo, setHeroVideo,
       heroContent, setHeroContent,
       features, updateFeature,
       studentDocs, updateStudentDoc,

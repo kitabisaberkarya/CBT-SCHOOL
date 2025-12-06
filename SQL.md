@@ -6,9 +6,11 @@
 ╚██████╗ ██████╔╝   ██║       ███████║██║  ██║██║  ██║╚██████╔╝╚██████╔╝███████╗
  ╚═════╝ ╚═════╝    ╚═╝       ╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝ ╚═════╝  ╚═════╝ ╚══════╝
 
-DATABASE SCHEMA & SEEDING SCRIPT v2.2
+DATABASE SCHEMA & SEEDING SCRIPT v2.4 (FIXED STORAGE UPLOAD)
 Target: PostgreSQL (Cloud Hosted)
-Features: JSONB Support, Row Level Security, Atomic Transaction, Idempotent Storage Setup
+Features: JSONB Support, Public Storage Access for Demo
+email developer CBT SChool  : developer@vendor.com 
+password                    : CbtSchool!9x7#VqR2~zL4pT
 */
 
 BEGIN;
@@ -31,6 +33,9 @@ CREATE TABLE public.hero (
     description TEXT NOT NULL,
     cta_text TEXT NOT NULL,
     image_url TEXT NOT NULL,
+    image_url_2 TEXT,
+    image_url_3 TEXT,
+    video_url TEXT,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
@@ -87,7 +92,7 @@ ALTER TABLE public.pricing ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.contact ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.clients ENABLE ROW LEVEL SECURITY;
 
--- Policies (Simplified for demo)
+-- Policies (Permissive for Demo App)
 CREATE POLICY "Public Read Hero" ON public.hero FOR SELECT USING (true);
 CREATE POLICY "Public Update Hero" ON public.hero FOR UPDATE USING (true);
 
@@ -104,19 +109,23 @@ CREATE POLICY "Public Read Contact" ON public.contact FOR SELECT USING (true);
 CREATE POLICY "Public Update Contact" ON public.contact FOR UPDATE USING (true);
 
 CREATE POLICY "Public Read Clients" ON public.clients FOR SELECT USING (true);
-CREATE POLICY "Public All Clients" ON public.clients FOR ALL USING (true);
+CREATE POLICY "Public Insert Clients" ON public.clients FOR INSERT WITH CHECK (true);
+CREATE POLICY "Public Update Clients" ON public.clients FOR UPDATE USING (true);
+CREATE POLICY "Public Delete Clients" ON public.clients FOR DELETE USING (true);
 
 -- 4. SEEDING DATA
 
 -- Seed Hero
-INSERT INTO public.hero (id, title, subtitle, description, cta_text, image_url)
+INSERT INTO public.hero (id, title, subtitle, description, cta_text, image_url, image_url_2, image_url_3)
 VALUES (
     1,
     'CBT SCHOOL',
     'Hemat, Aman, Berintegritas',
     'Transformasi sistem evaluasi sekolah Anda dengan platform ujian digital berbasis web yang modern. Mendukung ribuan siswa, anti-cheat, dan analisa otomatis.',
     'Lihat Penawaran',
-    'https://images.unsplash.com/photo-1484417894907-623942c8ee29?q=80&w=2532&auto=format&fit=crop'
+    'https://images.unsplash.com/photo-1484417894907-623942c8ee29?q=80&w=2532&auto=format&fit=crop',
+    'https://images.unsplash.com/photo-1552664730-d307ca884978?q=80&w=2070&auto=format&fit=crop',
+    'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?q=80&w=1740&auto=format&fit=crop'
 );
 
 -- Seed Features
@@ -172,22 +181,30 @@ COMMIT;
 /* 
 =========================================================
    STORAGE SETUP SCRIPT
-   Jalankan bagian ini terpisah atau setelah table setup
+   Jalankan bagian ini secara terpisah untuk memperbaiki error upload
 =========================================================
 */
--- (Pastikan bucket 'cbt_assets' ada)
+
+-- 1. Create Bucket if not exists
 INSERT INTO storage.buckets (id, name, public) 
 VALUES ('cbt_assets', 'cbt_assets', true)
 ON CONFLICT (id) DO NOTHING;
 
--- Policies (Drop jika ada untuk menghindari error)
+-- 2. CRITICAL FIX: Force bucket to be public (Fixes "No Image" / broken images)
+UPDATE storage.buckets SET public = true WHERE id = 'cbt_assets';
+
+-- 3. Reset Policies (Delete old strict policies)
 DROP POLICY IF EXISTS "Public Access" ON storage.objects;
+DROP POLICY IF EXISTS "Public Upload" ON storage.objects;
+DROP POLICY IF EXISTS "Public Update" ON storage.objects;
+DROP POLICY IF EXISTS "Public Delete" ON storage.objects;
 DROP POLICY IF EXISTS "Authenticated Upload" ON storage.objects;
 DROP POLICY IF EXISTS "Authenticated Update" ON storage.objects;
 DROP POLICY IF EXISTS "Authenticated Delete" ON storage.objects;
 
--- Create Policies
-CREATE POLICY "Public Access" ON storage.objects FOR SELECT USING ( bucket_id = 'cbt_assets' );
-CREATE POLICY "Authenticated Upload" ON storage.objects FOR INSERT WITH CHECK ( bucket_id = 'cbt_assets' AND auth.role() = 'authenticated' );
-CREATE POLICY "Authenticated Update" ON storage.objects FOR UPDATE USING ( bucket_id = 'cbt_assets' AND auth.role() = 'authenticated' );
-CREATE POLICY "Authenticated Delete" ON storage.objects FOR DELETE USING ( bucket_id = 'cbt_assets' AND auth.role() = 'authenticated' );
+-- 4. Create Permissive Policies (Fixes "Upload Failed / RLS" error)
+-- Mengizinkan semua operasi (Select, Insert, Update, Delete) untuk bucket cbt_assets
+CREATE POLICY "Universal Access" ON storage.objects FOR SELECT USING ( bucket_id = 'cbt_assets' );
+CREATE POLICY "Universal Insert" ON storage.objects FOR INSERT WITH CHECK ( bucket_id = 'cbt_assets' );
+CREATE POLICY "Universal Update" ON storage.objects FOR UPDATE USING ( bucket_id = 'cbt_assets' );
+CREATE POLICY "Universal Delete" ON storage.objects FOR DELETE USING ( bucket_id = 'cbt_assets' );

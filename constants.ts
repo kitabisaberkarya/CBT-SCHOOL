@@ -131,6 +131,11 @@ export const STUDENT_MODULE_DOCS: DocItem[] = [
       "Login Manual (NISN & Password)",
       "Login QR Code (Scan kartu tanpa ketik)",
       "Validasi data real-time ke database pusat"
+    ],
+    // Sample Gallery added for demonstration
+    gallery: [
+       "https://images.unsplash.com/photo-1546410531-bb4caa6b424d?q=80&w=800&auto=format&fit=crop",
+       "https://images.unsplash.com/photo-1550751827-4bd374c3f58b?q=80&w=800&auto=format&fit=crop"
     ]
   },
   {
@@ -186,6 +191,11 @@ export const ADMIN_MODULE_DOCS: DocItem[] = [
       "Statistik Real-time (Total Siswa, Bank Soal)",
       "Grafik Analitik (Distribusi Jurusan, Kelulusan)",
       "Shortcut Sinkronisasi & Cetak Kartu"
+    ],
+    // Sample Gallery added for demonstration
+    gallery: [
+       "https://images.unsplash.com/photo-1551288049-bebda4e38f71?q=80&w=800&auto=format&fit=crop",
+       "https://images.unsplash.com/photo-1460925895917-afdab827c52f?q=80&w=800&auto=format&fit=crop"
     ]
   },
   {

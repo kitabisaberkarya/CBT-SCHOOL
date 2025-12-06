@@ -14,6 +14,7 @@ export interface DocItem {
   icon: LucideIcon;
   points: string[];
   imageUrl?: string;
+  gallery?: string[]; // Added for slideshow support
 }
 
 export interface PricingPlan {
