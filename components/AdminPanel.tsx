@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { useContent } from '../context/ContentContext';
 import { supabase } from '../lib/supabaseClient';
@@ -632,7 +633,12 @@ const AdminPanel: React.FC = () => {
 
                         <div className="w-full aspect-video bg-black rounded-lg border border-slate-700 flex items-center justify-center overflow-hidden mb-4 relative">
                            {localHeroVideo ? (
-                              <video src={localHeroVideo} controls className="w-full h-full object-contain" />
+                              <video 
+                                key={localHeroVideo} // Add key for immediate refresh 
+                                src={localHeroVideo} 
+                                controls 
+                                className="w-full h-full object-contain" 
+                              />
                            ) : (
                               <div className="text-center text-slate-600">
                                  <Video size={28} className="mx-auto mb-1 opacity-50" />

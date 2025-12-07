@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
 import { Feature, DocItem, PricingPlan, Client } from '../types';
@@ -120,7 +121,8 @@ export const ContentProvider: React.FC<{ children: React.ReactNode }> = ({ child
         setHeroImageState(heroData.image_url);
         if (heroData.image_url_2) setHeroImage2State(heroData.image_url_2);
         if (heroData.image_url_3) setHeroImage3State(heroData.image_url_3);
-        if (heroData.video_url) setHeroVideoState(heroData.video_url);
+        // Ensure null fallback to empty string
+        setHeroVideoState(heroData.video_url || "");
       }
 
       // 2. Fetch Contact
@@ -148,25 +150,11 @@ export const ContentProvider: React.FC<{ children: React.ReactNode }> = ({ child
       if (docsData && docsData.length > 0) {
         setStudentDocs(prev => prev.map(item => {
           const dbItem = docsData.find((d: any) => d.id === item.id);
-          // Trust the DB data if it exists, especially for gallery and points
-          // Ensure points and gallery are never null/undefined
-          return dbItem ? { 
-            ...item, 
-            ...dbItem, 
-            imageUrl: dbItem.image_url, 
-            gallery: dbItem.gallery || [],
-            points: dbItem.points || item.points || [] 
-          } : item;
+          return dbItem ? { ...item, ...dbItem, imageUrl: dbItem.image_url, gallery: dbItem.gallery || [] } : item;
         }));
         setAdminDocs(prev => prev.map(item => {
           const dbItem = docsData.find((d: any) => d.id === item.id);
-          return dbItem ? { 
-            ...item, 
-            ...dbItem, 
-            imageUrl: dbItem.image_url, 
-            gallery: dbItem.gallery || [],
-            points: dbItem.points || item.points || [] 
-          } : item;
+          return dbItem ? { ...item, ...dbItem, imageUrl: dbItem.image_url, gallery: dbItem.gallery || [] } : item;
         }));
       }
 
@@ -181,7 +169,6 @@ export const ContentProvider: React.FC<{ children: React.ReactNode }> = ({ child
             name: dbPlan.name,
             price: dbPlan.price,
             period: dbPlan.period,
-            // Only update simple fields, features handled by code/constants currently
           };
         }));
       }
@@ -229,7 +216,9 @@ export const ContentProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const setHeroVideo = async (url: string) => {
     setHeroVideoState(url);
-    await supabase.from('hero').update({ video_url: url }).eq('id', 1);
+    // Explicitly handle empty string to save as NULL or empty string in DB
+    const valueToSave = url === "" ? null : url;
+    await supabase.from('hero').update({ video_url: valueToSave }).eq('id', 1);
   };
 
   const setHeroContent = async (content: HeroContent) => {
@@ -327,13 +316,15 @@ export const ContentProvider: React.FC<{ children: React.ReactNode }> = ({ child
         const fileName = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}.${fileExt}`;
         const filePath = `${folder}/${fileName}`;
 
+        // FIX: Use 'cbt_assets' bucket instead of 'images'
         const { error: uploadError } = await supabase.storage
-            .from('images') // Assuming 'images' bucket exists
+            .from('cbt_assets') 
             .upload(filePath, file);
 
         if (uploadError) throw uploadError;
 
-        const { data } = supabase.storage.from('images').getPublicUrl(filePath);
+        // FIX: Use 'cbt_assets' bucket
+        const { data } = supabase.storage.from('cbt_assets').getPublicUrl(filePath);
         return data.publicUrl;
     } catch (error) {
         console.error("Upload failed", error);

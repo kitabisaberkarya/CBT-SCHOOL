@@ -88,15 +88,17 @@ const Hero: React.FC = () => {
                 // --- VIDEO PLAYER MODE ---
                 <div className="relative w-full aspect-video rounded-xl overflow-hidden bg-black shadow-inner">
                   <video 
+                    key={heroVideo} // Force re-render when video URL changes
                     src={heroVideo} 
                     autoPlay 
                     muted 
                     loop 
+                    playsInline // Critical for mobile auto-play
                     controls
                     className="w-full h-full object-cover"
                   />
                   {/* Optional Overlay when paused or initial load aesthetics */}
-                  <div className="absolute top-4 right-4 z-20">
+                  <div className="absolute top-4 right-4 z-20 pointer-events-none">
                     <div className="bg-red-600/90 text-white text-xs font-bold px-3 py-1 rounded-full flex items-center shadow-lg animate-pulse">
                       <PlayCircle size={14} className="mr-1" /> LIVE DEMO
                     </div>
