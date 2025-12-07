@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useContent } from '../context/ContentContext';
 import { useLanguage } from '../context/LanguageContext';
 import { STUDENT_DOCS_EN, ADMIN_DOCS_EN } from '../data/translations';
-import { Smartphone, MonitorCog, CheckCircle2 } from 'lucide-react';
+import { Smartphone, Monitor, CheckCircle2 } from 'lucide-react';
 
 // Internal Component for Slider
 const DocImageSlider = ({ images = [], title }: { images?: string[], title: string }) => {
@@ -110,7 +110,7 @@ const FeatureDocs: React.FC = () => {
                   : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
-              <MonitorCog className="w-4 h-4 mr-2" />
+              <Monitor className="w-4 h-4 mr-2" />
               {t('docs.tab_admin')}
             </button>
           </div>
