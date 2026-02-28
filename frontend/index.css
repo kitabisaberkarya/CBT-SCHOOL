@@ -1,0 +1,124 @@
+/* ==============================================================================
+   CBT SCHOOL ENTERPRISE — Global CSS
+   Tailwind CSS via PostCSS (tidak butuh CDN)
+   ============================================================================== */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom base styles */
+@layer base {
+  html {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI',
+                 Roboto, Oxygen, Ubuntu, sans-serif;
+  }
+
+  /* Prevent text selection saat ujian berlangsung (anti-cheat) */
+  .no-select {
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    user-select: none;
+  }
+}
+
+@layer utilities {
+  /* Font untuk dokumen cetak */
+  .font-serif-print {
+    font-family: 'Times New Roman', Times, serif;
+  }
+
+  .font-handwriting {
+    font-family: 'Courier New', Courier, monospace;
+  }
+}
+
+/* ── Responsive Globals ───────────────────────────────────────── */
+html {
+  /* overflow-x: hidden di html merusak position:fixed di Safari/iOS */
+  width: 100%;
+}
+
+body, #root {
+  /* Cegah horizontal scroll di semua device */
+  overflow-x: hidden;
+  width: 100%;
+}
+
+/* ── Global Modal Overlay ─────────────────────────────────────── */
+/* Semua modal overlay: fixed, full viewport, scrollable jika konten panjang */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  overflow-y: auto;
+  padding: 1rem;
+  z-index: 50;
+}
+
+/* Touch-friendly tap targets (min 44px) untuk elemen interaktif kecil */
+@media (max-width: 768px) {
+  button, a, select, input[type="checkbox"], input[type="radio"] {
+    min-height: 36px;
+  }
+
+  /* Tabel: selalu bisa di-scroll horizontal pada mobile */
+  table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Modal: pastikan tidak overflow pada layar kecil */
+  .modal-inner {
+    max-height: 98vh;
+    overflow-y: auto;
+  }
+}
+
+/* Gambar di dalam konten soal */
+.prose img, [contenteditable] img {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Scrollbar tipis untuk sidebar dan panel */
+.custom-scrollbar::-webkit-scrollbar,
+nav::-webkit-scrollbar,
+aside::-webkit-scrollbar {
+  width: 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-track,
+nav::-webkit-scrollbar-track,
+aside::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb,
+nav::-webkit-scrollbar-thumb,
+aside::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.5);
+  border-radius: 4px;
+}
+
+/* Animasi dasar */
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in { animation: fade-in 0.2s ease-out both; }
+
+@keyframes scale-up {
+  from { opacity: 0; transform: scale(0.95); }
+  to   { opacity: 1; transform: scale(1); }
+}
+.animate-scale-up { animation: scale-up 0.2s ease-out both; }
+
+@keyframes progress {
+  from { width: 0%; }
+  to   { width: 100%; }
+}
+.animate-progress {
+  animation: progress 2s ease-in-out infinite;
+}
