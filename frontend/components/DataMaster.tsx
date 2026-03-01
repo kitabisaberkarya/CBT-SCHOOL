@@ -10,6 +10,7 @@ interface DataMasterProps {
   onUpdateItem: (type: ActiveTab, item: MasterDataItem) => void;
   onDeleteItem: (type: ActiveTab, item: MasterDataItem) => void;
   onMergeMasterData: (type: 'classes' | 'majors', idsToMerge: string[], targetItem: MasterDataItem) => void;
+  isDemoMode?: boolean;
 }
 
 type ActiveTab = 'classes' | 'majors';
@@ -23,7 +24,7 @@ const cardColors = [
   'from-indigo-500 to-violet-600',
 ];
 
-const DataMaster: React.FC<DataMasterProps> = ({ masterData, users, onAddItem, onUpdateItem, onDeleteItem, onMergeMasterData }) => {
+const DataMaster: React.FC<DataMasterProps> = ({ masterData, users, onAddItem, onUpdateItem, onDeleteItem, onMergeMasterData, isDemoMode = false }) => {
   const [activeTab, setActiveTab] = useState<ActiveTab>('classes');
   const [searchTerm, setSearchTerm] = useState('');
   const [isSelectionMode, setIsSelectionMode] = useState(false);
@@ -125,19 +126,21 @@ const DataMaster: React.FC<DataMasterProps> = ({ masterData, users, onAddItem, o
                  <input type="text" placeholder={`Cari ${tabTitle}...`} value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="pl-10 pr-4 py-2 w-full sm:w-64 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-blue-500" />
                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" /></svg></span>
              </div>
-             <div className="flex items-center space-x-2">
-                {!isSelectionMode ? (
-                  <>
-                    <button onClick={handleToggleSelectionMode} className="bg-yellow-500 hover:bg-yellow-600 text-white font-semibold py-2 px-4 rounded-lg text-sm">Pilih untuk Gabung</button>
-                    <button onClick={() => { setEditingItem(null); setNewItemName(''); setIsAddEditModalOpen(true); }} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg text-sm">+ Tambah Baru</button>
-                  </>
-                ) : (
-                  <>
-                    <button onClick={() => setIsMergeModalOpen(true)} disabled={selectedItems.size < 2} className="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-lg text-sm disabled:bg-gray-400 disabled:cursor-not-allowed">Gabungkan ({selectedItems.size})</button>
-                    <button onClick={handleToggleSelectionMode} className="bg-gray-500 hover:bg-gray-600 text-white font-semibold py-2 px-4 rounded-lg text-sm">Batal</button>
-                  </>
-                )}
-             </div>
+             {!isDemoMode && (
+               <div className="flex items-center space-x-2">
+                  {!isSelectionMode ? (
+                    <>
+                      <button onClick={handleToggleSelectionMode} className="bg-yellow-500 hover:bg-yellow-600 text-white font-semibold py-2 px-4 rounded-lg text-sm">Pilih untuk Gabung</button>
+                      <button onClick={() => { setEditingItem(null); setNewItemName(''); setIsAddEditModalOpen(true); }} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg text-sm">+ Tambah Baru</button>
+                    </>
+                  ) : (
+                    <>
+                      <button onClick={() => setIsMergeModalOpen(true)} disabled={selectedItems.size < 2} className="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-lg text-sm disabled:bg-gray-400 disabled:cursor-not-allowed">Gabungkan ({selectedItems.size})</button>
+                      <button onClick={handleToggleSelectionMode} className="bg-gray-500 hover:bg-gray-600 text-white font-semibold py-2 px-4 rounded-lg text-sm">Batal</button>
+                    </>
+                  )}
+               </div>
+             )}
           </div>
           <div className="p-6 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
             {filteredData.map((item, index) => {
@@ -151,7 +154,7 @@ const DataMaster: React.FC<DataMasterProps> = ({ masterData, users, onAddItem, o
                   {isSelectionMode && <input type="checkbox" checked={selectedItems.has(item.id)} readOnly className="absolute top-3 right-3 h-5 w-5 rounded text-blue-600 focus:ring-blue-500 bg-white border-gray-300"/>}
                   <h3 className="font-bold text-xl truncate">{item.name}</h3>
                   <p className="text-sm opacity-80">{getStudentCount(item.name)} Siswa</p>
-                  {!isSelectionMode && (
+                  {!isSelectionMode && !isDemoMode && (
                     <div className="mt-3 pt-3 border-t border-white/30 flex space-x-2 text-sm">
                       <button onClick={(e) => { e.stopPropagation(); setEditingItem(item); setNewItemName(item.name); setNewItemKkm(item.kkm ?? 75); setIsAddEditModalOpen(true); }} className="font-semibold opacity-80 hover:opacity-100 hover:underline">Edit</button>
                       <span>&middot;</span>

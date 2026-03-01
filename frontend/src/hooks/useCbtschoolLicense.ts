@@ -18,6 +18,10 @@ const VENDOR_URL = 'https://yiuamqcfgdgcwxtrihfd.supabase.co';
 const VENDOR_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlpdWFtcWNmZ2RnY3d4dHJpaGZkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU4NTU5MDUsImV4cCI6MjA4MTQzMTkwNX0.tRUkfK3cx2Cpwqv14ZXYoUpwwpi_hDhl90EfARAA_IA';
 const APP_ID     = 'cbtschool';
 
+// --- DEMO LICENSE KEY (lokal, tidak perlu internet/vendor) ---
+export const DEMO_LICENSE_KEY = 'CBTSCHOOL-DEMO-MHUB-BR1L';
+const DEMO_PROFILE = { school_name: 'Demo CBT School', npsn: '00000000', is_demo: true };
+
 // Timeout untuk request vendor (agar tidak hang terlalu lama)
 const VENDOR_TIMEOUT_MS = 8000;
 
@@ -68,6 +72,10 @@ const withTimeout = <T>(promise: Promise<T>, ms: number): Promise<T> => {
 
 export const useCbtschoolLicense = () => {
   const [isLocked, setIsLocked] = useState<boolean>(false);
+  // isDemoMode: true jika key === DEMO_LICENSE_KEY (diinisialisasi dari localStorage)
+  const [isDemoMode, setIsDemoMode] = useState<boolean>(() =>
+    localStorage.getItem('cbtschool_key') === DEMO_LICENSE_KEY
+  );
   const [profile, setProfile] = useState<any>(() => {
     try {
       const stored = localStorage.getItem('cbtschool_profile');
@@ -91,8 +99,20 @@ export const useCbtschoolLicense = () => {
     // Tidak ada key → lock
     if (!key) {
       if (!isLocked) setIsLocked(true);
+      setIsDemoMode(false);
       return;
     }
+
+    // === DEMO KEY: bypass vendor, aktifkan lokal ===
+    if (key === DEMO_LICENSE_KEY) {
+      setIsLocked(false);
+      setIsDemoMode(true);
+      if (!profile) setProfile(DEMO_PROFILE);
+      return;
+    }
+
+    // Pastikan isDemoMode false jika pakai lisensi resmi
+    setIsDemoMode(false);
 
     // === GUARD: Jangan ping vendor jika offline ===
     // Ini krusial untuk VHD: saat ujian berlangsung (offline),
@@ -174,6 +194,13 @@ export const useCbtschoolLicense = () => {
 
     const handleLicenseChange = () => {
       const key = localStorage.getItem('cbtschool_key');
+      if (key === DEMO_LICENSE_KEY) {
+        setIsLocked(false);
+        setIsDemoMode(true);
+        setProfile(DEMO_PROFILE);
+        return;
+      }
+      setIsDemoMode(false);
       if (key) {
         setIsLocked(false); // Optimistic unlock
         try {
@@ -273,7 +300,20 @@ export const useCbtschoolLicense = () => {
   const activate = async (licenseKey: string) => {
     setLoading(true);
 
-    // Guard: Aktivasi butuh internet
+    // === DEMO KEY: aktifkan lokal, tidak butuh internet ===
+    if (licenseKey.trim() === DEMO_LICENSE_KEY) {
+      localStorage.setItem('cbtschool_key', DEMO_LICENSE_KEY);
+      localStorage.setItem('cbtschool_profile', JSON.stringify(DEMO_PROFILE));
+      setIsLocked(false);
+      setIsDemoMode(true);
+      setProfile(DEMO_PROFILE);
+      setLicenseError(null);
+      setLoading(false);
+      window.dispatchEvent(new Event('cbtschool-license-changed'));
+      return { success: true };
+    }
+
+    // Guard: Aktivasi lisensi resmi butuh internet
     if (!isOnline()) {
       setLoading(false);
       return {
@@ -335,6 +375,7 @@ export const useCbtschoolLicense = () => {
     localStorage.removeItem('cbtschool_key');
     localStorage.removeItem('cbtschool_profile');
     setIsLocked(true);
+    setIsDemoMode(false);
     setProfile(null);
     setLicenseError(null);
 
@@ -345,6 +386,7 @@ export const useCbtschoolLicense = () => {
 
   return {
     isLocked,
+    isDemoMode,
     profile,
     activate,
     resetLicense,

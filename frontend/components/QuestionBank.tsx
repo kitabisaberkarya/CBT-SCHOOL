@@ -22,9 +22,10 @@ interface QuestionBankProps {
   onBulkAddQuestions: (token: string, questions: Omit<Question, 'id'>[]) => void;
   onImportError: (message: string) => void;
   preselectedToken?: string;
-  onRefresh: () => void; 
+  onRefresh: () => void;
   onFetchQuestions?: (token: string) => Promise<void>; // New prop
   isFetchingQuestions?: boolean; // New prop
+  isDemoMode?: boolean; // Mode Demo: sembunyikan tombol tambah/edit/hapus
 }
 
 const DifficultyBadge: React.FC<{ difficulty: QuestionDifficulty }> = ({ difficulty }) => {
@@ -54,7 +55,7 @@ const ActionCard: React.FC<{title: string, description: string, icon: React.Reac
 );
 
 
-const QuestionBank: React.FC<QuestionBankProps> = ({ tests, onAddQuestion, onUpdateQuestion, onDeleteQuestion, onAddTest, onUpdateTest, onDeleteTest, onBulkAddQuestions, onImportError, preselectedToken, onRefresh, onFetchQuestions, isFetchingQuestions }) => {
+const QuestionBank: React.FC<QuestionBankProps> = ({ tests, onAddQuestion, onUpdateQuestion, onDeleteQuestion, onAddTest, onUpdateTest, onDeleteTest, onBulkAddQuestions, onImportError, preselectedToken, onRefresh, onFetchQuestions, isFetchingQuestions, isDemoMode = false }) => {
   const [view, setView] = useState<'main' | 'detail'>('main');
   const [selectedToken, setSelectedToken] = useState<string>(preselectedToken || '');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -195,7 +196,7 @@ const QuestionBank: React.FC<QuestionBankProps> = ({ tests, onAddQuestion, onUpd
                return (
                 <div key={token} className={`relative bg-gradient-to-br ${gradient} rounded-2xl shadow-xl p-6 text-white overflow-hidden flex flex-col justify-between transform hover:-translate-y-1.5 transition-transform duration-300 ease-in-out group`}>
                   <div className="absolute -top-8 -right-8 w-32 h-32 bg-white/10 rounded-full opacity-80"></div>
-                  <div className="absolute top-4 right-4 z-20"><button onClick={(e) => { e.stopPropagation(); setTestToDelete({ token, name: test.details.subject }); }} className="p-2 bg-black/20 hover:bg-red-600 rounded-full text-white transition-all backdrop-blur-sm"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button></div>
+                  {!isDemoMode && <div className="absolute top-4 right-4 z-20"><button onClick={(e) => { e.stopPropagation(); setTestToDelete({ token, name: test.details.subject }); }} className="p-2 bg-black/20 hover:bg-red-600 rounded-full text-white transition-all backdrop-blur-sm"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button></div>}
                   <div className="relative z-10 flex-grow flex flex-col">
                     <div className="mb-4">{icon}</div>
                     <div className="flex items-center gap-2 mb-1"><span className="text-[10px] bg-white/20 px-2 py-0.5 rounded font-mono">TOKEN: {token}</span><span className="text-[10px] bg-black/30 px-2 py-0.5 rounded font-bold uppercase truncate max-w-[150px]">{test.details.examType || 'Umum'}</span></div>
@@ -206,7 +207,7 @@ const QuestionBank: React.FC<QuestionBankProps> = ({ tests, onAddQuestion, onUpd
                 </div>
                )
              })}
-            <div onClick={() => { setTestToEdit(null); setIsTestModalOpen(true); }} className="relative bg-white border-2 border-dashed border-gray-300 rounded-2xl p-6 text-gray-500 hover:text-blue-600 hover:border-blue-500 flex flex-col items-center justify-center cursor-pointer transition-all duration-300 ease-in-out transform hover:-translate-y-1.5 group min-h-[300px]"><div className="w-16 h-16 bg-gray-100 group-hover:bg-blue-50 rounded-full flex items-center justify-center mb-4 transition-colors"><svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg></div><h2 className="text-lg font-bold">Tambah Mapel Baru</h2></div>
+            {!isDemoMode && <div onClick={() => { setTestToEdit(null); setIsTestModalOpen(true); }} className="relative bg-white border-2 border-dashed border-gray-300 rounded-2xl p-6 text-gray-500 hover:text-blue-600 hover:border-blue-500 flex flex-col items-center justify-center cursor-pointer transition-all duration-300 ease-in-out transform hover:-translate-y-1.5 group min-h-[300px]"><div className="w-16 h-16 bg-gray-100 group-hover:bg-blue-50 rounded-full flex items-center justify-center mb-4 transition-colors"><svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg></div><h2 className="text-lg font-bold">Tambah Mapel Baru</h2></div>}
            </div>
         </div>
       ) : (
@@ -221,12 +222,12 @@ const QuestionBank: React.FC<QuestionBankProps> = ({ tests, onAddQuestion, onUpd
                 </div>
                 <div className="flex gap-2">
                     {selectedTest && (<button onClick={(e) => handlePreviewTest(selectedTest, e)} className="flex items-center space-x-2 bg-purple-500 hover:bg-purple-600 text-white font-semibold py-2 px-4 rounded-lg shadow"><span>Preview</span></button>)}
-                    <button onClick={handleOpenEditTestModal} className="flex items-center space-x-2 bg-yellow-500 hover:bg-yellow-600 text-white font-semibold py-2 px-4 rounded-lg shadow"><span>Edit Info</span></button>
+                    {!isDemoMode && <button onClick={handleOpenEditTestModal} className="flex items-center space-x-2 bg-yellow-500 hover:bg-yellow-600 text-white font-semibold py-2 px-4 rounded-lg shadow"><span>Edit Info</span></button>}
                 </div>
             </div>
 
-            <div className="mb-8">
-                {/* UPDATE: GRID 4 KOLOM (Tambah Word) */}
+            {!isDemoMode && <div className="mb-8">
+                {/* GRID 4 KOLOM: Tambah Soal / Import */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
                     <ActionCard 
                         title="Tambah Soal Manual" 
@@ -259,8 +260,8 @@ const QuestionBank: React.FC<QuestionBankProps> = ({ tests, onAddQuestion, onUpd
                         textColor="text-blue-900" 
                     />
                 </div>
-            </div>
-            
+            </div>}
+
             <div className="bg-white rounded-xl shadow-xl overflow-hidden">
                 <div className="p-4 flex flex-col sm:flex-row justify-between items-center space-y-2 sm:space-y-0 bg-gray-50/50">
                     <div className="flex items-center gap-4">
@@ -283,7 +284,7 @@ const QuestionBank: React.FC<QuestionBankProps> = ({ tests, onAddQuestion, onUpd
                     <table className="min-w-full divide-y divide-gray-200">
                         <thead className="bg-gray-50"><tr><th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-16 text-center">#</th><th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Pertanyaan</th><th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Info</th><th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Aksi</th></tr></thead>
                         <tbody className="bg-white divide-y divide-gray-200">
-                        {filteredQuestions.map((q, index) => ( <SoalRow key={q.id} index={index} question={q} onEdit={handleOpenModalForEdit} onDelete={setDeletingQuestion} /> ))}
+                        {filteredQuestions.map((q, index) => ( <SoalRow key={q.id} index={index} question={q} onEdit={handleOpenModalForEdit} onDelete={setDeletingQuestion} readOnly={isDemoMode} /> ))}
                         </tbody>
                     </table>
                 </div>

@@ -10,6 +10,7 @@ interface ExamScheduleProps {
   onAddSchedule: (schedule: Omit<Schedule, 'id'>) => void;
   onUpdateSchedule: (schedule: Schedule) => void;
   onDeleteSchedule: (scheduleId: string) => void;
+  isDemoMode?: boolean;
 }
 
 const getScheduleStatus = (schedule: Schedule): ScheduleStatus => {
@@ -107,7 +108,7 @@ const CalendarView: React.FC<{
   );
 };
 
-const ListView: React.FC<{schedules: Schedule[], tests: Map<string, Test>, onEdit: (s: Schedule) => void, onDelete: (s: Schedule) => void}> = ({schedules, tests, onEdit, onDelete}) => {
+const ListView: React.FC<{schedules: Schedule[], tests: Map<string, Test>, onEdit: (s: Schedule) => void, onDelete: (s: Schedule) => void, isDemoMode?: boolean}> = ({schedules, tests, onEdit, onDelete, isDemoMode = false}) => {
     return (
         <div className="bg-white rounded-xl shadow-xl overflow-hidden">
             <div className="overflow-x-auto">
@@ -136,8 +137,8 @@ const ListView: React.FC<{schedules: Schedule[], tests: Map<string, Test>, onEdi
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{new Date(s.startTime).toLocaleString('id-ID')}</td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{(s.assignedTo || []).join(', ')}</td>
                                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
-                                    <button onClick={() => onEdit(s)} className="text-blue-600 hover:text-blue-900">Edit</button>
-                                    <button onClick={() => onDelete(s)} className="text-red-600 hover:text-red-900">Hapus</button>
+                                    {!isDemoMode && <button onClick={() => onEdit(s)} className="text-blue-600 hover:text-blue-900">Edit</button>}
+                                    {!isDemoMode && <button onClick={() => onDelete(s)} className="text-red-600 hover:text-red-900">Hapus</button>}
                                 </td>
                             </tr>
                         )
@@ -151,6 +152,7 @@ const ListView: React.FC<{schedules: Schedule[], tests: Map<string, Test>, onEdi
 
 
 const ExamSchedule: React.FC<ExamScheduleProps> = (props) => {
+  const isDemoMode = props.isDemoMode ?? false;
   const [view, setView] = useState<'calendar' | 'list'>('calendar');
   const [currentDate, setCurrentDate] = useState(new Date());
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -189,20 +191,22 @@ const ExamSchedule: React.FC<ExamScheduleProps> = (props) => {
                 <button onClick={() => setView('calendar')} className={`px-3 py-1 text-sm font-semibold rounded-md ${view === 'calendar' ? 'bg-white shadow' : 'text-gray-600'}`}>Kalender</button>
                 <button onClick={() => setView('list')} className={`px-3 py-1 text-sm font-semibold rounded-md ${view === 'list' ? 'bg-white shadow' : 'text-gray-600'}`}>Daftar</button>
             </div>
-            <button
-                onClick={handleOpenModalForAdd}
-                className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg shadow-md hover:shadow-lg transition-transform transform hover:-translate-y-0.5 flex items-center space-x-2"
-            >
-                <span>+</span>
-                <span className="hidden sm:inline">Buat Jadwal</span>
-            </button>
+            {!isDemoMode && (
+              <button
+                  onClick={handleOpenModalForAdd}
+                  className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg shadow-md hover:shadow-lg transition-transform transform hover:-translate-y-0.5 flex items-center space-x-2"
+              >
+                  <span>+</span>
+                  <span className="hidden sm:inline">Buat Jadwal</span>
+              </button>
+            )}
         </div>
       </div>
       
       {view === 'calendar' ? (
           <CalendarView currentDate={currentDate} schedules={props.schedules} tests={props.tests} onDateChange={setCurrentDate} onEdit={handleOpenModalForEdit} />
       ) : (
-          <ListView schedules={sortedSchedules} tests={props.tests} onEdit={handleOpenModalForEdit} onDelete={setDeletingSchedule} />
+          <ListView schedules={sortedSchedules} tests={props.tests} onEdit={handleOpenModalForEdit} onDelete={setDeletingSchedule} isDemoMode={isDemoMode} />
       )}
 
       {isModalOpen && (

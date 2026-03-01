@@ -28,6 +28,7 @@ import UpdaterService, { UpdateInfo as AppUpdateInfo } from '../src/services/Upd
 import { Lock, ShieldCheck, AlertTriangle, RefreshCw, ArrowUpCircle } from 'lucide-react';
 // @ts-ignore — vite resolves JSON imports
 import { version as APP_VERSION } from '../package.json';
+import DemoModeOverlay from '../components/DemoModeOverlay';
 
 interface AdminDashboardProps {
   user: User;
@@ -35,19 +36,21 @@ interface AdminDashboardProps {
   config: AppConfig;
   onUpdateConfig: (newConfig: AppConfig) => Promise<boolean>;
   setIsBatchProcessing: (isProcessing: boolean) => void;
-  isLocked: boolean; // New Prop
-  licenseProfile: any; // New Prop
-  licenseError?: string | null; // New Prop
+  isLocked: boolean;
+  isDemoMode?: boolean; // Mode Demo: akses terbatas, tidak perlu lisensi resmi
+  licenseProfile: any;
+  licenseError?: string | null;
 }
 
 interface NavItem {
   id: AdminView;
   label: string;
   icon: React.ReactNode;
+  isDemoLocked?: boolean; // Tanda fitur terkunci di mode demo
 }
 
 const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
-  const { user, onLogout, config, onUpdateConfig, setIsBatchProcessing, isLocked: propsIsLocked, licenseProfile: propsLicenseProfile, licenseError: propsLicenseError } = props;
+  const { user, onLogout, config, onUpdateConfig, setIsBatchProcessing, isLocked: propsIsLocked, isDemoMode: propsIsDemoMode = false, licenseProfile: propsLicenseProfile, licenseError: propsLicenseError } = props;
   
   const [isDataLoading, setIsDataLoading] = useState(false); // Default false for instant render
   const [isInitialLoad, setIsInitialLoad] = useState(true);
@@ -80,6 +83,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
   // Use props if provided (from App.tsx), otherwise fallback to hook (though App.tsx should always provide)
   // We don't use hook state for isLocked/profile to avoid desync with App.tsx
   const isLocked = propsIsLocked;
+  const isDemoMode = propsIsDemoMode;
   const licenseProfile = propsLicenseProfile;
   const licenseError = propsLicenseError;
 
@@ -766,6 +770,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
   const questionCount = useMemo(() => Array.from(tests.values()).reduce((acc: number, test: Test) => acc + test.questions.length, 0), [tests]);
   const activeSessionCount = useMemo(() => examSessions.filter(s => s.status === 'Mengerjakan').length, [examSessions]);
   
+  // Menu yang terkunci di mode Demo (tampil tapi redirect ke overlay)
+  const DEMO_LOCKED_VIEWS = new Set([
+    AdminView.BACKUP_DATA, AdminView.CONFIG, AdminView.CETAK,
+    AdminView.CETAK_DOKUMEN, AdminView.CETAK_ADMIN_CARD,
+  ]);
+
   // Navigation
   const navItems: NavItem[] = useMemo(() => {
     if (isLocked) {
@@ -780,16 +790,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
     { id: AdminView.QUESTION_BANK, label: 'Bank Soal', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M5 3a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2V5a2 2 0 00-2-2H5zm0 2h10v7h-2V7a1 1 0 00-1-1H6V5z" clipRule="evenodd" /></svg> },
     { id: AdminView.JADWAL_UJIAN, label: 'Jadwal Ujian', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clipRule="evenodd" /></svg> },
     { id: AdminView.UBK, label: 'Pemantauan Ujian', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 12a2 2 0 100-4 2 2 0 000 4z" /><path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd" /></svg> },
-    { id: AdminView.CETAK_DOKUMEN, label: 'Berita Acara & Absen', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clipRule="evenodd" /><path d="M9 11a1 1 0 100 2h6a1 1 0 100-2H9z" /></svg> },
-    { id: AdminView.CETAK, label: 'Cetak Kartu Siswa', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M5 4v3H4a2 2 0 00-2 2v3a2 2 0 002 2h1v3a2 2 0 002 2h8a2 2 0 002-2v-3h1a2 2 0 002-2V9a2 2 0 00-2-2h-1V4a2 2 0 00-2-2H7a2 2 0 00-2 2zm8 0H7v3h6V4zm0 8H7v4h6v-4z" clipRule="evenodd" /></svg> },
+    { id: AdminView.CETAK_DOKUMEN, label: 'Berita Acara & Absen', isDemoLocked: isDemoMode, icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clipRule="evenodd" /><path d="M9 11a1 1 0 100 2h6a1 1 0 100-2H9z" /></svg> },
+    { id: AdminView.CETAK, label: 'Cetak Kartu Siswa', isDemoLocked: isDemoMode, icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M5 4v3H4a2 2 0 00-2 2v3a2 2 0 002 2h1v3a2 2 0 002 2h8a2 2 0 002-2v-3h1a2 2 0 002-2V9a2 2 0 00-2-2h-1V4a2 2 0 00-2-2H7a2 2 0 00-2 2zm8 0H7v3h6V4zm0 8H7v4h6v-4z" clipRule="evenodd" /></svg> },
     { id: AdminView.REKAPITULASI_NILAI, label: 'Rekapitulasi Nilai', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg> },
     { id: AdminView.ANALISA_SOAL, label: 'Analisa Soal', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M2 10a8 8 0 018-8v8h8a8 8 0 11-16 0z" /><path d="M12 2.252A8.014 8.014 0 0117.748 8H12V2.252z" /></svg> },
-    { id: AdminView.BACKUP_DATA, label: 'Backup & Restore', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" /></svg> },
-    { id: AdminView.CONFIG, label: 'Konfigurasi', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.96.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clipRule="evenodd" /></svg> },
-    { id: AdminView.CETAK_ADMIN_CARD, label: 'Cetak Kartu Admin', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 2a4 4 0 00-4 4v1H5a1 1 0 00-.994.89l-1 9A1 1 0 004 18h12a1 1 0 001-1.11l-1-9A1 1 0 0015 7h-1V6a4 4 0 00-4-4zm2 5V6a2 2 0 10-4 0v1h4zm-6 3a1 1 0 112 0 1 1 0 01-2 0zm7-1a1 1 0 100 2 1 1 0 000-2z" clipRule="evenodd" /></svg> },
+    { id: AdminView.BACKUP_DATA, label: 'Backup & Restore', isDemoLocked: isDemoMode, icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" /></svg> },
+    { id: AdminView.CONFIG, label: 'Konfigurasi', isDemoLocked: isDemoMode, icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.96.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clipRule="evenodd" /></svg> },
+    { id: AdminView.CETAK_ADMIN_CARD, label: 'Cetak Kartu Admin', isDemoLocked: isDemoMode, icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 2a4 4 0 00-4 4v1H5a1 1 0 00-.994.89l-1 9A1 1 0 004 18h12a1 1 0 001-1.11l-1-9A1 1 0 0015 7h-1V6a4 4 0 00-4-4zm2 5V6a2 2 0 10-4 0v1h4zm-6 3a1 1 0 112 0 1 1 0 01-2 0zm7-1a1 1 0 100 2 1 1 0 000-2z" clipRule="evenodd" /></svg> },
     { id: AdminView.LICENSE, label: 'Info Lisensi', icon: <ShieldCheck className="h-5 w-5" /> }
   ];
-  }, [isLocked]);
+  }, [isLocked, isDemoMode]);
 
   // Force License View if Locked
   useEffect(() => {
@@ -861,12 +871,27 @@ const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
         return <LicenseActivation onActivate={activate} loading={isLicenseLoading} globalError={licenseError} />;
     }
 
+    // DEMO MODE: Block restricted views with overlay
+    if (isDemoMode && DEMO_LOCKED_VIEWS.has(activeView)) {
+        const featureNames: Partial<Record<AdminView, string>> = {
+            [AdminView.BACKUP_DATA]: 'Backup & Restore',
+            [AdminView.CONFIG]: 'Konfigurasi',
+            [AdminView.CETAK]: 'Cetak Kartu Siswa',
+            [AdminView.CETAK_DOKUMEN]: 'Berita Acara & Absen',
+            [AdminView.CETAK_ADMIN_CARD]: 'Cetak Kartu Admin',
+        };
+        return <DemoModeOverlay
+            featureName={featureNames[activeView] || 'Fitur ini'}
+            onGoToLicense={() => setActiveView(AdminView.LICENSE)}
+        />;
+    }
+
     switch (activeView) {
       case AdminView.HOME: return <DashboardHome adminUser={user} config={config} studentUsers={studentUsers} studentCount={realStudentCount} teacherCount={realTeacherCount} adminCount={realAdminCount} tests={tests} questionCount={questionCount} onNavigate={handleNavigate} activeSessionCount={activeSessionCount} examSessions={examSessions} totalDatabaseRecords={totalUserCount} />;
-      case AdminView.DATA_MASTER: return <DataMaster masterData={masterData} users={users} onAddItem={handleAddMasterItem} onUpdateItem={handleUpdateMasterItem} onDeleteItem={handleDeleteMasterItem} onMergeMasterData={() => {}} />;
-      case AdminView.MANAJEMEN_USER: return <UserManagement />;
-      case AdminView.JADWAL_UJIAN: return <ExamSchedule schedules={schedules} tests={tests} masterData={masterData} onAddSchedule={handleAddSchedule} onUpdateSchedule={handleUpdateSchedule} onDeleteSchedule={handleDeleteSchedule} />;
-      case AdminView.QUESTION_BANK: return <QuestionBank tests={tests} onAddQuestion={handleAddQuestion} onUpdateQuestion={handleUpdateQuestion} onDeleteQuestion={handleDeleteQuestion} onAddTest={handleAddTest} onUpdateTest={handleUpdateTest} onDeleteTest={handleDeleteTest} onBulkAddQuestions={handleBulkAddQuestions} onImportError={(msg) => showToast(msg, 'error')} preselectedToken={preselectedTestToken} onRefresh={() => fetchTestsData()} onFetchQuestions={fetchQuestionsForTest} isFetchingQuestions={isFetchingQuestions} />;
+      case AdminView.DATA_MASTER: return <DataMaster masterData={masterData} users={users} onAddItem={handleAddMasterItem} onUpdateItem={handleUpdateMasterItem} onDeleteItem={handleDeleteMasterItem} onMergeMasterData={() => {}} isDemoMode={isDemoMode} />;
+      case AdminView.MANAJEMEN_USER: return <UserManagement isDemoMode={isDemoMode} />;
+      case AdminView.JADWAL_UJIAN: return <ExamSchedule schedules={schedules} tests={tests} masterData={masterData} onAddSchedule={handleAddSchedule} onUpdateSchedule={handleUpdateSchedule} onDeleteSchedule={handleDeleteSchedule} isDemoMode={isDemoMode} />;
+      case AdminView.QUESTION_BANK: return <QuestionBank tests={tests} onAddQuestion={handleAddQuestion} onUpdateQuestion={handleUpdateQuestion} onDeleteQuestion={handleDeleteQuestion} onAddTest={handleAddTest} onUpdateTest={handleUpdateTest} onDeleteTest={handleDeleteTest} onBulkAddQuestions={handleBulkAddQuestions} onImportError={(msg) => showToast(msg, 'error')} preselectedToken={preselectedTestToken} onRefresh={() => fetchTestsData()} onFetchQuestions={fetchQuestionsForTest} isFetchingQuestions={isFetchingQuestions} isDemoMode={isDemoMode} />;
       case AdminView.UBK: return <UbkMonitor users={users} tests={tests} />;
       case AdminView.CETAK: return <ExamCards users={studentUsers} config={config} />;
       case AdminView.CETAK_DOKUMEN: return <PrintDocuments users={studentUsers} tests={tests} examSessions={examSessions} config={config} masterData={masterData} />; // New Component
@@ -875,7 +900,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
       case AdminView.BACKUP_DATA: return <BackupScreen config={config} users={users} tests={tests} masterData={masterData} announcements={announcements} schedules={schedules} onRestoreData={handleRestoreData} onDeleteData={handleDeleteData} isProcessing={isProcessing} />;
       case AdminView.CONFIG: return <ConfigurationScreen config={config} onUpdateConfig={onUpdateConfig} user={user} onLogout={onLogout} onAdminPasswordChange={handleAdminPasswordChange} onSyncAdminPasswordForQR={handleSyncAdminPasswordForQR} isProcessing={isProcessing} isLicensed={!isLocked} licenseProfile={licenseProfile} />;
       case AdminView.CETAK_ADMIN_CARD: return <AdminCard adminUser={user} config={config} />;
-      case AdminView.LICENSE: 
+      case AdminView.LICENSE:
         if (isLocked) {
             return <LicenseActivation onActivate={async (key) => {
                 const result = await activate(key);
@@ -889,22 +914,77 @@ const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
             return (
                 <div className="p-8 bg-white rounded-xl shadow-sm border border-slate-200">
                     <h2 className="text-xl font-bold mb-4 text-slate-800 flex items-center gap-2">
-                        <ShieldCheck className="text-green-600" />
+                        <ShieldCheck className={isDemoMode ? "text-amber-500" : "text-green-600"} />
                         Status Lisensi
                     </h2>
-                    <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
-                        <div className="flex items-center gap-3">
-                            <div className="bg-green-100 p-2 rounded-full">
-                                <ShieldCheck className="w-6 h-6 text-green-600" />
-                            </div>
-                            <div>
-                                <p className="font-bold text-green-800">Aplikasi Terlisensi Resmi</p>
-                                <p className="text-sm text-green-700">Terima kasih telah menggunakan CBT School Enterprise.</p>
+                    {isDemoMode ? (
+                        /* ── DEMO MODE: Status & CTA ── */
+                        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
+                            <div className="flex items-center gap-3">
+                                <div className="bg-amber-100 p-2 rounded-full">
+                                    <Lock className="w-6 h-6 text-amber-600" />
+                                </div>
+                                <div>
+                                    <p className="font-bold text-amber-800">Mode Demo Aktif</p>
+                                    <p className="text-sm text-amber-700">Anda menggunakan Versi Demo CBT School. Beberapa fitur dibatasi.</p>
+                                </div>
                             </div>
                         </div>
-                    </div>
+                    ) : (
+                        <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
+                            <div className="flex items-center gap-3">
+                                <div className="bg-green-100 p-2 rounded-full">
+                                    <ShieldCheck className="w-6 h-6 text-green-600" />
+                                </div>
+                                <div>
+                                    <p className="font-bold text-green-800">Aplikasi Terlisensi Resmi</p>
+                                    <p className="text-sm text-green-700">Terima kasih telah menggunakan CBT School Enterprise.</p>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                     
-                    {licenseProfile && (
+                    {isDemoMode ? (
+                        /* ── DEMO: Feature summary + CTA upgrade ── */
+                        <div className="mb-8">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                                <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                                    <p className="text-xs font-bold text-green-700 uppercase mb-2">Fitur Tersedia di Demo</p>
+                                    <ul className="text-sm text-green-800 space-y-1">
+                                        <li>✅ Dashboard & Statistik</li>
+                                        <li>✅ Pemantauan Ujian (UBK)</li>
+                                        <li>✅ Rekapitulasi Nilai</li>
+                                        <li>✅ Analisa Soal</li>
+                                        <li>👁 Bank Soal (hanya lihat)</li>
+                                        <li>👁 Jadwal Ujian (hanya lihat)</li>
+                                        <li>👁 Data Master (hanya lihat)</li>
+                                        <li>👁 Manajemen User (hanya lihat)</li>
+                                    </ul>
+                                </div>
+                                <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                                    <p className="text-xs font-bold text-red-700 uppercase mb-2">Terkunci di Demo</p>
+                                    <ul className="text-sm text-red-800 space-y-1">
+                                        <li>🔒 Tambah/Edit/Hapus data</li>
+                                        <li>🔒 Backup & Restore</li>
+                                        <li>🔒 Konfigurasi Sekolah</li>
+                                        <li>🔒 Cetak Kartu Siswa</li>
+                                        <li>🔒 Berita Acara & Absen</li>
+                                        <li>🔒 Cetak Kartu Admin</li>
+                                    </ul>
+                                </div>
+                            </div>
+                            <div className="bg-blue-50 border border-blue-200 rounded-lg p-5">
+                                <p className="font-bold text-blue-800 mb-1">Upgrade ke Versi Lengkap</p>
+                                <p className="text-sm text-blue-600 mb-4">Dapatkan akses penuh ke semua fitur CBT School Enterprise. Hubungi tim kami untuk mendapatkan lisensi resmi.</p>
+                                <div className="flex gap-3 flex-wrap">
+                                    <button onClick={handleResetLicenseClick} disabled={isResettingLicense}
+                                        className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm rounded-lg transition-colors">
+                                        Masukkan Lisensi Resmi
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    ) : licenseProfile && (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
                             <div>
                                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Sekolah Terdaftar</label>
@@ -1062,6 +1142,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
                   <button onClick={() => handleNavigate(item.id)} className={`w-full flex items-center space-x-3 p-3 rounded-lg text-left transition-all duration-200 group ${ activeView === item.id ? 'bg-blue-600 text-white shadow-lg' : 'hover:bg-slate-800 hover:text-white'}`}>
                     <div className="relative">{item.icon}{activeView === item.id && <span className="absolute -left-4 top-1/2 -translate-y-1/2 h-5 w-1 bg-white rounded-r-full"></span>}</div>
                     <span className="font-semibold text-sm flex-grow">{item.label}</span>
+                    {item.isDemoLocked && <Lock className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" title="Terkunci di Mode Demo" />}
                   </button>
                 </li>
               ))}
@@ -1117,6 +1198,20 @@ const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
             </div>
           </header>
           
+          {/* DEMO MODE BANNER */}
+          {isDemoMode && (
+            <div className="bg-amber-50 border-b border-amber-200 px-4 sm:px-8 py-2 flex items-center justify-between gap-4">
+              <div className="flex items-center gap-2 text-amber-800 text-sm">
+                <AlertTriangle className="w-4 h-4 flex-shrink-0 text-amber-600" />
+                <span><span className="font-bold">MODE DEMO</span> — Beberapa fitur dibatasi. Aktivasi lisensi resmi untuk akses penuh.</span>
+              </div>
+              <button onClick={() => setActiveView(AdminView.LICENSE)}
+                className="text-xs font-semibold text-amber-700 hover:text-amber-900 underline whitespace-nowrap">
+                Info Lisensi
+              </button>
+            </div>
+          )}
+
           <main className="flex-grow p-4 sm:p-8 overflow-y-auto">
             {renderContent()}
           </main>

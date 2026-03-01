@@ -62,7 +62,7 @@ const App: React.FC = () => {
   const [isCopyrightOpen, setIsCopyrightOpen] = useState(false);
 
   // License Hook Integration
-  const { profile: licenseProfile, isLocked: isLicenseLocked, licenseError } = useCbtschoolLicense();
+  const { profile: licenseProfile, isLocked: isLicenseLocked, isDemoMode, licenseError } = useCbtschoolLicense();
 
   // DB Keep-alive: call setiap 5 menit agar koneksi Supabase tetap aktif
   useEffect(() => {
@@ -687,10 +687,11 @@ const App: React.FC = () => {
                   setTimeout(() => setAppState(AppState.LOGIN), 0);
                   return null;
               }
-              return <AdminDashboard 
+              return <AdminDashboard
                 user={currentUser} onLogout={handleLogout} config={safeConfig} onUpdateConfig={handleUpdateConfig}
                 setIsBatchProcessing={setIsBatchProcessing}
                 isLocked={isLicenseLocked}
+                isDemoMode={isDemoMode}
                 licenseProfile={licenseProfile}
                 licenseError={licenseError}
               />;
