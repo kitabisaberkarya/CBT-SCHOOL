@@ -44,6 +44,7 @@ const DEFAULT_CONFIG: AppConfig = {
   stampUrl: '',
   emailDomain: '@namasekolah.sch.id', // Reverted to original to match Auth accounts
   academicYear: '2026/2027',
+  timezone: 'Asia/Jakarta', // WIB default
 };
 
 const App: React.FC = () => {
@@ -337,7 +338,8 @@ const App: React.FC = () => {
       default_paper_size: newConfig.defaultPaperSize,
       current_exam_event: newConfig.currentExamEvent,
       academic_year: newConfig.academicYear,
-      school_domain: newConfig.schoolDomain // Added
+      school_domain: newConfig.schoolDomain,
+      timezone: newConfig.timezone || 'Asia/Jakarta',
     };
 
     try {

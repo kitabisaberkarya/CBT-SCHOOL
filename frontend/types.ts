@@ -73,6 +73,7 @@ export interface AppConfig {
   academicYear?: string;
   schoolDomain?: string; // Menambahkan schoolDomain agar konsisten
   npsn?: string; // Added for License System
+  timezone?: string; // Zona waktu: Asia/Jakarta (WIB) | Asia/Makassar (WITA) | Asia/Jayapura (WIT)
 }
 
 export interface User {

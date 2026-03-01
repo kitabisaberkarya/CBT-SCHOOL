@@ -376,6 +376,48 @@ const ConfigurationScreen: React.FC<ConfigurationScreenProps> = (props) => {
                               <p className="text-xs text-orange-600 mt-1">Perhatian: Mengubah domain akan mengupdate semua username siswa yang sudah ada di sistem.</p>
                             </div>
                           </div>
+
+                          {/* ── ZONA WAKTU INDONESIA ── */}
+                          <div className="pt-4 border-t border-gray-100">
+                            <h3 className="text-md font-bold text-gray-800 mb-1 flex items-center gap-2">
+                              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                              Zona Waktu Sekolah
+                            </h3>
+                            <p className="text-xs text-gray-500 mb-3">Pilih zona waktu sesuai lokasi sekolah. Mempengaruhi tampilan jam pada jadwal ujian dan laporan.</p>
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                              {[
+                                { tz: 'Asia/Jakarta',   label: 'WIB',  sublabel: 'Waktu Indonesia Barat',   offset: 'UTC +7', provinces: 'Jawa, Sumatra, Kalimantan Barat & Tengah', color: 'blue'   },
+                                { tz: 'Asia/Makassar',  label: 'WITA', sublabel: 'Waktu Indonesia Tengah',  offset: 'UTC +8', provinces: 'Bali, NTB, NTT, Kalimantan Selatan & Timur, Sulawesi', color: 'emerald' },
+                                { tz: 'Asia/Jayapura',  label: 'WIT',  sublabel: 'Waktu Indonesia Timur',   offset: 'UTC +9', provinces: 'Papua, Maluku', color: 'amber'  },
+                              ].map(({ tz, label, sublabel, offset, provinces, color }) => {
+                                const active = (formData.timezone || 'Asia/Jakarta') === tz;
+                                const colors: Record<string, string> = {
+                                  blue:    active ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-300'    : 'border-gray-200 hover:border-blue-300 hover:bg-blue-50/30',
+                                  emerald: active ? 'border-emerald-500 bg-emerald-50 ring-2 ring-emerald-300' : 'border-gray-200 hover:border-emerald-300 hover:bg-emerald-50/30',
+                                  amber:   active ? 'border-amber-500 bg-amber-50 ring-2 ring-amber-300'  : 'border-gray-200 hover:border-amber-300 hover:bg-amber-50/30',
+                                };
+                                const badgeColors: Record<string, string> = {
+                                  blue: 'bg-blue-600', emerald: 'bg-emerald-600', amber: 'bg-amber-500',
+                                };
+                                return (
+                                  <button
+                                    key={tz}
+                                    type="button"
+                                    onClick={() => setFormData(prev => ({ ...prev, timezone: tz }))}
+                                    className={`relative p-4 rounded-xl border-2 text-left transition-all duration-200 cursor-pointer ${colors[color]}`}
+                                  >
+                                    {active && (
+                                      <span className="absolute top-2 right-2 bg-green-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">✓ AKTIF</span>
+                                    )}
+                                    <div className={`inline-block text-white text-xl font-black px-3 py-1 rounded-lg mb-2 ${badgeColors[color]}`}>{label}</div>
+                                    <div className="text-xs font-semibold text-gray-700">{sublabel}</div>
+                                    <div className="text-xs text-gray-500 font-mono mt-0.5">{offset}</div>
+                                    <div className="text-[10px] text-gray-400 mt-1 leading-tight">{provinces}</div>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
                         </div>
                       )}
                        {activeTab === 'keamanan' && (

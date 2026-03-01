@@ -147,6 +147,7 @@ export const getConfig = async (defaultConfig: AppConfig): Promise<AppConfig> =>
       academicYear:            data.academic_year        || '2025/2026',
       schoolDomain:            data.school_domain        || '',
       npsn:                    data.npsn                 || '',
+      timezone:                data.timezone             || 'Asia/Jakarta',
     };
   } catch (err) {
     console.warn('[getConfig] Gagal ambil config dari DB, pakai default.', err);
