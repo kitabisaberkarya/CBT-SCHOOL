@@ -17,8 +17,8 @@ import { version as currentVersion } from '../../package.json';
 
 const VENDOR_SUPABASE_URL = 'https://yiuamqcfgdgcwxtrihfd.supabase.co';
 const VENDOR_SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlpdWFtcWNmZ2RnY3d4dHJpaGZkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU4NTU5MDUsImV4cCI6MjA4MTQzMTkwNX0.tRUkfK3cx2Cpwqv14ZXYoUpwwpi_hDhl90EfARAA_IA';
-const APP_ID              = 'cbt_pro';
-const CHECK_TIMEOUT_MS    = 5000;
+const APP_ID              = 'cbtschool'; // Harus cocok dengan application_id di vendor app_versions
+const CHECK_TIMEOUT_MS    = 10000;       // Perpanjang timeout ke 10 detik
 
 export interface UpdateInfo {
   id:             string;
@@ -80,10 +80,27 @@ class UpdaterService {
       clearTimeout(timeoutId);
 
       if (response.data && response.data.length > 0) {
-        const latest = response.data[0] as UpdateInfo;
+        const raw = response.data[0];
+
+        // Normalisasi kolom vendor → UpdateInfo interface
+        // Vendor pakai: version_number (bisa "v.4.0.2"), changelog, application_id
+        const rawVersion: string = raw.version_number ?? raw.version ?? '0.0.0';
+        // Bersihkan prefix "v." / "v" → "4.0.2"
+        const cleanVersion = rawVersion.replace(/^v\.?/i, '').trim();
+
+        const latest: UpdateInfo = {
+          id:            raw.id,
+          version:       cleanVersion,
+          download_url:  raw.download_url,
+          release_notes: raw.changelog ?? raw.release_notes ?? '',
+          sql_migration: raw.sql_migration ?? '',
+          created_at:    raw.created_at ?? raw.release_date ?? '',
+        };
+
+        console.log(`[Updater] Vendor versi: ${latest.version} | Lokal: ${currentVersion}`);
 
         if (semver.gt(latest.version, currentVersion)) {
-          console.log(`[Updater] Versi baru ditemukan: ${latest.version}`);
+          console.log(`[Updater] Update tersedia: ${latest.version}`);
           return latest;
         } else {
           console.log(`[Updater] Aplikasi sudah versi terbaru (${currentVersion}).`);
