@@ -55,18 +55,31 @@ const formatStartDate = (isoString: string) => {
 const UbkMonitor: React.FC<UbkMonitorProps> = ({ users, tests }) => {
   // Tabs: 'exam' (Sesi Ujian) | 'login' (Status Device)
   const [activeTab, setActiveTab] = useState<'exam' | 'login'>('exam');
-  
+
   const [activeSessions, setActiveSessions] = useState<StudentSession[]>([]);
   const [lockedUsers, setLockedUsers] = useState<LockedUser[]>([]);
-  
+
   const [modalState, setModalState] = useState<{ type: 'reset' | 'finish' | 'resume' | 'unlock_device'; session: StudentSession | null; user?: LockedUser | null }>({ type: 'reset', session: null, user: null });
-  
+
   // Loading States
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  
-  const [schedules, setSchedules] = useState<any[]>([]);
+
   const refreshIntervalRef = useRef<number | null>(null);
+
+  // ── Refs: agar useEffect tidak re-run saat props berubah dari parent ──────
+  // users & testMapById bisa berubah kapan saja di AdminDashboard (fetch background)
+  // tanpa ref → useEffect re-run → refreshAll(false) → isInitialLoading=true lagi → loading loop
+  const usersRef    = useRef(users);
+  const testMapRef  = useRef<Map<string, Test>>(new Map());
+
+  // Sync refs setiap render (TANPA trigger useEffect)
+  usersRef.current = users;
+  testMapRef.current = useMemo(() => {
+      const map = new Map<string, Test>();
+      tests.forEach(t => map.set(t.details.id, t));
+      return map;
+  }, [tests]);
 
   // Filter state
   const [searchTerm, setSearchTerm] = useState('');
@@ -82,88 +95,80 @@ const UbkMonitor: React.FC<UbkMonitorProps> = ({ users, tests }) => {
   const [currentPage, setCurrentPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(12);
 
-  const testMapById = useMemo(() => {
-      const map = new Map<string, Test>();
-      tests.forEach(t => map.set(t.details.id, t));
-      return map;
-  }, [tests]);
-
   const classList = useMemo(() => ['all', ...Array.from(new Set(users.map(u => u.class))).sort()], [users]);
-
-  // Load Schedules First
-  useEffect(() => {
-      const fetchSchedules = async () => {
-          const { data, error } = await supabase.from('schedules').select('*');
-          if (data) {
-              setSchedules(data);
-          } else {
-              console.error("Failed to load schedules:", error);
-          }
-      };
-      fetchSchedules();
-  }, []);
 
   // --- DATA FETCHERS ---
 
   // 1. Fetch Exam Sessions
+  // Schedules di-fetch di DALAM fungsi ini (bukan state terpisah) agar tidak
+  // menjadi dependency useEffect yang menyebabkan infinite re-run.
   const fetchSessions = async (silent = false) => {
+    try {
         if (!silent) setIsInitialLoading(true);
         else setIsRefreshing(true);
 
+        // Fetch schedules segar (tidak dari state) untuk avoid race condition
+        const { data: schedulesData } = await supabase.from('schedules').select('id,test_id');
+        const latestSchedules: any[] = schedulesData || [];
+
         const { data, error } = await supabase.from('student_exam_sessions').select('*');
-        
+
         if (data) {
              const mapped = data.map(d => {
-                 const user = users.find(u => u.id === d.user_id);
-                 const schedule = schedules.find(s => s.id === d.schedule_id);
-                 const test = schedule ? testMapById.get(schedule.test_id) : null;
-                 
+                 const user = usersRef.current.find(u => u.id === d.user_id);
+                 const schedule = latestSchedules.find(s => s.id === d.schedule_id);
+                 const test = schedule ? testMapRef.current.get(schedule.test_id) : null;
+
                  if(!user || !test) return null;
-                 
-                 return { 
-                     id: d.id, 
-                     user, 
-                     test, 
-                     status: d.status, 
-                     progress: d.progress, 
-                     timeLeft: d.time_left_seconds, 
-                     violations: d.violations,
+
+                 return {
+                     id: d.id,
+                     user,
+                     test,
+                     status: d.status,
+                     progress: d.progress ?? 0,
+                     timeLeft: d.time_left_seconds ?? 0,
+                     violations: d.violations ?? 0,
                      startedAt: d.started_at
                  };
              }).filter(Boolean) as StudentSession[];
-             
+
              setActiveSessions(mapped);
         } else if (error) {
-            console.error("Error fetching sessions:", error);
+            console.error('[UbkMonitor] Error fetching sessions:', error);
         }
-        
+    } catch (err) {
+        console.error('[UbkMonitor] fetchSessions exception:', err);
+    } finally {
+        // WAJIB: selalu reset loading state meski ada exception
         if (!silent) setIsInitialLoading(false);
         else setIsRefreshing(false);
+    }
   };
 
-  // 2. Fetch Locked Users (NEW FEATURE)
+  // 2. Fetch Locked Users
   const fetchLockedUsers = async (silent = false) => {
-      if (!silent) setIsInitialLoading(true);
-      
-      // Ambil user yang active_device_id-nya tidak null
-      const { data, error } = await supabase
-        .from('users')
-        .select('*')
-        .not('active_device_id', 'is', null);
+    try {
+        // Ambil user yang active_device_id-nya tidak null
+        const { data } = await supabase
+          .from('users')
+          .select('id,full_name,nisn,class,active_device_id,updated_at')
+          .not('active_device_id', 'is', null);
 
-      if (data) {
-          const mapped: LockedUser[] = data.map((u: any) => ({
-              id: u.id,
-              fullName: u.full_name,
-              nisn: u.nisn,
-              class: u.class,
-              activeDeviceId: u.active_device_id,
-              lastLogin: u.updated_at
-          }));
-          setLockedUsers(mapped);
-      }
-      
-      if (!silent) setIsInitialLoading(false);
+        if (data) {
+            const mapped: LockedUser[] = data.map((u: any) => ({
+                id: u.id,
+                fullName: u.full_name,
+                nisn: u.nisn,
+                class: u.class,
+                activeDeviceId: u.active_device_id,
+                lastLogin: u.updated_at
+            }));
+            setLockedUsers(mapped);
+        }
+    } catch (err) {
+        console.error('[UbkMonitor] fetchLockedUsers exception:', err);
+    }
   };
 
   // Wrapper untuk refresh semua
@@ -173,19 +178,22 @@ const UbkMonitor: React.FC<UbkMonitorProps> = ({ users, tests }) => {
   };
 
   // --- REALTIME & INTERVAL SETUP ---
+  // Dependency array KOSONG ([]) — useEffect hanya berjalan SEKALI saat mount.
+  // Sebelumnya [users, testMapById, schedules] menyebabkan re-run setiap kali
+  // AdminDashboard memperbarui data (fetchTestsData, dll) → isInitialLoading=true loop.
+  // Data terbaru diakses via usersRef & testMapRef (selalu sync di atas).
   useEffect(() => {
     // Initial Load
     refreshAll(false);
 
-    // Interval Polling (Silent Refresh) - Solusi Kedap Kedip
-    // Kita set interval, tapi function fetchSessions TIDAK BOLEH set loading=true jika silent=true
+    // Interval Polling (Silent Refresh) - Refresh setiap 5 detik tanpa kedap-kedip
     refreshIntervalRef.current = window.setInterval(() => {
         refreshAll(true);
-    }, 5000); // Refresh setiap 5 detik
+    }, 5000);
 
-    // Realtime Subscription (Optional, tapi bagus untuk update instan)
+    // Realtime Subscription — update instan via WebSocket
     const channel = supabase
-        .channel('monitor_changes')
+        .channel('ubk_monitor_changes')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'student_exam_sessions' }, () => fetchSessions(true))
         .on('postgres_changes', { event: '*', schema: 'public', table: 'users' }, () => fetchLockedUsers(true))
         .subscribe();
@@ -194,7 +202,8 @@ const UbkMonitor: React.FC<UbkMonitorProps> = ({ users, tests }) => {
         supabase.removeChannel(channel);
         if (refreshIntervalRef.current) clearInterval(refreshIntervalRef.current);
     };
-  }, [users, testMapById, schedules]); 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // --- Filtering Logic ---
   const filteredSessions = useMemo(() => {
