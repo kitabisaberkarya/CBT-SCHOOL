@@ -42,15 +42,12 @@ const makeAvatarSvg = (bgColor: string, initial: string, iconType: 'person' | 'a
 };
 
 /**
- * Helper: bangun URL storage publik dari hostname browser saat ini.
- * Mendukung mode HTTP (langsung ke port 8000) dan HTTPS (via nginx proxy).
+ * Helper: bangun URL storage publik menggunakan relative path.
+ * Bekerja di HTTP maupun HTTPS karena nginx memproxy /storage/ → Supabase.
+ * Tidak hardcode IP/port — aman untuk semua deployment.
  */
 const getStorageUrl = (bucket: string, file: string): string => {
-  if (typeof window === 'undefined') return '';
-  const base = window.location.protocol === 'https:'
-    ? window.location.origin
-    : `http://${window.location.hostname}:8000`;
-  return `${base}/storage/v1/object/public/${bucket}/${file}`;
+  return `/storage/v1/object/public/${bucket}/${file}`;
 };
 
 /**
