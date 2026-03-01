@@ -3,7 +3,8 @@ Description=CBT School VHD — Generate Pre-login Banner
 Documentation=https://github.com/awmediadigitaldeveloper/cbt-school-enterprise
 DefaultDependencies=no
 Before=getty@tty1.service getty@tty2.service
-After=local-fs.target
+After=local-fs.target network.target
+Wants=network.target
 
 [Service]
 Type=oneshot

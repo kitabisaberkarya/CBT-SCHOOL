@@ -67,14 +67,35 @@ else
 fi
 
 # --- DETEKSI IP ADDRESS ---
-# Jangan pakai \4 agetty escape (bash printf mengubahnya jadi ^D/control char)
-# Langsung embed IP saat script dijalankan di boot
+# Method 1: hostname -I (cepat, perlu network sudah siap)
 IP_ADDR=$(hostname -I 2>/dev/null | tr ' ' '\n' | grep -v '^$' | grep -v '^127\.' | grep -v '^::' | head -1)
+
+# Method 2: ip addr show — baca langsung dari kernel, tersedia saat interface sudah naik
 if [ -z "$IP_ADDR" ]; then
-    IP_ADDR=$(ip route get 1.1.1.1 2>/dev/null | awk '{print $7; exit}')
+    IP_ADDR=$(ip addr show 2>/dev/null \
+        | awk '/inet / && !/127\.0\.0\.1/{gsub("/[0-9]+","",$2); print $2; exit}')
 fi
+
+# Method 3: cari lewat default route → interface → IP
 if [ -z "$IP_ADDR" ]; then
-    IP_ADDR="(deteksi IP gagal)"
+    DEF_IF=$(ip route 2>/dev/null | awk '/^default/{print $5; exit}')
+    if [ -n "$DEF_IF" ]; then
+        IP_ADDR=$(ip addr show dev "$DEF_IF" 2>/dev/null \
+            | awk '/inet / && !/127\.0\.0\.1/{gsub("/[0-9]+","",$2); print $2; exit}')
+    fi
+fi
+
+# Method 4: scan semua interface (eth0, ens*, enp*, wlan*)
+if [ -z "$IP_ADDR" ]; then
+    for iface in eth0 ens3 ens4 ens5 enp0s3 enp0s8 wlan0; do
+        IP_ADDR=$(ip addr show dev "$iface" 2>/dev/null \
+            | awk '/inet / && !/127\.0\.0\.1/{gsub("/[0-9]+","",$2); print $2; exit}')
+        [ -n "$IP_ADDR" ] && break
+    done
+fi
+
+if [ -z "$IP_ADDR" ]; then
+    IP_ADDR="(IP belum tersedia)"
 fi
 
 # ==============================================================================
