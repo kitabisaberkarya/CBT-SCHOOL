@@ -1,6 +1,55 @@
 # PANDUAN UPDATE CBT SCHOOL ENTERPRISE
-**Versi Panduan:** 2.0 | **Update Terakhir:** 2026-03-01
+**Versi Panduan:** 3.0 | **Update Terakhir:** 2026-03-01
 **Penulis:** Ari Wijaya (System Architect)
+
+---
+
+## FITUR BARU: AUTO-UPDATER PANEL ADMIN (v4.0.3+)
+
+Sejak versi **4.0.3**, sekolah dapat melakukan update aplikasi langsung dari browser
+tanpa perlu intervensi IT secara manual.
+
+### Cara Pakai (untuk Admin Sekolah)
+
+1. Login ke Panel Admin CBT
+2. Klik menu **Lisensi** di sidebar
+3. Lihat kartu **"Update Aplikasi"** — menampilkan versi saat ini
+4. Klik tombol **"Periksa Update"**
+5. Jika ada versi baru dari vendor → popup modern akan muncul
+6. Popup menampilkan:
+   - Versi saat ini → versi terbaru
+   - Catatan rilis (changelog)
+   - Tombol **"Mulai Update ke vX.X.X"**
+7. Klik **"Mulai Update"** → proses otomatis berjalan dengan progress bar 0-100%:
+   - Mengunduh file ZIP dari vendor
+   - Memverifikasi integritas file
+   - Membuat backup versi lama
+   - Mengekstrak paket update
+   - Menerapkan ke server
+   - Reload web server
+8. Klik **"Muat Ulang Halaman"** setelah selesai ✅
+
+> ⚠️ **Syarat:** VHD harus terhubung internet (NAT adapter aktif) saat periksa update.
+> Saat ujian berlangsung (offline), fitur ini tidak memblokir aplikasi.
+
+### Komponen Teknis (untuk Anda sebagai Developer)
+
+| Komponen | Lokasi | Keterangan |
+|---|---|---|
+| Updater Server | `updater-server/server.js` | Node.js HTTP port 7777 |
+| Systemd Service | `cbt-updater.service` | Auto-start + auto-restart |
+| React Modal | `frontend/src/components/UpdateModal.tsx` | UI dark-theme SSE streaming |
+| Admin Integration | `frontend/screens/AdminDashboard.tsx` | Menu Lisensi |
+| Nginx Proxy | `/api/updater/` → `127.0.0.1:7777` | Di nginx.conf |
+
+### Perintah Maintenance Updater Server
+
+```bash
+systemctl status cbt-updater     # Cek status
+systemctl restart cbt-updater    # Restart jika bermasalah
+journalctl -u cbt-updater -f     # Lihat log real-time
+curl http://127.0.0.1:7777/api/updater/status  # Test langsung
+```
 
 ---
 
