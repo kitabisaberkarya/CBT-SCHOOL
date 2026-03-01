@@ -19,8 +19,8 @@ const VENDOR_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSI
 const APP_ID     = 'cbtschool';
 
 // --- DEMO LICENSE KEY (lokal, tidak perlu internet/vendor) ---
-export const DEMO_LICENSE_KEY = 'CBTSCHOOL-DEMO-MHUB-BR1L';
-const DEMO_PROFILE = { school_name: 'Demo CBT School', npsn: '00000000', is_demo: true };
+export const DEMO_LICENSE_KEY = 'CBT-SCHOOL-DEMO';
+const DEMO_PROFILE = { school_name: 'SEKOLAH KITA BISA BERKARYA', npsn: '00000000', is_demo: true };
 
 // Timeout untuk request vendor (agar tidak hang terlalu lama)
 const VENDOR_TIMEOUT_MS = 8000;
