@@ -166,32 +166,43 @@ const App: React.FC = () => {
         sessionStorage.removeItem('cbt_student_session');
     }
 
-    // Listener Supabase Auth (Untuk Admin & Guru)
+    // Listener Auth (Untuk Admin & Guru)
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (isBatchProcessing) return;
 
       if (event === 'SIGNED_IN' && session?.user) {
+        // FAST PATH: Jika manual session sudah aktif (student/guru), skip event ini
+        // untuk menghindari double DB fetch yang memperlambat
+        try {
+            const studentSession = sessionStorage.getItem('cbt_student_session');
+            const teacherSession = sessionStorage.getItem('cbt_teacher_session');
+            if (studentSession || teacherSession) {
+                setIsAuthLoading(false);
+                return;
+            }
+        } catch (_) {}
+
         const user = session.user;
         const email = user.email || '';
-        
-        // --- DETEKSI ROLE (CRITICAL UPDATE - FIXED) ---
+
+        // --- DETEKSI ROLE ---
         let dbRole = 'student';
         let dbData = null;
 
         try {
-            // Ambil data detail dari public.users
-            const { data: profile } = await supabase.from('users').select('*').eq('id', user.id).single();
+            // Ambil data profil dari DB (hanya username + role + fields penting)
+            const { data: profile } = await supabase
+                .from('users')
+                .select('id, role, full_name, nisn, class, major, gender, religion, photo_url')
+                .eq('id', user.id)
+                .single();
             if (profile) {
-                // PRIORITAS 1: Role dari database public
                 dbRole = profile.role || 'student';
                 dbData = profile;
             } else {
-                // PRIORITAS 2: Role dari metadata auth (fallback jika public belum sync)
                 dbRole = user.user_metadata?.role || 'student';
             }
         } catch (e) {
-            console.error("Profile fetch error", e);
-            // Fallback ke metadata jika fetch DB gagal
             dbRole = user.user_metadata?.role || 'student';
         }
 
@@ -406,22 +417,12 @@ const App: React.FC = () => {
         const storedPass = dbUser.password_text || dbUser.qr_login_password || dbUser.nisn;
         if (password.trim() !== storedPass) return "Password salah.";
 
-        // 3. Login ke Supabase Auth (Opsional/Best Effort)
-        // Kita coba login agar RLS bekerja, tapi jika gagal (misal domain mismatch), 
-        // kita tetap izinkan masuk menggunakan Manual Session.
-        try {
-            const { error: authError } = await supabase.auth.signInWithPassword({
-                email: dbUser.username,
-                password: password.trim()
-            });
-
-            if (authError) {
-                console.warn("[AUTH] Supabase Auth failed, using Manual Session fallback:", authError.message);
-                // Jangan return error di sini agar siswa tidak terblokir
-            }
-        } catch (e) {
-            console.warn("[AUTH] Auth attempt error, falling back to manual session.");
-        }
+        // 3. Login ke Auth (Opsional/Best Effort — FIRE & FORGET agar tidak blocking)
+        // Manual session sudah cukup untuk operasi CBT. Auth diperlukan hanya untuk RLS upload gambar.
+        supabase.auth.signInWithPassword({
+            email: dbUser.username,
+            password: password.trim()
+        }).catch(() => { /* best-effort, manual session tetap aktif */ });
 
         // 4. CEK DEVICE LOCKING
         const currentDeviceId = getDeviceId();
@@ -468,12 +469,12 @@ const App: React.FC = () => {
       // FALLBACK FOR OFFLINE VHD / DISCONNECTED STATE (Admin)
       // Credentials dikonfigurasi via .env.local per VHD instance
       if (email === OFFLINE_ADMIN_EMAIL && password === OFFLINE_ADMIN_PASSWORD) {
-          // Coba login ke Supabase Auth agar password change & session-based features bekerja
-          try {
-              await supabase.auth.signInWithPassword({ email, password });
-          } catch (_) { /* best-effort, jika gagal tetap lanjut offline */ }
+          // Jalankan Auth + DB lookup PARALEL agar login cepat
+          const [authResult, dbResult] = await Promise.allSettled([
+              supabase.auth.signInWithPassword({ email, password }),
+              supabase.from('users').select('id, full_name, nisn, photo_url').eq('role', 'admin').maybeSingle()
+          ]);
 
-          // Load data admin dari DB untuk mendapatkan ID & nama asli
           let adminUser: User = {
             id: 'offline-admin-id',
             username: email,
@@ -481,22 +482,17 @@ const App: React.FC = () => {
             nisn: 'admin', class: 'Admin', major: 'System', religion: 'Islam', gender: 'Laki-laki', role: 'admin',
             photoUrl: DEFAULT_PROFILE_IMAGES.ADMIN
           };
-          try {
-              const { data: dbAdmin } = await supabase
-                  .from('users')
-                  .select('id, full_name, nisn, photo_url')
-                  .eq('role', 'admin')
-                  .maybeSingle();
-              if (dbAdmin) {
-                  adminUser = {
-                      ...adminUser,
-                      id: dbAdmin.id,
-                      fullName: dbAdmin.full_name || 'Administrator',
-                      nisn: dbAdmin.nisn || 'admin',
-                      photoUrl: dbAdmin.photo_url || DEFAULT_PROFILE_IMAGES.ADMIN,
-                  };
-              }
-          } catch (_) { /* pakai data default jika DB tidak dapat diakses */ }
+
+          if (dbResult.status === 'fulfilled' && dbResult.value.data) {
+              const dbAdmin = dbResult.value.data;
+              adminUser = {
+                  ...adminUser,
+                  id: dbAdmin.id,
+                  fullName: dbAdmin.full_name || 'Administrator',
+                  nisn: dbAdmin.nisn || 'admin',
+                  photoUrl: dbAdmin.photo_url || DEFAULT_PROFILE_IMAGES.ADMIN,
+              };
+          }
 
           setCurrentUser(adminUser);
           setAppState(AppState.ADMIN_DASHBOARD);
