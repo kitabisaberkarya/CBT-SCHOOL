@@ -466,13 +466,36 @@ const App: React.FC = () => {
       // FALLBACK FOR OFFLINE VHD / DISCONNECTED STATE (Admin)
       // Credentials dikonfigurasi via .env.local per VHD instance
       if (email === OFFLINE_ADMIN_EMAIL && password === OFFLINE_ADMIN_PASSWORD) {
-          const adminUser: User = {
+          // Coba login ke Supabase Auth agar password change & session-based features bekerja
+          try {
+              await supabase.auth.signInWithPassword({ email, password });
+          } catch (_) { /* best-effort, jika gagal tetap lanjut offline */ }
+
+          // Load data admin dari DB untuk mendapatkan ID & nama asli
+          let adminUser: User = {
             id: 'offline-admin-id',
             username: email,
-            fullName: 'Administrator (Offline)',
-            nisn: 'N/A', class: 'Admin', major: 'System', religion: 'Islam', gender: 'Laki-laki', role: 'admin',
+            fullName: 'Administrator',
+            nisn: 'admin', class: 'Admin', major: 'System', religion: 'Islam', gender: 'Laki-laki', role: 'admin',
             photoUrl: DEFAULT_PROFILE_IMAGES.ADMIN
           };
+          try {
+              const { data: dbAdmin } = await supabase
+                  .from('users')
+                  .select('id, full_name, nisn, photo_url')
+                  .eq('role', 'admin')
+                  .maybeSingle();
+              if (dbAdmin) {
+                  adminUser = {
+                      ...adminUser,
+                      id: dbAdmin.id,
+                      fullName: dbAdmin.full_name || 'Administrator',
+                      nisn: dbAdmin.nisn || 'admin',
+                      photoUrl: dbAdmin.photo_url || DEFAULT_PROFILE_IMAGES.ADMIN,
+                  };
+              }
+          } catch (_) { /* pakai data default jika DB tidak dapat diakses */ }
+
           setCurrentUser(adminUser);
           setAppState(AppState.ADMIN_DASHBOARD);
           setIsAuthLoading(false);

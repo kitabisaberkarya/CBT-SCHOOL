@@ -38,49 +38,59 @@ const UserManagement: React.FC<UserManagementProps> = () => {
   // --- FETCH DATA ---
   const fetchData = async () => {
       setIsLoading(true);
-      const [usersRes, classesRes, majorsRes, configRes] = await Promise.all([
-          supabase.from('users').select('*'),
-          supabase.from('master_classes').select('*'),
-          supabase.from('master_majors').select('*'),
-          supabase.from('app_config').select('*').single()
-      ]);
+      try {
+          const [usersRes, classesRes, majorsRes, configRes] = await Promise.all([
+              supabase.from('users').select('*'),
+              supabase.from('master_classes').select('*'),
+              supabase.from('master_majors').select('*'),
+              supabase.from('app_config').select('*').single()
+          ]);
 
-      if (usersRes.data) {
-          const mappedUsers = usersRes.data.map((u: any) => {
-              // Validasi URL: harus diawali http/https/data: — nilai lain (angka, string acak) dianggap kosong
-              const isValidUrl = (url: string) => url && (url.startsWith('http') || url.startsWith('data:'));
-              let photoUrl = isValidUrl(u.photo_url) ? u.photo_url : null;
-              if (!photoUrl) {
-                  const g = u.gender;
-                  const role = u.role || 'student';
-                  if (role === 'teacher' || role === 'admin') {
-                      photoUrl = role === 'admin' ? DEFAULT_PROFILE_IMAGES.ADMIN : DEFAULT_PROFILE_IMAGES.TEACHER;
-                  } else if (g === 'Laki-laki' || g === 'L') {
-                      photoUrl = DEFAULT_PROFILE_IMAGES.STUDENT_MALE;
-                  } else if (g === 'Perempuan' || g === 'P') {
-                      photoUrl = DEFAULT_PROFILE_IMAGES.STUDENT_FEMALE;
-                  } else {
-                      photoUrl = DEFAULT_PROFILE_IMAGES.STUDENT_NEUTRAL;
+          if (usersRes.data) {
+              const mappedUsers = usersRes.data.map((u: any) => {
+                  // Validasi URL: harus diawali http/https/data: — nilai lain (angka, string acak) dianggap kosong
+                  const isValidUrl = (url: string) => url && (url.startsWith('http') || url.startsWith('data:'));
+                  let photoUrl = isValidUrl(u.photo_url) ? u.photo_url : null;
+                  if (!photoUrl) {
+                      const g = u.gender;
+                      const role = u.role || 'student';
+                      if (role === 'teacher' || role === 'admin') {
+                          photoUrl = role === 'admin' ? DEFAULT_PROFILE_IMAGES.ADMIN : DEFAULT_PROFILE_IMAGES.TEACHER;
+                      } else if (g === 'Laki-laki' || g === 'L') {
+                          photoUrl = DEFAULT_PROFILE_IMAGES.STUDENT_MALE;
+                      } else if (g === 'Perempuan' || g === 'P') {
+                          photoUrl = DEFAULT_PROFILE_IMAGES.STUDENT_FEMALE;
+                      } else {
+                          photoUrl = DEFAULT_PROFILE_IMAGES.STUDENT_NEUTRAL;
+                      }
                   }
-              }
 
-              return {
-                  ...u,
-                  // Map DB columns (snake_case) to App types (camelCase)
-                  fullName: u.full_name,
-                  // Pastikan role ada, default student
-                  role: u.role || 'student',
-                  photoUrl: photoUrl
-              };
-          });
-          setUsers(mappedUsers);
+                  return {
+                      ...u,
+                      // Map DB columns (snake_case) to App types (camelCase)
+                      fullName: u.full_name,
+                      // Pastikan role ada, default student
+                      role: u.role || 'student',
+                      photoUrl: photoUrl
+                  };
+              });
+              setUsers(mappedUsers);
+              // Jika tidak ada siswa sama sekali, otomatis tampilkan tab ADMIN agar admin default terlihat
+              const hasStudents = mappedUsers.some(u => u.role === 'student' || !u.role);
+              if (!hasStudents) {
+                  const hasAdmins = mappedUsers.some(u => u.role === 'admin');
+                  if (hasAdmins) setActiveTab('admin');
+              }
+          }
+
+          if (classesRes.data) setMasterData(prev => ({ ...prev, classes: classesRes.data }));
+          if (majorsRes.data) setMasterData(prev => ({ ...prev, majors: majorsRes.data }));
+          if (configRes.data) setConfig(prev => ({ ...prev, ...configRes.data, emailDomain: configRes.data.email_domain || '@sekolah.sch.id' }));
+      } catch (err) {
+          console.error('[UserManagement] fetchData error:', err);
+      } finally {
+          setIsLoading(false);
       }
-      
-      if (classesRes.data) setMasterData(prev => ({ ...prev, classes: classesRes.data }));
-      if (majorsRes.data) setMasterData(prev => ({ ...prev, majors: majorsRes.data }));
-      if (configRes.data) setConfig(prev => ({ ...prev, ...configRes.data, emailDomain: configRes.data.email_domain || '@sekolah.sch.id' }));
-      
-      setIsLoading(false);
   };
 
   useEffect(() => {
