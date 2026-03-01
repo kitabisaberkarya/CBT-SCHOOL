@@ -1106,7 +1106,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
             </div>
              <div className="flex items-center space-x-2 sm:space-x-4">
               <div className="relative">
-                <button onClick={() => setProfileOpen(!isProfileOpen)} className="w-10 h-10 rounded-full bg-slate-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"><img src={user.photoUrl} alt="Admin" className="w-full h-full rounded-full object-cover"/></button>
+                <button onClick={() => setProfileOpen(!isProfileOpen)} className="w-10 h-10 rounded-full bg-slate-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"><img src={user.photoUrl} alt="Admin" className="w-full h-full rounded-full object-cover" onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = DEFAULT_PROFILE_IMAGES.ADMIN; }}/></button>
                 {isProfileOpen && (
                     <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-xl py-1 z-20 animate-fade-in">
                         <a href="#" onClick={(e) => { e.preventDefault(); handleNavigate(AdminView.CETAK_ADMIN_CARD); setProfileOpen(false); }} className="block px-4 py-2 text-sm text-gray-700 hover:bg-slate-100">Cetak Kartu Admin</a>

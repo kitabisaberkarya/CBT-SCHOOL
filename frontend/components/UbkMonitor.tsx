@@ -3,6 +3,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Test, User } from '../types';
 import ConfirmationModal from './ConfirmationModal';
 import { supabase } from '../supabaseClient';
+import { DEFAULT_PROFILE_IMAGES } from '../constants';
 
 type Status = 'Mengerjakan' | 'Selesai' | 'Diskualifikasi';
 
@@ -690,7 +691,7 @@ const SessionCard: React.FC<{session: StudentSession; onForceFinish: () => void;
 
     return (
         <div className={`bg-white rounded-xl shadow-lg border-t-4 ${borderColor} flex flex-col transform transition-all hover:scale-105 duration-300`}>
-            <div className="p-4 flex items-center space-x-3 border-b"><img src={user.photoUrl} alt={user.fullName} className="w-12 h-12 rounded-full object-cover border border-gray-200"/><div className="overflow-hidden"><p className="font-bold text-gray-800 truncate text-sm" title={user.fullName}>{user.fullName}</p><p className="text-xs text-gray-500 truncate" title={test.details.subject}>{test.details.subject}</p></div></div>
+            <div className="p-4 flex items-center space-x-3 border-b"><img src={user.photoUrl} alt={user.fullName} className="w-12 h-12 rounded-full object-cover border border-gray-200" onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = DEFAULT_PROFILE_IMAGES.STUDENT_NEUTRAL; }}/><div className="overflow-hidden"><p className="font-bold text-gray-800 truncate text-sm" title={user.fullName}>{user.fullName}</p><p className="text-xs text-gray-500 truncate" title={test.details.subject}>{test.details.subject}</p></div></div>
             <div className="p-4 flex-grow space-y-4">
                  <div className="flex justify-between items-center text-sm"><span className="font-semibold text-gray-600">Status</span>{statusBadge}</div>
                 <div><div className="flex justify-between items-center text-sm mb-1"><span className="font-semibold text-gray-600">Progres</span><span className="font-mono text-xs">{progress}/{totalQuestions} Soal</span></div><div className="w-full bg-gray-200 rounded-full h-2"><div className="bg-blue-600 h-2 rounded-full transition-all duration-500" style={{ width: `${progressPercentage}%` }}></div></div></div>

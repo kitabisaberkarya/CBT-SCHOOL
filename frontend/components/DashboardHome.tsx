@@ -1,6 +1,7 @@
 
 import React, { useMemo, useState } from 'react';
 import { User, Test, AdminView, AppConfig } from '../types';
+import { DEFAULT_PROFILE_IMAGES } from '../constants';
 import BarChart from './BarChart';
 import PerformanceDonutChart from './PerformanceDonutChart';
 import OverallCompletionChart from './OverallCompletionChart';
@@ -215,7 +216,7 @@ const DashboardHome: React.FC<DashboardHomeProps> = ({ adminUser, config, studen
         <div className="space-y-8 animate-fade-in">
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <div className="lg:col-span-2 bg-white rounded-2xl shadow-lg p-6 flex items-center space-x-6">
-                    <img src={adminUser.photoUrl} alt="Admin" className="w-20 h-20 rounded-full object-cover border-4 border-slate-200" />
+                    <img src={adminUser.photoUrl} alt="Admin" className="w-20 h-20 rounded-full object-cover border-4 border-slate-200" onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = DEFAULT_PROFILE_IMAGES.ADMIN; }} />
                     <div>
                         <h2 className="text-2xl font-bold text-gray-800">Selamat Datang, {adminUser.fullName}!</h2>
                         <p className="text-gray-500 mt-1">Ini adalah ringkasan aktivitas sekolah Anda hari ini.</p>

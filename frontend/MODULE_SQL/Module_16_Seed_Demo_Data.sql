@@ -104,7 +104,8 @@ IF (SELECT COUNT(*) FROM public.users WHERE role = 'student') = 0 THEN
         major            = 'TKJ',
         gender           = 'Laki-laki',
         religion         = 'Islam',
-        role             = 'student'
+        role             = 'student',
+        photo_url        = NULL
     WHERE id = v_student1_id;
 
     UPDATE public.users SET
@@ -118,7 +119,8 @@ IF (SELECT COUNT(*) FROM public.users WHERE role = 'student') = 0 THEN
         major            = 'TKJ',
         gender           = 'Perempuan',
         religion         = 'Islam',
-        role             = 'student'
+        role             = 'student',
+        photo_url        = NULL
     WHERE id = v_student2_id;
 
     UPDATE public.users SET
@@ -132,7 +134,8 @@ IF (SELECT COUNT(*) FROM public.users WHERE role = 'student') = 0 THEN
         major            = 'RPL',
         gender           = 'Laki-laki',
         religion         = 'Islam',
-        role             = 'student'
+        role             = 'student',
+        photo_url        = NULL
     WHERE id = v_student3_id;
 
     RAISE NOTICE '[SEED] 3 demo siswa berhasil ditambahkan.';
@@ -172,7 +175,8 @@ IF (SELECT COUNT(*) FROM public.users WHERE role = 'teacher') = 0 THEN
         major             = 'Guru Mapel',
         gender            = 'Laki-laki',
         religion          = 'Islam',
-        role              = 'teacher'
+        role              = 'teacher',
+        photo_url         = NULL
     WHERE id = v_teacher1_id;
 
     RAISE NOTICE '[SEED] 1 demo guru berhasil ditambahkan.';

@@ -3,6 +3,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Test, User } from '../types';
 import ConfirmationModal from '../components/ConfirmationModal';
 import { supabase } from '../supabaseClient';
+import { DEFAULT_PROFILE_IMAGES } from '../constants';
 
 type Status = 'Mengerjakan' | 'Selesai' | 'Diskualifikasi';
 
@@ -258,7 +259,7 @@ const SessionCard: React.FC<{session: StudentSession; onForceFinish: () => void;
             `}</style>
 
             <div className="p-4 flex items-center space-x-3 border-b relative z-10">
-                <img src={user.photoUrl} alt={user.fullName} className="w-12 h-12 rounded-full object-cover border-2 border-white shadow-sm"/>
+                <img src={user.photoUrl} alt={user.fullName} className="w-12 h-12 rounded-full object-cover border-2 border-white shadow-sm" onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = DEFAULT_PROFILE_IMAGES.STUDENT_NEUTRAL; }}/>
                 <div className="overflow-hidden">
                     <p className="font-bold text-gray-800 truncate text-sm" title={user.fullName}>{user.fullName}</p>
                     <p className="text-xs text-gray-500 truncate" title={test.details.subject}>{test.details.subject}</p>

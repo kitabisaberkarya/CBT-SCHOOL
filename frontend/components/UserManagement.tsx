@@ -464,7 +464,7 @@ const UserManagement: React.FC<UserManagementProps> = () => {
                                 <tr key={user.id} className="hover:bg-gray-50 transition">
                                     <td className="px-6 py-4 whitespace-nowrap">
                                         <div className="flex items-center">
-                                            <img className="h-10 w-10 rounded-full object-cover border border-gray-200" src={user.photoUrl} alt="" />
+                                            <img className="h-10 w-10 rounded-full object-cover border border-gray-200" src={user.photoUrl} alt="" onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = user.role === 'admin' ? DEFAULT_PROFILE_IMAGES.ADMIN : user.role === 'teacher' ? DEFAULT_PROFILE_IMAGES.TEACHER : user.gender === 'Perempuan' ? DEFAULT_PROFILE_IMAGES.STUDENT_FEMALE : DEFAULT_PROFILE_IMAGES.STUDENT_MALE; }} />
                                             <div className="ml-4">
                                                 <div className="text-sm font-bold text-gray-900">{user.fullName}</div>
                                                 <div className="text-xs text-gray-500">{user.gender}</div>
