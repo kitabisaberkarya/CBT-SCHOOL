@@ -29,7 +29,7 @@ const OFFLINE_STUDENT_PASSWORD = import.meta.env.VITE_OFFLINE_STUDENT_PASSWORD |
 
 const DEFAULT_CONFIG: AppConfig = {
   schoolName: 'SEKOLAH KITA BISA BERKARYA',
-  logoUrl: typeof window !== 'undefined' ? `${window.location.protocol === 'https:' ? window.location.origin : `http://${window.location.hostname}:8000`}/storage/v1/object/public/avatars/kemendikbud.png` : '',
+  logoUrl: '/storage/v1/object/public/avatars/kemendikbud.png',
   primaryColor: '#2563eb', 
   enableAntiCheat: true,
   antiCheatViolationLimit: 3,
