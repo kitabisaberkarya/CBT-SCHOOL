@@ -19,9 +19,11 @@ export default {
       },
       // Animasi custom (sudah ada di index.html, ini backup via Tailwind)
       animation: {
-        'fade-in':       'fade-in 0.2s ease-out forwards',
-        'scale-up':      'scale-up 0.2s ease-out forwards',
+        'fade-in':        'fade-in 0.2s ease-out forwards',
+        'scale-up':       'scale-up 0.2s ease-out forwards',
         'slide-in-right': 'slide-in-right 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94) both',
+        'modalIn':        'modalIn 0.3s ease-out',
+        'shimmer':        'shimmer 1.5s infinite',
       },
       keyframes: {
         'fade-in': {
@@ -35,6 +37,14 @@ export default {
         'slide-in-right': {
           'from': { transform: 'translateX(100%)', opacity: '0' },
           'to':   { transform: 'translateX(0)',    opacity: '1' },
+        },
+        'modalIn': {
+          'from': { transform: 'scale(0.92) translateY(8px)', opacity: '0' },
+          'to':   { transform: 'scale(1) translateY(0)',      opacity: '1' },
+        },
+        'shimmer': {
+          'from': { transform: 'translateX(-100%)' },
+          'to':   { transform: 'translateX(100%)'  },
         },
       },
     },

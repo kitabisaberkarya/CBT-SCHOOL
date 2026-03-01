@@ -23,7 +23,11 @@ import PrintDocuments from '../components/PrintDocuments'; // Import New Compone
 import { DEFAULT_PROFILE_IMAGES } from '../constants';
 import { useCbtschoolLicense } from '../src/hooks/useCbtschoolLicense';
 import LicenseActivation from '../components/LicenseActivation';
-import { Lock, ShieldCheck, AlertTriangle } from 'lucide-react';
+import UpdateModal from '../src/components/UpdateModal';
+import UpdaterService, { UpdateInfo as AppUpdateInfo } from '../src/services/UpdaterService';
+import { Lock, ShieldCheck, AlertTriangle, RefreshCw, ArrowUpCircle } from 'lucide-react';
+// @ts-ignore — vite resolves JSON imports
+import { version as APP_VERSION } from '../package.json';
 
 interface AdminDashboardProps {
   user: User;
@@ -82,6 +86,25 @@ const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
   const [restoreProgress, setRestoreProgress] = useState<{ percent: number, message: string } | null>(null);
 
   const [isConfirmResetOpen, setIsConfirmResetOpen] = useState(false); // New State for Confirmation Modal
+
+  // ── Update Modal State ──────────────────────────────────────────────────────
+  const [isUpdateModalOpen,  setIsUpdateModalOpen]  = useState(false);
+  const [updateInfo,         setUpdateInfo]          = useState<AppUpdateInfo | null>(null);
+  const [isCheckingUpdate,   setIsCheckingUpdate]    = useState(false);
+
+  const handleCheckUpdate = async () => {
+    setIsCheckingUpdate(true);
+    setUpdateInfo(null);
+    try {
+      const info = await UpdaterService.checkUpdate();
+      setUpdateInfo(info);
+      if (!info) showToast('Aplikasi sudah versi terbaru!', 'success');
+    } catch {
+      showToast('Gagal memeriksa update. Periksa koneksi internet.', 'error');
+    } finally {
+      setIsCheckingUpdate(false);
+    }
+  };
 
   const handleResetLicenseClick = () => {
       setIsConfirmResetOpen(true);
@@ -894,6 +917,33 @@ const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
                         </div>
                     )}
 
+                    {/* ── UPDATE APLIKASI ─────────────────────────────── */}
+                    <div className="mb-6 rounded-xl border border-blue-200 bg-gradient-to-br from-blue-50 to-indigo-50 p-5">
+                        <div className="flex items-center justify-between mb-3">
+                            <div>
+                                <h3 className="font-bold text-blue-800 flex items-center gap-2">
+                                    <ArrowUpCircle className="w-5 h-5" />
+                                    Update Aplikasi
+                                </h3>
+                                <p className="text-sm text-blue-600 mt-0.5">
+                                    Versi saat ini:{' '}
+                                    <span className="font-mono font-bold">v{APP_VERSION}</span>
+                                </p>
+                            </div>
+                            <button
+                                onClick={() => { setIsUpdateModalOpen(true); handleCheckUpdate(); }}
+                                className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm rounded-lg shadow-md hover:shadow-lg transition-all"
+                            >
+                                <RefreshCw className="w-4 h-4" />
+                                Periksa Update
+                            </button>
+                        </div>
+                        <p className="text-xs text-blue-500 leading-relaxed">
+                            Klik "Periksa Update" untuk memeriksa dan menginstal versi terbaru dari server vendor secara otomatis.
+                            Pastikan VHD terhubung ke internet (NAT adapter aktif) sebelum memperbarui.
+                        </p>
+                    </div>
+
                     <div className="border-t border-gray-200 pt-6">
                         <h3 className="text-lg font-semibold text-gray-800 mb-4">Pengaturan Lisensi</h3>
                         <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-200">
@@ -1031,6 +1081,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
               </button>
           </div>
       </aside>
+
+      {/* ── UPDATE MODAL ─────────────────────────────────────────────────── */}
+      <UpdateModal
+        isOpen={isUpdateModalOpen}
+        onClose={() => setIsUpdateModalOpen(false)}
+        currentVersion={APP_VERSION}
+        updateInfo={updateInfo}
+        onCheckUpdate={handleCheckUpdate}
+        isChecking={isCheckingUpdate}
+      />
 
       <div className="flex-grow flex flex-col w-full min-w-0">
           <header className="h-20 bg-white flex items-center justify-between px-4 sm:px-8 border-b border-slate-200 flex-shrink-0 relative">
