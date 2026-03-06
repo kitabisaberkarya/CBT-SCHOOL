@@ -202,10 +202,8 @@ const UserSyncModal: React.FC<UserSyncModalProps> = ({ existingUsers, onClose, o
         .map(r => (r.class as string).trim())
     )];
     if (classNames.length === 0) return;
-    // UNIQUE constraint pada name → ignoreDuplicates aman digunakan
-    await supabase
-      .from('master_classes')
-      .upsert(classNames.map(name => ({ name })), { onConflict: 'name', ignoreDuplicates: true });
+    // Panggil SECURITY DEFINER RPC agar bypass RLS & conflict-safe
+    await supabase.rpc('auto_upsert_classes', { class_names: classNames });
   };
 
   const handleConfirm = async () => {
