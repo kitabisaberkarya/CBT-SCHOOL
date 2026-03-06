@@ -44,20 +44,22 @@ function cell(
 
 type TRow = { opsi: string; jawaban: string; kunci: string };
 
+// Tidak menggunakan rowSpan agar mammoth tidak menduplikasi isi sel saat parsing.
+// NO dan JENIS diisi di setiap baris (memudahkan deteksi), SOAL hanya di baris pertama.
 function buildQRows(q: { no: number; soal: string; jenis: string; rows: TRow[] }): TableRow[] {
-  const n = q.rows.length || 1;
   return q.rows.map((r, i) => {
-    const cells: TableCell[] = [];
-    if (i === 0) {
-      cells.push(cell(String(q.no), COL.NO, { bold: true, center: true, rowSpan: n }));
-      cells.push(cell(q.soal, COL.SOAL, { rowSpan: n }));
-      cells.push(cell(q.jenis, COL.JENIS, { bold: true, center: true, rowSpan: n, fill: 'FFF8E1' }));
-    }
-    cells.push(cell(r.opsi, COL.OPSI, { center: true, bold: true }));
-    cells.push(cell(r.jawaban, COL.JAWABAN));
+    const isFirst = i === 0;
     const kunciColor = r.kunci === 'V' ? '2E7D32' : r.kunci === 'B' ? '1565C0' : r.kunci === 'S' ? 'C62828' : '000000';
-    cells.push(cell(r.kunci, COL.KUNCI, { center: true, bold: true, color: kunciColor }));
-    return new TableRow({ children: cells });
+    return new TableRow({
+      children: [
+        cell(String(q.no), COL.NO, { bold: true, center: true }),
+        cell(isFirst ? q.soal : '', COL.SOAL),
+        cell(q.jenis, COL.JENIS, { bold: true, center: true, fill: 'FFF8E1' }),
+        cell(r.opsi, COL.OPSI, { center: true, bold: true }),
+        cell(r.jawaban, COL.JAWABAN),
+        cell(r.kunci, COL.KUNCI, { center: true, bold: true, color: kunciColor }),
+      ],
+    });
   });
 }
 
@@ -255,14 +257,18 @@ const WordQuestionImportModal: React.FC<WordQuestionImportModalProps> = ({ testT
       return;
     }
 
-    // Group rows by question: col[0] = NO (non-empty number = new question)
+    // Group rows by question.
+    // Mammoth menduplikasi isi sel merged (vMerge) ke semua baris dalam grup.
+    // Deteksi soal baru hanya saat nilai NO BERUBAH, bukan setiap kali ada angka.
     const groups: number[][] = [];
     let cur: number[] | null = null;
+    let prevNo = '';
     for (let r = 1; r < textGrid.length; r++) {
       const noVal = textGrid[r][0].trim();
-      if (noVal !== '' && !isNaN(Number(noVal))) {
+      if (noVal !== '' && !isNaN(Number(noVal)) && noVal !== prevNo) {
         cur = [r];
         groups.push(cur);
+        prevNo = noVal;
       } else if (cur) {
         cur.push(r);
       }
