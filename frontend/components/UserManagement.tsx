@@ -12,9 +12,10 @@ interface UserManagementProps {
     users?: User[]; // Optional karena kita akan fetch sendiri atau terima dari parent
     masterData?: MasterData;
     isDemoMode?: boolean;
+    onRefresh?: () => Promise<void>; // Callback untuk refresh data di parent (AdminDashboard)
 }
 
-const UserManagement: React.FC<UserManagementProps> = ({ isDemoMode = false }) => {
+const UserManagement: React.FC<UserManagementProps> = ({ isDemoMode = false, onRefresh }) => {
   const [users, setUsers] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'student' | 'teacher' | 'admin'>('student');
@@ -157,10 +158,17 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDemoMode = false }) =
              handleRepairTeachers(true); // Silent repair
           }
 
-          // Auto-buat folder kelas di Data Master saat tambah/edit siswa
-          const cls = (userData.class || '').trim();
-          if (cls && cls.toUpperCase() !== 'STAFF' && (userData.role === 'student' || !userData.role)) {
-              await supabase.rpc('auto_upsert_classes', { class_names: [cls] });
+          // Auto-buat folder kelas & jurusan di Data Master saat tambah/edit siswa
+          const isStudent = userData.role === 'student' || !userData.role;
+          if (isStudent) {
+              const cls = (userData.class || '').trim();
+              if (cls && cls.toUpperCase() !== 'STAFF') {
+                  await supabase.rpc('auto_upsert_classes', { class_names: [cls] });
+              }
+              const maj = (userData.major || '').trim();
+              if (maj && maj.toUpperCase() !== 'STAFF') {
+                  await supabase.rpc('auto_upsert_majors', { major_names: [maj] });
+              }
           }
       }
   };
@@ -552,11 +560,11 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDemoMode = false }) =
         )}
 
         {isImportModalOpen && (
-            <UserSyncModal 
-                existingUsers={users} 
-                onSuccess={fetchData} 
-                onClose={() => setIsImportModalOpen(false)} 
-                config={config} 
+            <UserSyncModal
+                existingUsers={users}
+                onSuccess={async () => { await fetchData(); if (onRefresh) await onRefresh(); }}
+                onClose={() => setIsImportModalOpen(false)}
+                config={config}
                 activeTab={activeTab}
             />
         )}

@@ -190,20 +190,30 @@ const UserSyncModal: React.FC<UserSyncModalProps> = ({ existingUsers, onClose, o
   
   const errorRows = useMemo(() => validatedData.filter(row => row.status >= ImportStatus.INVALID_DUPLICATE_IN_FILE), [validatedData]);
 
-  // ── Auto-create kelas di Data Master dari data siswa yang diimport ─────────
-  const autoSyncClasses = async (rows: any[]) => {
+  // ── Auto-create kelas & jurusan di Data Master dari data siswa yang diimport ─
+  const autoSyncMasterData = async (rows: any[]) => {
+    const studentRows = rows.filter(r => {
+      const role = r.role || 'student';
+      return role === 'student';
+    });
+
     const classNames = [...new Set(
-      rows
-        .filter(r => {
-          const role = r.role || 'student';
-          const cls = (r.class || '').trim();
-          return role === 'student' && cls && cls.toUpperCase() !== 'STAFF';
-        })
-        .map(r => (r.class as string).trim())
+      studentRows
+        .map(r => (r.class || '').trim())
+        .filter(c => c && c.toUpperCase() !== 'STAFF')
     )];
-    if (classNames.length === 0) return;
-    // Panggil SECURITY DEFINER RPC agar bypass RLS & conflict-safe
-    await supabase.rpc('auto_upsert_classes', { class_names: classNames });
+    if (classNames.length > 0) {
+      await supabase.rpc('auto_upsert_classes', { class_names: classNames });
+    }
+
+    const majorNames = [...new Set(
+      studentRows
+        .map(r => (r.major || '').trim())
+        .filter(m => m && m.toUpperCase() !== 'STAFF')
+    )];
+    if (majorNames.length > 0) {
+      await supabase.rpc('auto_upsert_majors', { major_names: majorNames });
+    }
   };
 
   const handleConfirm = async () => {
@@ -222,8 +232,8 @@ const UserSyncModal: React.FC<UserSyncModalProps> = ({ existingUsers, onClose, o
             if (error) throw error;
             alert(`Berhasil mengimpor ${validRows.length} pengguna!`);
         }
-        // Auto-buat folder kelas di Data Master dari data yang baru diimport
-        await autoSyncClasses(validRows);
+        // Auto-buat folder kelas & jurusan di Data Master
+        await autoSyncMasterData(validRows);
         onSuccess();
         onClose();
     } catch (err: any) {

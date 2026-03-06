@@ -48,7 +48,11 @@ const DataMaster: React.FC<DataMasterProps> = ({ masterData, users, onAddItem, o
 
   const getStudentCount = (itemName: string) => {
     const key = activeTab === 'classes' ? 'class' : 'major';
-    return users.filter(u => u[key] === itemName).length;
+    const normalizedItem = itemName.trim();
+    return users.filter(u =>
+      u.role === 'student' &&
+      (u[key] || '').trim() === normalizedItem
+    ).length;
   };
 
   const handleCardClick = (item: MasterDataItem) => {
