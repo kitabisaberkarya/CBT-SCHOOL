@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { supabase } from '../supabaseClient';
 import { AppConfig, User, Test, MasterData, Announcement, Schedule } from '../types';
 import DestructiveConfirmationModal from './DestructiveConfirmationModal';
 
@@ -62,19 +63,47 @@ const BackupScreen: React.FC<BackupScreenProps> = (props) => {
     setModulesToDelete(prev => ({ ...prev, [name]: checked }));
   };
 
-  const performBackup = (isFull: boolean) => {
+  const [isBackupLoading, setIsBackupLoading] = useState(false);
+
+  const performBackup = async (isFull: boolean) => {
+    setIsBackupLoading(true);
     try {
       const backupData: any = {};
 
       if (isFull || selectedModules.config) backupData.config = props.config;
       if (isFull || selectedModules.users) backupData.users = props.users;
-      if (isFull || selectedModules.tests) {
-        backupData.tests = Array.from(props.tests.entries());
-      }
       if (isFull || selectedModules.masterData) backupData.masterData = props.masterData;
       if (isFull || selectedModules.announcements) backupData.announcements = props.announcements;
       if (isFull || selectedModules.schedules) backupData.schedules = props.schedules;
-      
+
+      if (isFull || selectedModules.tests) {
+        // Fetch questions langsung dari DB agar backup selalu lengkap
+        // (questions lazy-loaded di UI — bisa kosong jika belum dibuka)
+        const testsWithQuestions: Array<[string, Test]> = [];
+        for (const [token, test] of props.tests.entries()) {
+          let questions = test.questions;
+          if (questions.length === 0 && test.details.id) {
+            const { data } = await supabase
+              .from('questions')
+              .select('*')
+              .eq('test_id', test.details.id)
+              .order('id', { ascending: true });
+            questions = (data || []).map((q: any) => ({
+              ...q,
+              image: q.image_url,
+              optionImages: q.option_images,
+              correctAnswerIndex: q.correct_answer_index,
+              answerKey: q.answer_key,
+              metadata: q.metadata,
+              weight: q.weight,
+              matchingRightOptions: q.matching_right_options,
+            }));
+          }
+          testsWithQuestions.push([token, { ...test, questions }]);
+        }
+        backupData.tests = testsWithQuestions;
+      }
+
       const jsonString = JSON.stringify(backupData, null, 2);
       const blob = new Blob([jsonString], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
@@ -87,13 +116,15 @@ const BackupScreen: React.FC<BackupScreenProps> = (props) => {
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
-      
+
       const now = new Date();
       localStorage.setItem('cbt_last_backup', now.toISOString());
       setLastBackup(now.toLocaleString('id-ID', { dateStyle: 'long', timeStyle: 'short' }));
     } catch (error) {
       console.error("Backup failed:", error);
       alert("Terjadi kesalahan saat membuat file backup.");
+    } finally {
+      setIsBackupLoading(false);
     }
   };
 
@@ -175,8 +206,8 @@ const BackupScreen: React.FC<BackupScreenProps> = (props) => {
               <p className="text-gray-600 mb-6 flex-grow">
                 Buat cadangan lengkap dari semua data aplikasi. Opsi yang paling aman dan direkomendasikan.
               </p>
-              <button onClick={() => performBackup(true)} disabled={isProcessing} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg shadow-md transition-all flex items-center justify-center disabled:bg-blue-400">
-                {isProcessing ? 'Memproses...' : 'Mulai Backup Penuh'}
+              <button onClick={() => performBackup(true)} disabled={isProcessing || isBackupLoading} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-4 rounded-lg shadow-md transition-all flex items-center justify-center disabled:bg-blue-400">
+                {isBackupLoading ? 'Mengambil soal dari database...' : isProcessing ? 'Memproses...' : 'Mulai Backup Penuh'}
               </button>
             </div>
 

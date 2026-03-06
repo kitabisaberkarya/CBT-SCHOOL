@@ -20,73 +20,147 @@ const WordQuestionImportModal: React.FC<WordQuestionImportModalProps> = ({ testT
   // --- GENERATE TEMPLATE WORD ---
   const handleDownloadTemplate = async () => {
     try {
+        const line = (text: string) => new Paragraph({ children: [new TextRun({ text })] });
+        const bold = (text: string) => new Paragraph({ children: [new TextRun({ text, bold: true })] });
+        const sep = () => new Paragraph({ children: [new TextRun({ text: "=====", bold: true, color: "1565C0" })] });
+        const empty = () => new Paragraph({ text: "" });
+
         const doc = new Document({
           sections: [{
             properties: {},
             children: [
+              // ── JUDUL ──────────────────────────────────────────────────────
               new Paragraph({
-                text: "TEMPLATE BANK SOAL CBT (FORMAT WORD)",
+                text: "TEMPLATE BANK SOAL CBT SCHOOL",
                 heading: HeadingLevel.HEADING_1,
-                spacing: { after: 200 }
+                spacing: { after: 100 }
               }),
               new Paragraph({
-                children: [
-                    new TextRun({ text: "ATURAN PENGISIAN:", bold: true, break: 1 }),
-                    new TextRun({ text: "1. Jangan hapus tanda pemisah '=====' antar soal.", break: 1 }),
-                    new TextRun({ text: "2. Ikuti format TIPE, SOAL, OPSI, dan JAWABAN persis seperti contoh.", break: 1 }),
-                    new TextRun({ text: "3. File ini mendukung semua tipe soal (PG, PG Kompleks, Menjodohkan, Essay, Benar/Salah).", break: 1 }),
-                ],
-                spacing: { after: 400 }
+                children: [new TextRun({ text: "Format Import Soal | Semua Tipe Soal Didukung", italics: true, color: "555555" })],
+                spacing: { after: 300 }
               }),
-              
-              // CONTOH 1: PG BIASA
-              new Paragraph({ text: "=====", heading: HeadingLevel.HEADING_2 }),
-              new Paragraph({ text: "TIPE: SINGLE" }),
-              new Paragraph({ text: "SOAL: Siapakah penemu bola lampu?" }),
-              new Paragraph({ text: "OPSI_A: Thomas Alva Edison" }),
-              new Paragraph({ text: "OPSI_B: Nikola Tesla" }),
-              new Paragraph({ text: "OPSI_C: Alexander Graham Bell" }),
-              new Paragraph({ text: "OPSI_D: Isaac Newton" }),
-              new Paragraph({ text: "OPSI_E: Albert Einstein" }),
-              new Paragraph({ text: "JAWABAN: A" }),
-              new Paragraph({ text: "KESULITAN: Easy" }),
 
-              // CONTOH 2: PG KOMPLEKS
-              new Paragraph({ text: "=====", heading: HeadingLevel.HEADING_2 }),
-              new Paragraph({ text: "TIPE: MULTIPLE" }),
-              new Paragraph({ text: "SOAL: Pilih dua buah yang berwarna merah:" }),
-              new Paragraph({ text: "OPSI_A: Apel" }),
-              new Paragraph({ text: "OPSI_B: Pisang" }),
-              new Paragraph({ text: "OPSI_C: Stroberi" }),
-              new Paragraph({ text: "OPSI_D: Jeruk" }),
-              new Paragraph({ text: "JAWABAN: A, C" }),
-              new Paragraph({ text: "KESULITAN: Medium" }),
+              // ── PETUNJUK ───────────────────────────────────────────────────
+              bold("PETUNJUK PENGISIAN:"),
+              line("1. Setiap soal dipisahkan oleh baris berisi ===== (minimal 5 tanda =)."),
+              line("2. Setiap baris diawali KUNCI: lalu isi (contoh: SOAL: Jelaskan fotosintesis)."),
+              line("3. Urutan baris bebas, asal kunci-nya benar (TIPE, SOAL, OPSI_A, dst)."),
+              line("4. TIPE wajib diisi: SINGLE / MULTIPLE / MATCHING / TRUE_FALSE / ESSAY"),
+              line("5. Kolom opsional: KESULITAN (Easy/Medium/Hard), BOBOT (angka), TOPIK, LEVEL (L1/L2/L3)."),
+              line("6. Hapus baris contoh ini setelah selesai mengisi soal Anda."),
+              empty(),
+              bold("PANDUAN TIPE SOAL:"),
+              line("- SINGLE      : Pilihan ganda 1 jawaban benar. JAWABAN: A (huruf opsi)"),
+              line("- MULTIPLE    : Pilihan ganda kompleks, >1 benar. JAWABAN: A, C (dipisah koma)"),
+              line("- MATCHING    : Menjodohkan. KIRI_1..N = kiri, KANAN = kanan (koma), JAWABAN: 1-A, 2-B, 3-C"),
+              line("- TRUE_FALSE  : Benar/Salah. PERNYATAAN_1..N, JAWABAN: 1-B, 2-S (B=Benar, S=Salah)"),
+              line("- ESSAY       : Uraian. JAWABAN = kunci jawaban, BOBOT = bobot nilai"),
+              empty(),
 
-              // CONTOH 3: MENJODOHKAN
-              new Paragraph({ text: "=====", heading: HeadingLevel.HEADING_2 }),
-              new Paragraph({ text: "TIPE: MATCHING" }),
-              new Paragraph({ text: "SOAL: Pasangkan hewan dengan makanannya." }),
-              new Paragraph({ text: "KIRI_1: Kucing" }),
-              new Paragraph({ text: "KIRI_2: Kelinci" }),
-              new Paragraph({ text: "KIRI_3: Sapi" }),
-              new Paragraph({ text: "KANAN: Ikan, Wortel, Rumput" }),
-              new Paragraph({ text: "JAWABAN: 1-A, 2-B, 3-C" }),
-              new Paragraph({ text: "KESULITAN: Medium" }),
+              // ── SOAL 1: PILIHAN GANDA BIASA ───────────────────────────────
+              new Paragraph({
+                children: [new TextRun({ text: "[ CONTOH 1: Pilihan Ganda Biasa (SINGLE) ]", bold: true, color: "1565C0" })],
+              }),
+              sep(),
+              line("TIPE: SINGLE"),
+              line("SOAL: Siapakah ilmuwan yang menemukan Hukum Gravitasi Universal?"),
+              line("OPSI_A: Thomas Alva Edison"),
+              line("OPSI_B: Nikola Tesla"),
+              line("OPSI_C: Isaac Newton"),
+              line("OPSI_D: Albert Einstein"),
+              line("OPSI_E: Galileo Galilei"),
+              line("JAWABAN: C"),
+              line("KESULITAN: Easy"),
+              line("TOPIK: Fisika Dasar"),
+              line("LEVEL: L1"),
+              line("BOBOT: 1"),
+              empty(),
 
-              // CONTOH 4: BENAR SALAH
-              new Paragraph({ text: "=====", heading: HeadingLevel.HEADING_2 }),
-              new Paragraph({ text: "TIPE: TRUE_FALSE" }),
-              new Paragraph({ text: "SOAL: Tentukan kebenaran pernyataan berikut." }),
-              new Paragraph({ text: "PERNYATAAN_1: Air mendidih pada 100 derajat celcius." }),
-              new Paragraph({ text: "PERNYATAAN_2: Es adalah benda gas." }),
-              new Paragraph({ text: "JAWABAN: 1-B, 2-S" }),
-              
-              // CONTOH 5: ESSAY
-              new Paragraph({ text: "=====", heading: HeadingLevel.HEADING_2 }),
-              new Paragraph({ text: "TIPE: ESSAY" }),
-              new Paragraph({ text: "SOAL: Jelaskan secara singkat apa itu fotosintesis." }),
-              new Paragraph({ text: "JAWABAN: Proses pembuatan makanan pada tumbuhan" }),
-              new Paragraph({ text: "BOBOT: 5" }),
+              // ── SOAL 2: PG KOMPLEKS ───────────────────────────────────────
+              new Paragraph({
+                children: [new TextRun({ text: "[ CONTOH 2: Pilihan Ganda Kompleks (MULTIPLE) ]", bold: true, color: "1565C0" })],
+              }),
+              sep(),
+              line("TIPE: MULTIPLE"),
+              line("SOAL: Manakah yang termasuk contoh penerapan Revolusi Industri 4.0? (Pilih semua yang benar)"),
+              line("OPSI_A: Penggunaan Artificial Intelligence (AI) di industri"),
+              line("OPSI_B: Penggunaan mesin uap di pabrik abad ke-18"),
+              line("OPSI_C: Internet of Things (IoT) menghubungkan perangkat otomatis"),
+              line("OPSI_D: Big Data untuk analisis keputusan bisnis"),
+              line("OPSI_E: Pengelolaan sawah manual secara tradisional"),
+              line("JAWABAN: A, C, D"),
+              line("KESULITAN: Medium"),
+              line("TOPIK: Teknologi Informasi"),
+              line("LEVEL: L2"),
+              line("BOBOT: 2"),
+              empty(),
+
+              // ── SOAL 3: MENJODOHKAN ───────────────────────────────────────
+              new Paragraph({
+                children: [new TextRun({ text: "[ CONTOH 3: Menjodohkan (MATCHING) ]", bold: true, color: "1565C0" })],
+              }),
+              sep(),
+              line("TIPE: MATCHING"),
+              line("SOAL: Pasangkan nama ilmuwan dengan penemuannya!"),
+              line("KIRI_1: Isaac Newton"),
+              line("KIRI_2: Alexander Graham Bell"),
+              line("KIRI_3: Thomas Alva Edison"),
+              line("KIRI_4: Marie Curie"),
+              line("KANAN: Gravitasi, Telepon, Lampu pijar, Radioaktivitas"),
+              line("JAWABAN: 1-A, 2-B, 3-C, 4-D"),
+              line("KESULITAN: Medium"),
+              line("TOPIK: Sejarah Sains"),
+              line("LEVEL: L1"),
+              line("BOBOT: 2"),
+              empty(),
+
+              // ── SOAL 4: BENAR SALAH ───────────────────────────────────────
+              new Paragraph({
+                children: [new TextRun({ text: "[ CONTOH 4: Benar / Salah (TRUE_FALSE) ]", bold: true, color: "1565C0" })],
+              }),
+              sep(),
+              line("TIPE: TRUE_FALSE"),
+              line("SOAL: Tentukan apakah pernyataan berikut benar atau salah!"),
+              line("PERNYATAAN_1: Air mendidih pada suhu 100 derajat Celsius di tekanan normal."),
+              line("PERNYATAAN_2: Matahari mengelilingi Bumi setiap 24 jam."),
+              line("PERNYATAAN_3: Fotosintesis menghasilkan oksigen sebagai produk sampingan."),
+              line("PERNYATAAN_4: Bumi adalah planet terbesar di Tata Surya."),
+              line("JAWABAN: 1-B, 2-S, 3-B, 4-S"),
+              line("KESULITAN: Easy"),
+              line("TOPIK: IPA Dasar"),
+              line("LEVEL: L1"),
+              line("BOBOT: 1"),
+              empty(),
+
+              // ── SOAL 5: ESSAY ─────────────────────────────────────────────
+              new Paragraph({
+                children: [new TextRun({ text: "[ CONTOH 5: Uraian / Essay (ESSAY) ]", bold: true, color: "1565C0" })],
+              }),
+              sep(),
+              line("TIPE: ESSAY"),
+              line("SOAL: Jelaskan pengertian Revolusi Industri 4.0 dan sebutkan minimal 3 teknologi utama yang menjadi pilarnya!"),
+              line("JAWABAN: Revolusi Industri 4.0 adalah transformasi industri berbasis teknologi digital. Tiga pilar utamanya: AI, IoT, dan Big Data."),
+              line("KESULITAN: Hard"),
+              line("TOPIK: Teknologi Informasi"),
+              line("LEVEL: L3"),
+              line("BOBOT: 5"),
+              empty(),
+
+              // ── CATATAN AKHIR ─────────────────────────────────────────────
+              empty(),
+              new Paragraph({
+                children: [new TextRun({ text: "--- MULAI ISI SOAL ANDA DI BAWAH BARIS INI ---", bold: true, color: "C62828" })],
+              }),
+              sep(),
+              line("TIPE: SINGLE"),
+              line("SOAL: (Ketik soal Anda di sini)"),
+              line("OPSI_A: (Ketik opsi A)"),
+              line("OPSI_B: (Ketik opsi B)"),
+              line("OPSI_C: (Ketik opsi C)"),
+              line("OPSI_D: (Ketik opsi D)"),
+              line("JAWABAN: A"),
+              line("KESULITAN: Medium"),
+              line("BOBOT: 1"),
             ],
           }],
         });
@@ -95,10 +169,11 @@ const WordQuestionImportModal: React.FC<WordQuestionImportModalProps> = ({ testT
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.href = url;
-        link.download = 'TEMPLATE_SOAL_WORD.docx';
+        link.download = 'CONTOH TEMPLATE SOAL WORD.docx';
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
+        URL.revokeObjectURL(url);
     } catch (e) {
         console.error("Gagal generate template:", e);
         alert("Gagal membuat template Word.");
