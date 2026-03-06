@@ -7,6 +7,7 @@ import QuestionBank from '../components/QuestionBank';
 import ExamSchedule from '../components/TestManagement';
 import GradeRecap from '../components/GradeRecap';
 import QuestionAnalysis from '../components/QuestionAnalysis';
+import StudentAnswerAnalysis from '../components/StudentAnswerAnalysis';
 import ToastNotification from '../components/ToastNotification';
 import BulkImportProgress from '../components/BulkImportProgress';
 
@@ -424,6 +425,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = (props) => {
     { id: TeacherView.JADWAL_UJIAN, label: 'Jadwal Ujian', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clipRule="evenodd" /></svg> },
     { id: TeacherView.REKAPITULASI_NILAI, label: 'Laporan Nilai', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg> },
     { id: TeacherView.ANALISA_SOAL, label: 'Analisa Soal', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M2 10a8 8 0 018-8v8h8a8 8 0 11-16 0z" /><path d="M12 2.252A8.014 8.014 0 0117.748 8H12V2.252z" /></svg> },
+    { id: TeacherView.ANALISA_JAWABAN, label: 'Analisa Jawaban', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M3 3a1 1 0 000 2v8a2 2 0 002 2h2.586l-1.293 1.293a1 1 0 101.414 1.414L10 15.414l2.293 2.293a1 1 0 001.414-1.414L12.414 15H15a2 2 0 002-2V5a1 1 0 100-2H3zm11 4a1 1 0 10-2 0v4a1 1 0 102 0V7zm-3 1a1 1 0 10-2 0v3a1 1 0 102 0V8zM8 9a1 1 0 00-2 0v2a1 1 0 102 0V9z" clipRule="evenodd" /></svg> },
   ], []);
 
   const handleNavigate = (view: TeacherView, token?: string) => { setPreselectedTestToken(token); setActiveView(view); if(window.innerWidth < 1024) setSidebarOpen(false); };
@@ -462,6 +464,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = (props) => {
       case TeacherView.JADWAL_UJIAN: return <ExamSchedule schedules={schedules} tests={tests} masterData={masterData} onAddSchedule={handleAddSchedule} onUpdateSchedule={handleUpdateSchedule} onDeleteSchedule={handleDeleteSchedule} />;
       case TeacherView.REKAPITULASI_NILAI: return <GradeRecap tests={tests} users={studentUsers} examSessions={examSessions} schedules={schedules} preselectedToken={preselectedTestToken} config={config} onRefresh={() => fetchData(true)} />;
       case TeacherView.ANALISA_SOAL: return <QuestionAnalysis tests={tests} users={studentUsers} />;
+      case TeacherView.ANALISA_JAWABAN: return <StudentAnswerAnalysis tests={tests} users={studentUsers} />;
       default: return <div>Not Implemented</div>;
     }
   };

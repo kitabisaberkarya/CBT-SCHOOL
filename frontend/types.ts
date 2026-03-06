@@ -37,6 +37,7 @@ export enum TeacherView {
   JADWAL_UJIAN,
   REKAPITULASI_NILAI,
   ANALISA_SOAL,
+  ANALISA_JAWABAN,
 }
 
 export type QuestionType = 'multiple_choice' | 'complex_multiple_choice' | 'matching' | 'essay' | 'true_false';
