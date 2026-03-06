@@ -102,9 +102,11 @@ const StudentAnswerAnalysis: React.FC<StudentAnswerAnalysisProps> = ({ tests, us
         const sessionIds = sessions.map((s: any) => s.id);
 
         // 4. Fetch all student answers for these sessions
+        // Catatan: TestScreen menyimpan jawaban di student_answer.value (JSONB) dan answer_value,
+        // bukan di selected_answer_index. Kita harus cek ketiga kolom secara berurutan.
         const { data: answers, error: ansErr } = await supabase
           .from('student_answers')
-          .select('session_id, question_id, selected_answer_index')
+          .select('session_id, question_id, selected_answer_index, student_answer, answer_value')
           .in('session_id', sessionIds);
 
         if (ansErr) {
@@ -119,12 +121,28 @@ const StudentAnswerAnalysis: React.FC<StudentAnswerAnalysisProps> = ({ tests, us
           parsedQuestions.forEach(q => { answerMap[sid][q.id] = null; });
         });
         (answers ?? []).forEach((ans: any) => {
-          if (answerMap[ans.session_id]) {
-            answerMap[ans.session_id][ans.question_id] =
-              ans.selected_answer_index !== null && ans.selected_answer_index !== undefined
-                ? ans.selected_answer_index
-                : null;
+          if (!answerMap[ans.session_id]) return;
+
+          let idx: number | null = null;
+
+          // Prioritas 1: selected_answer_index (kolom lama, mungkin tidak terisi)
+          if (ans.selected_answer_index !== null && ans.selected_answer_index !== undefined) {
+            idx = Number(ans.selected_answer_index);
           }
+          // Prioritas 2: student_answer.value (JSONB) — cara TestScreen menyimpan jawaban PG
+          else if (ans.student_answer?.value !== null && ans.student_answer?.value !== undefined) {
+            const v = ans.student_answer.value;
+            if (typeof v === 'number') idx = v;
+            else if (typeof v === 'string' && v !== '' && !isNaN(parseInt(v, 10))) idx = parseInt(v, 10);
+          }
+          // Prioritas 3: answer_value (TEXT/JSONB fallback)
+          else if (ans.answer_value !== null && ans.answer_value !== undefined) {
+            const v = ans.answer_value;
+            const parsed = typeof v === 'number' ? v : parseInt(String(v), 10);
+            if (!isNaN(parsed)) idx = parsed;
+          }
+
+          answerMap[ans.session_id][ans.question_id] = idx;
         });
 
         // 6. Build student rows with user info
