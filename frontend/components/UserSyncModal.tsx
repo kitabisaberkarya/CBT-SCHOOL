@@ -190,6 +190,24 @@ const UserSyncModal: React.FC<UserSyncModalProps> = ({ existingUsers, onClose, o
   
   const errorRows = useMemo(() => validatedData.filter(row => row.status >= ImportStatus.INVALID_DUPLICATE_IN_FILE), [validatedData]);
 
+  // ── Auto-create kelas di Data Master dari data siswa yang diimport ─────────
+  const autoSyncClasses = async (rows: any[]) => {
+    const classNames = [...new Set(
+      rows
+        .filter(r => {
+          const role = r.role || 'student';
+          const cls = (r.class || '').trim();
+          return role === 'student' && cls && cls.toUpperCase() !== 'STAFF';
+        })
+        .map(r => (r.class as string).trim())
+    )];
+    if (classNames.length === 0) return;
+    // UNIQUE constraint pada name → ignoreDuplicates aman digunakan
+    await supabase
+      .from('master_classes')
+      .upsert(classNames.map(name => ({ name })), { onConflict: 'name', ignoreDuplicates: true });
+  };
+
   const handleConfirm = async () => {
     setMode('importing');
     const validRows = validatedData.filter(row => row.status === ImportStatus.VALID_NEW || row.status === ImportStatus.VALID_UPDATE);
@@ -206,6 +224,8 @@ const UserSyncModal: React.FC<UserSyncModalProps> = ({ existingUsers, onClose, o
             if (error) throw error;
             alert(`Berhasil mengimpor ${validRows.length} pengguna!`);
         }
+        // Auto-buat folder kelas di Data Master dari data yang baru diimport
+        await autoSyncClasses(validRows);
         onSuccess();
         onClose();
     } catch (err: any) {

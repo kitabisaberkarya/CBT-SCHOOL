@@ -156,6 +156,14 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDemoMode = false }) =
           if (userData.role === 'teacher') {
              handleRepairTeachers(true); // Silent repair
           }
+
+          // Auto-buat folder kelas di Data Master saat tambah/edit siswa
+          const cls = (userData.class || '').trim();
+          if (cls && cls.toUpperCase() !== 'STAFF' && (userData.role === 'student' || !userData.role)) {
+              await supabase
+                  .from('master_classes')
+                  .upsert({ name: cls }, { onConflict: 'name', ignoreDuplicates: true });
+          }
       }
   };
 
