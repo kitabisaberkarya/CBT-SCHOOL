@@ -20,6 +20,7 @@ export enum AdminView {
   CETAK,
   CETAK_DOKUMEN,
   ANALISA_SOAL,
+  ANALISA_JAWABAN, // Analisa Jawaban Siswa per-soal
   REKAPITULASI_NILAI,
   PENGUMAN,
   MANAJEMEN_USER,
