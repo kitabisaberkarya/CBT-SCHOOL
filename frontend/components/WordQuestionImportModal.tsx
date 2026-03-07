@@ -502,10 +502,36 @@ const WordQuestionImportModal: React.FC<WordQuestionImportModalProps> = ({ testT
             const kunci = (textGrid[r][COL_KUNCI] ?? '').trim().toUpperCase();
             if (jawaban) { opts.push(jawaban); if (kunci === 'V' || kunci === '✓' || kunci === '√') correct.push(i); }
           });
+          // Fallback: jika tidak ada 'V' ditemukan, cek apakah KUNCI berisi huruf opsi (A/B/C/D/E)
+          // Ini terjadi saat kolom KUNCI di-merge pada baris SOAL dan diisi huruf jawaban
+          if (correct.length === 0) {
+            const kunciLetters = rowIndices
+              .map(r => (textGrid[r][COL_KUNCI] ?? '').trim().toUpperCase())
+              .filter(k => /^[A-E]$/.test(k));
+            const uniqueLetters = [...new Set(kunciLetters)];
+            if (uniqueLetters.length === 1) {
+              const optIdx = uniqueLetters[0].charCodeAt(0) - 65; // A=0,B=1,...
+              if (optIdx < opts.length) correct.push(optIdx);
+            }
+          }
+          // Fallback 2: jika semua kunci sama (merged "V") → ambil dari OPSI kolom jika ada huruf
+          if (correct.length > 1) {
+            const allSame = new Set(rowIndices.map(r => (textGrid[r][COL_KUNCI] ?? '').trim().toUpperCase())).size === 1;
+            if (allSame) {
+              // Semua baris dapat nilai yang sama dari merged cell — cari dari kolom OPSI
+              const opsiLetterIdx = rowIndices.findIndex(r => /^[A-E]$/.test((textGrid[r][COL_OPSI] ?? '').trim().toUpperCase()) &&
+                (textGrid[r][COL_KUNCI] ?? '').trim().toUpperCase() === 'V');
+              if (opsiLetterIdx !== -1) {
+                correct.length = 0;
+                correct.push(opsiLetterIdx);
+              }
+            }
+          }
+
           qObj.options = opts;
           if (jenis === 1) {
             if (correct.length !== 1) {
-              errors.push(`Soal #${soalNo}: PG Biasa harus memiliki tepat 1 kunci (V).`);
+              errors.push(`Soal #${soalNo}: PG Biasa harus memiliki tepat 1 kunci (V). Ditemukan ${correct.length} kunci.`);
               return;
             }
             qObj.answer_key = { index: correct[0] };

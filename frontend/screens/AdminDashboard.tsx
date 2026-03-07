@@ -96,6 +96,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
   const [isUpdateModalOpen,  setIsUpdateModalOpen]  = useState(false);
   const [updateInfo,         setUpdateInfo]          = useState<AppUpdateInfo | null>(null);
   const [isCheckingUpdate,   setIsCheckingUpdate]    = useState(false);
+  // Versi live dari /api/updater/status (baca version.txt dari disk — bukan dari bundle)
+  const [liveAppVersion,     setLiveAppVersion]      = useState<string>(APP_VERSION);
+
+  useEffect(() => {
+    fetch('/api/updater/status')
+      .then(r => r.json())
+      .then((d: any) => { if (d.currentVersion) setLiveAppVersion(d.currentVersion); })
+      .catch(() => {}); // fallback ke APP_VERSION jika updater tidak aktif
+  }, []);
 
   const handleCheckUpdate = async () => {
     setIsCheckingUpdate(true);
@@ -1010,7 +1019,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
                                 </h3>
                                 <p className="text-sm text-blue-600 mt-0.5">
                                     Versi saat ini:{' '}
-                                    <span className="font-mono font-bold">v{APP_VERSION}</span>
+                                    <span className="font-mono font-bold">v{liveAppVersion}</span>
                                 </p>
                             </div>
                             <button
@@ -1170,7 +1179,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
       <UpdateModal
         isOpen={isUpdateModalOpen}
         onClose={() => setIsUpdateModalOpen(false)}
-        currentVersion={APP_VERSION}
+        currentVersion={liveAppVersion}
         updateInfo={updateInfo}
         onCheckUpdate={handleCheckUpdate}
         isChecking={isCheckingUpdate}

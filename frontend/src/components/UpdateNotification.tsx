@@ -25,31 +25,62 @@ const UpdateNotification: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
-  const handleUpdate = async () => {
+  const handleUpdate = () => {
     if (!updateInfo) return;
-
     setIsUpdating(true);
     setError(null);
     setProgress(0);
 
-    try {
-      await UpdaterService.performUpdate(updateInfo, (percent) => {
-        setProgress(percent);
+    fetch('/api/updater/apply', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        download_url:  updateInfo.download_url,
+        version:       updateInfo.version,
+        release_notes: updateInfo.release_notes || '',
+      }),
+    }).then((res) => {
+      if (!res.ok || !res.body) throw new Error(`Server error: ${res.status}`);
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      const read = (): Promise<void> => reader.read().then(({ done, value }) => {
+        if (done) return;
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split('\n\n');
+        buffer = parts.pop() || '';
+
+        for (const part of parts) {
+          const lines = part.split('\n');
+          let eventName = 'progress', dataStr = '';
+          for (const line of lines) {
+            if (line.startsWith('event: ')) eventName = line.slice(7).trim();
+            if (line.startsWith('data: '))  dataStr   = line.slice(6).trim();
+          }
+          if (!dataStr) continue;
+          try {
+            const data = JSON.parse(dataStr);
+            if (eventName === 'progress' && typeof data.percent === 'number') {
+              setProgress(data.percent);
+            } else if (eventName === 'complete') {
+              setSuccess(true);
+              setTimeout(() => window.location.reload(), 2000);
+            } else if (eventName === 'error') {
+              setError(data.message || 'Gagal melakukan update. Silakan coba lagi.');
+              setIsUpdating(false);
+            }
+          } catch {}
+        }
+        return read();
       });
-      setSuccess(true);
-      setTimeout(() => {
-        window.location.reload(); // Reload to apply changes (if applicable)
-      }, 2000);
-    } catch (err: any) {
-      console.error(err);
-      // Friendly error message for browser environment
-      if (err.message && err.message.includes('Node.js')) {
-        setError('Update otomatis hanya tersedia di aplikasi Desktop.');
-      } else {
-        setError('Gagal melakukan update. Silakan coba lagi.');
-      }
+      return read();
+    }).catch((err: any) => {
+      setError(err.message?.includes('fetch') || err.message?.includes('Network')
+        ? 'Tidak dapat menghubungi server update. Pastikan VHD terhubung ke internet.'
+        : 'Gagal melakukan update. Silakan coba lagi.');
       setIsUpdating(false);
-    }
+    });
   };
 
   if (!updateInfo || !isVisible) return null;

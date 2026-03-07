@@ -56,8 +56,19 @@ class UpdaterService {
       return null;
     }
 
+    // Baca versi live dari /api/updater/status (version.txt) bukan dari bundle
+    // Agar setelah update otomatis, perbandingan versi tetap akurat
+    let localVersion = currentVersion;
     try {
-      console.log(`[Updater] Cek update... Versi saat ini: ${currentVersion}`);
+      const statusRes = await fetch('/api/updater/status');
+      if (statusRes.ok) {
+        const statusData = await statusRes.json();
+        if (statusData.currentVersion) localVersion = statusData.currentVersion;
+      }
+    } catch { /* fallback ke bundled version */ }
+
+    try {
+      console.log(`[Updater] Cek update... Versi saat ini: ${localVersion}`);
 
       const controller = new AbortController();
       const timeoutId  = setTimeout(() => controller.abort(), CHECK_TIMEOUT_MS);
@@ -99,11 +110,11 @@ class UpdaterService {
 
         console.log(`[Updater] Vendor versi: ${latest.version} | Lokal: ${currentVersion}`);
 
-        if (semver.gt(latest.version, currentVersion)) {
+        if (semver.gt(latest.version, localVersion)) {
           console.log(`[Updater] Update tersedia: ${latest.version}`);
           return latest;
         } else {
-          console.log(`[Updater] Aplikasi sudah versi terbaru (${currentVersion}).`);
+          console.log(`[Updater] Aplikasi sudah versi terbaru (${localVersion}).`);
         }
       }
 
