@@ -10,30 +10,17 @@ import { AppConfig, User, Test, Question } from './types';
 /**
  * Auto-detect environment dan tentukan URL Supabase yang tepat.
  *
- * MODE 1 - CLOUD    : VITE_SUPABASE_URL diset ke URL Supabase eksternal (Vercel/hosting)
- * MODE 2 - VHD HTTPS: nginx proxy di server yang sama (VITE_SUPABASE_URL tidak diset / sama origin)
- * MODE 3 - DEV      : localhost / 127.0.0.1
- * MODE 4 - VHD LAN  : IP 192.168.x / 10.x → Supabase self-hosted port 8000
+ * MODE 1 - DEV      : localhost / 127.0.0.1
+ * MODE 2 - VHD LAN  : IP LAN (192.168.x / 10.x / 172.16-31.x) → Supabase self-hosted port 8000
+ *                     Selalu gunakan hostname yang diakses browser (bukan VITE_SUPABASE_URL)
+ *                     agar tidak salah IP jika .env berisi IP lama/berbeda.
+ * MODE 3 - VHD HTTPS: domain publik dengan HTTPS → nginx proxy di server yang sama
+ * MODE 4 - CLOUD    : domain publik HTTP + VITE_SUPABASE_URL diset (Vercel/hosting eksternal)
  */
 const getDynamicSupabaseUrl = (): string => {
   const hostname = window.location.hostname;
   const isHttps = window.location.protocol === 'https:';
   const envUrl = import.meta.env.VITE_SUPABASE_URL;
-
-  // MODE CLOUD (Vercel / hosting publik):
-  // VITE_SUPABASE_URL diset ke Supabase Cloud → berbeda dari origin halaman ini
-  if (envUrl && envUrl !== window.location.origin) {
-    console.log(`[Supabase] CLOUD MODE → ${envUrl}`);
-    return envUrl;
-  }
-
-  // MODE VHD HTTPS: nginx proxy di server yang sama
-  // VITE_SUPABASE_URL tidak diset (atau sama dengan origin) → pakai origin langsung
-  if (isHttps) {
-    const httpsUrl = window.location.origin;
-    console.log(`[Supabase] VHD HTTPS PROXY MODE → ${httpsUrl}`);
-    return httpsUrl;
-  }
 
   // MODE DEV: development lokal
   if (hostname === 'localhost' || hostname === '127.0.0.1') {
@@ -41,7 +28,8 @@ const getDynamicSupabaseUrl = (): string => {
     return envUrl || 'http://localhost:8000';
   }
 
-  // MODE VHD LAN: siswa akses via IP LAN (Supabase self-hosted port 8000)
+  // MODE VHD LAN: akses via IP LAN → Supabase self-hosted port 8000 di server yang sama.
+  // WAJIB pakai hostname browser (bukan VITE_SUPABASE_URL) agar selalu cocok dengan IP server aktif.
   const isLanIp = /^(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/.test(hostname);
   if (isLanIp) {
     const vhdUrl = `http://${hostname}:8000`;
@@ -49,9 +37,23 @@ const getDynamicSupabaseUrl = (): string => {
     return vhdUrl;
   }
 
+  // MODE VHD HTTPS: domain publik + HTTPS → nginx proxy Supabase di server yang sama
+  if (isHttps) {
+    const httpsUrl = window.location.origin;
+    console.log(`[Supabase] VHD HTTPS PROXY MODE → ${httpsUrl}`);
+    return httpsUrl;
+  }
+
+  // MODE CLOUD (Vercel / hosting publik):
+  // Domain publik + HTTP + VITE_SUPABASE_URL diset ke Supabase Cloud eksternal
+  if (envUrl) {
+    console.log(`[Supabase] CLOUD MODE → ${envUrl}`);
+    return envUrl;
+  }
+
   // Fallback
-  console.log(`[Supabase] FALLBACK → ${envUrl || `http://${hostname}:8000`}`);
-  return envUrl || `http://${hostname}:8000`;
+  console.log(`[Supabase] FALLBACK → http://${hostname}:8000`);
+  return `http://${hostname}:8000`;
 };
 
 /**
