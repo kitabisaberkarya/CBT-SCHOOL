@@ -4,7 +4,7 @@ import { supabase } from '../supabaseClient';
 import { QuestionType, QuestionDifficulty, CognitiveLevel } from '../types';
 import * as mammoth from 'mammoth';
 import {
-  Document, Packer, Paragraph, TextRun,
+  Document, Packer, Paragraph, TextRun, ImageRun,
   Table, TableRow, TableCell, WidthType, AlignmentType, VerticalAlign,
   BorderStyle, ShadingType,
 } from 'docx';
@@ -22,6 +22,37 @@ const BD = { style: BorderStyle.SINGLE, size: 1, color: 'AAAAAA' };
 const TABLE_BORDER = { top: BD, bottom: BD, left: BD, right: BD, insideH: BD, insideV: BD };
 
 // ── Helpers outside component (pure) ─────────────────────────────────────────
+
+/** Generate a placeholder PNG using browser canvas (for template download). */
+async function makePng(
+  w: number, h: number,
+  bgHex: string, accentHex: string,
+  label: string,
+): Promise<Uint8Array> {
+  return new Promise((resolve) => {
+    const canvas = document.createElement('canvas');
+    canvas.width = w; canvas.height = h;
+    const ctx = canvas.getContext('2d')!;
+    ctx.fillStyle = bgHex;
+    ctx.fillRect(0, 0, w, h);
+    ctx.strokeStyle = accentHex;
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 4]);
+    ctx.strokeRect(3, 3, w - 6, h - 6);
+    ctx.setLineDash([]);
+    const fs = Math.max(11, Math.floor(h * 0.17));
+    ctx.fillStyle = accentHex;
+    ctx.font = `bold ${fs}px Arial, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, w / 2, h / 2);
+    canvas.toBlob(
+      (blob) => blob!.arrayBuffer().then((buf) => resolve(new Uint8Array(buf))),
+      'image/png',
+    );
+  });
+}
+
 function cell(
   text: string,
   width: number,
@@ -42,24 +73,67 @@ function cell(
   return new TableCell(o);
 }
 
-type TRow = { opsi: string; jawaban: string; kunci: string };
+/** Cell with optional embedded image (placeholder or actual). */
+function cellWithImg(
+  text: string,
+  img: Uint8Array | null,
+  width: number,
+  opts: { bold?: boolean; fill?: string; rowSpan?: number; center?: boolean } = {}
+): TableCell {
+  const paragraphs: Paragraph[] = [];
+  if (text) {
+    paragraphs.push(new Paragraph({
+      alignment: opts.center ? AlignmentType.CENTER : AlignmentType.LEFT,
+      spacing: img ? { after: 60 } : {},
+      children: [new TextRun({ text, bold: opts.bold, size: 18 })],
+    }));
+  }
+  if (img) {
+    paragraphs.push(new Paragraph({
+      alignment: AlignmentType.CENTER,
+      spacing: { before: 40, after: 40 },
+      children: [new ImageRun({ data: img, transformation: { width: 155, height: 78 } })],
+    }));
+  }
+  if (paragraphs.length === 0) paragraphs.push(new Paragraph({ children: [] }));
+  const o: any = {
+    width: { size: width, type: WidthType.DXA },
+    verticalAlign: VerticalAlign.TOP,
+    children: paragraphs,
+  };
+  if (opts.rowSpan && opts.rowSpan > 1) o.rowSpan = opts.rowSpan;
+  if (opts.fill) o.shading = { type: ShadingType.CLEAR, fill: opts.fill };
+  return new TableCell(o);
+}
 
-// Tidak menggunakan rowSpan agar mammoth tidak menduplikasi isi sel saat parsing.
-// NO dan JENIS diisi di setiap baris (memudahkan deteksi), SOAL hanya di baris pertama.
-function buildQRows(q: { no: number; soal: string; jenis: string; rows: TRow[] }): TableRow[] {
+type TRow = { opsi: string; jawaban: string; kunci: string; jawImg?: Uint8Array };
+
+/**
+ * Build docx TableRows for one question, using rowSpan on NO/SOAL/JENIS columns.
+ * Mammoth duplicates merged-cell content to all rows (vMerge behaviour), which the
+ * parser handles via the prevNo detection — so rowSpan is safe to use here.
+ */
+function buildQRows(q: {
+  no: number;
+  soal: string;
+  jenis: string;
+  rows: TRow[];
+  soalImg?: Uint8Array;
+}): TableRow[] {
+  const n = q.rows.length;
   return q.rows.map((r, i) => {
     const isFirst = i === 0;
     const kunciColor = r.kunci === 'V' ? '2E7D32' : r.kunci === 'B' ? '1565C0' : r.kunci === 'S' ? 'C62828' : '000000';
-    return new TableRow({
-      children: [
-        cell(String(q.no), COL.NO, { bold: true, center: true }),
-        cell(isFirst ? q.soal : '', COL.SOAL),
-        cell(q.jenis, COL.JENIS, { bold: true, center: true, fill: 'FFF8E1' }),
-        cell(r.opsi, COL.OPSI, { center: true, bold: true }),
-        cell(r.jawaban, COL.JAWABAN),
-        cell(r.kunci, COL.KUNCI, { center: true, bold: true, color: kunciColor }),
-      ],
-    });
+    const children: TableCell[] = [];
+    if (isFirst) {
+      children.push(cell(String(q.no), COL.NO, { bold: true, center: true, rowSpan: n, fill: 'F5F5F5' }));
+      children.push(cellWithImg(q.soal, q.soalImg ?? null, COL.SOAL, { rowSpan: n }));
+      children.push(cell(q.jenis, COL.JENIS, { bold: true, center: true, fill: 'FFF8E1', rowSpan: n }));
+    }
+    children.push(cell(r.opsi, COL.OPSI, { center: true, bold: true }));
+    children.push(cellWithImg(r.jawaban, r.jawImg ?? null, COL.JAWABAN));
+    children.push(cell(r.kunci, COL.KUNCI, { center: true, bold: true, color: kunciColor }));
+    return new TableRow({ children });
   });
 }
 
@@ -112,26 +186,41 @@ const WordQuestionImportModal: React.FC<WordQuestionImportModalProps> = ({ testT
   const [errorLog, setErrorLog] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // ── GENERATE TEMPLATE WORD (TABLE FORMAT) ────────────────────────────────
-  const handleDownloadTemplate = async () => {
+  // ── DOWNLOAD STATIC TEMPLATE (dihasilkan oleh scripts/generate_template_soal.py) ──
+  const handleDownloadTemplate = () => {
+    const link = document.createElement('a');
+    link.href = '/TEMPLATE_SOAL_CBT.docx';
+    link.download = 'TEMPLATE BANK SOAL CBT SCHOOL.docx';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // ── GENERATE TEMPLATE WORD LEGACY (kept for reference, not used) ─────────
+  const _handleDownloadTemplateLegacy = async () => {
     try {
+      const imgSoal = await makePng(200, 90, '#E3F2FD', '#1565C0', 'Contoh Gambar Soal');
+      const imgJaw  = await makePng(155, 70, '#F3E5F5', '#6A1B9A', 'Contoh Gambar Jawaban');
+
       const hdrRow = new TableRow({
         tableHeader: true,
         children: [
-          cell('NO', COL.NO, { bold: true, center: true, fill: '1E3A5F', color: 'FFFFFF' }),
-          cell('SOAL', COL.SOAL, { bold: true, center: true, fill: '1E3A5F', color: 'FFFFFF' }),
-          cell('JENIS', COL.JENIS, { bold: true, center: true, fill: '1E3A5F', color: 'FFFFFF' }),
-          cell('OPSI', COL.OPSI, { bold: true, center: true, fill: '1E3A5F', color: 'FFFFFF' }),
+          cell('NO',      COL.NO,      { bold: true, center: true, fill: '1E3A5F', color: 'FFFFFF' }),
+          cell('SOAL',    COL.SOAL,    { bold: true, center: true, fill: '1E3A5F', color: 'FFFFFF' }),
+          cell('JENIS',   COL.JENIS,   { bold: true, center: true, fill: '1E3A5F', color: 'FFFFFF' }),
+          cell('OPSI',    COL.OPSI,    { bold: true, center: true, fill: '1E3A5F', color: 'FFFFFF' }),
           cell('JAWABAN', COL.JAWABAN, { bold: true, center: true, fill: '1E3A5F', color: 'FFFFFF' }),
-          cell('KUNCI', COL.KUNCI, { bold: true, center: true, fill: '1E3A5F', color: 'FFFFFF' }),
+          cell('KUNCI',   COL.KUNCI,   { bold: true, center: true, fill: '1E3A5F', color: 'FFFFFF' }),
         ],
       });
 
       const allRows: TableRow[] = [hdrRow];
 
+      // Q1 — PG Biasa: soal dengan contoh gambar soal
       buildQRows({
         no: 1, jenis: '1',
-        soal: 'Siapakah ilmuwan yang menemukan Hukum Gravitasi Universal?\n[Sisipkan gambar soal di sini jika ada — klik kanan Insert Picture]',
+        soal: 'Siapakah ilmuwan yang menemukan Hukum Gravitasi Universal?',
+        soalImg: imgSoal,
         rows: [
           { opsi: 'A', jawaban: 'Thomas Alva Edison', kunci: '' },
           { opsi: 'B', jawaban: 'Nikola Tesla', kunci: '' },
@@ -141,6 +230,7 @@ const WordQuestionImportModal: React.FC<WordQuestionImportModalProps> = ({ testT
         ],
       }).forEach(r => allRows.push(r));
 
+      // Q2 — PG Kompleks: tanpa gambar
       buildQRows({
         no: 2, jenis: '2',
         soal: 'Manakah yang termasuk penerapan Revolusi Industri 4.0? (Boleh pilih lebih dari satu)',
@@ -153,20 +243,22 @@ const WordQuestionImportModal: React.FC<WordQuestionImportModalProps> = ({ testT
         ],
       }).forEach(r => allRows.push(r));
 
+      // Q3 — Menjodohkan: baris pertama JAWABAN pakai contoh gambar jawaban
       buildQRows({
         no: 3, jenis: '3',
-        soal: 'Pasangkan nama ilmuwan berikut dengan penemuannya!\n[Kolom JAWABAN = item kiri, Kolom KUNCI = pasangan jawaban yang benar]',
+        soal: 'Pasangkan nama ilmuwan berikut dengan penemuannya!\n[JAWABAN = item kiri | KUNCI = pasangan yang benar]',
         rows: [
-          { opsi: '1', jawaban: 'Isaac Newton', kunci: 'Hukum Gravitasi' },
+          { opsi: '1', jawaban: 'Isaac Newton', jawImg: imgJaw, kunci: 'Hukum Gravitasi' },
           { opsi: '2', jawaban: 'Alexander Graham Bell', kunci: 'Telepon' },
           { opsi: '3', jawaban: 'Thomas Alva Edison', kunci: 'Lampu Pijar' },
           { opsi: '4', jawaban: 'Marie Curie', kunci: 'Radioaktivitas' },
         ],
       }).forEach(r => allRows.push(r));
 
+      // Q4 — Benar/Salah
       buildQRows({
         no: 4, jenis: '4',
-        soal: 'Tentukan apakah pernyataan berikut BENAR atau SALAH!\n[Isi kolom KUNCI dengan: B = Benar, S = Salah]',
+        soal: 'Tentukan apakah pernyataan berikut BENAR atau SALAH!\n[KUNCI: B = Benar, S = Salah]',
         rows: [
           { opsi: '1', jawaban: 'Air mendidih pada suhu 100 derajat Celsius di tekanan normal', kunci: 'B' },
           { opsi: '2', jawaban: 'Matahari mengelilingi Bumi setiap 24 jam', kunci: 'S' },
@@ -175,6 +267,7 @@ const WordQuestionImportModal: React.FC<WordQuestionImportModalProps> = ({ testT
         ],
       }).forEach(r => allRows.push(r));
 
+      // Q5 — Essay
       buildQRows({
         no: 5, jenis: '5',
         soal: 'Jelaskan pengertian Revolusi Industri 4.0 dan sebutkan minimal 3 teknologi utama yang menjadi pilarnya!',
@@ -241,37 +334,39 @@ const WordQuestionImportModal: React.FC<WordQuestionImportModalProps> = ({ testT
       alert('Gagal membuat template Word.');
     }
   };
+  void _handleDownloadTemplateLegacy; // suppress unused warning
 
-  // ── PARSE TABLE FORMAT (new) ──────────────────────────────────────────────
+  // ── PARSE TABLE FORMAT ────────────────────────────────────────────────────
   const parseTableHtml = (html: string) => {
     const dom = new DOMParser().parseFromString(html, 'text/html');
-    const tableEl = dom.querySelector('table');
-    if (!tableEl) {
+    const allTables = Array.from(dom.querySelectorAll('table'));
+    if (allTables.length === 0) {
       setErrorLog(['Tidak ditemukan tabel dalam file. Pastikan menggunakan template tabel yang benar.']);
       return;
     }
 
-    const { textGrid, imgGrid } = buildGridFromTable(tableEl);
-    if (textGrid.length <= 1) {
-      setErrorLog(['Tabel kosong atau hanya memiliki baris header.']);
-      return;
-    }
+    const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
 
-    // Group rows by question.
-    // Mammoth menduplikasi isi sel merged (vMerge) ke semua baris dalam grup.
-    // Deteksi soal baru hanya saat nilai NO BERUBAH, bukan setiap kali ada angka.
-    const groups: number[][] = [];
-    let cur: number[] | null = null;
-    let prevNo = '';
-    for (let r = 1; r < textGrid.length; r++) {
-      const noVal = textGrid[r][0].trim();
-      if (noVal !== '' && !isNaN(Number(noVal)) && noVal !== prevNo) {
-        cur = [r];
-        groups.push(cur);
-        prevNo = noVal;
-      } else if (cur) {
-        cur.push(r);
-      }
+    // ── Identifikasi tabel soal berdasarkan header (bukan jumlah baris numerik) ──
+    // Tabel soal wajib punya kolom SOAL dan (JENIS atau KUNCI)
+    const isQuestionTable = (t: Element): boolean => {
+      const firstRow = t.querySelector('tr');
+      if (!firstRow) return false;
+      const headers = Array.from(firstRow.querySelectorAll('td,th'))
+        .map(h => normalize((h as HTMLElement).textContent || ''));
+      const hasSoal  = headers.some(h => h.includes('soal') || h.includes('pertanyaan') || h.includes('question'));
+      const hasJenis = headers.some(h => h.includes('jenis') || h.includes('tipe') || h.includes('type'));
+      const hasKunci = headers.some(h => h.includes('kunci') || h.includes('key'));
+      return hasSoal && (hasJenis || hasKunci);
+    };
+
+    // Ambil semua tabel soal; fallback ke tabel dengan paling banyak baris jika tidak ada
+    let questionTables = allTables.filter(isQuestionTable);
+    if (questionTables.length === 0) {
+      // Fallback: tabel dengan paling banyak baris
+      questionTables = [allTables.reduce((best, t) =>
+        t.querySelectorAll('tr').length > best.querySelectorAll('tr').length ? t : best
+      , allTables[0])];
     }
 
     const questions: any[] = [];
@@ -285,94 +380,186 @@ const WordQuestionImportModal: React.FC<WordQuestionImportModalProps> = ({ testT
       5: 'essay',
     };
 
-    groups.forEach((rowIndices, qIdx) => {
-      const f = rowIndices[0];
-      const soalText = textGrid[f][1].trim();
-      const soalImg = imgGrid[f][1];
-      const jenisRaw = textGrid[f][2].trim();
-      const jenis = parseInt(jenisRaw, 10);
+    // ── Parser JENIS: angka 1–5 ATAU teks deskriptif ──────────────────────
+    const parseJenis = (raw: string): number => {
+      const trimmed = raw.trim();
+      const n = parseInt(trimmed, 10);
+      if (!isNaN(n) && n >= 1 && n <= 5) return n;
+      const lo = trimmed.toLowerCase();
+      if (lo.includes('kompleks') || lo.includes('complex')) return 2;
+      if (lo.includes('jodoh') || lo.includes('pasang') || lo.includes('match')) return 3;
+      if (lo.includes('benar') || lo.includes('salah') || lo.includes('true') || lo.includes('false') || lo.includes('b/s')) return 4;
+      if (lo.includes('essay') || lo.includes('uraian')) return 5;
+      if (lo.includes('pg') || lo.includes('pilihan') || lo.includes('ganda') || lo.includes('multiple')) return 1;
+      return NaN;
+    };
 
-      if (!soalText) {
-        errors.push(`Soal #${qIdx + 1}: Kolom SOAL kosong.`);
-        return;
-      }
-      if (isNaN(jenis) || jenis < 1 || jenis > 5) {
-        errors.push(`Soal #${qIdx + 1}: JENIS "${jenisRaw}" tidak valid (gunakan angka 1–5).`);
-        return;
-      }
+    // ── Proses setiap tabel soal ───────────────────────────────────────────
+    for (const tableEl of questionTables) {
+      const { textGrid, imgGrid } = buildGridFromTable(tableEl);
+      if (textGrid.length <= 1) continue;
 
-      const qObj: any = {
-        type: typeMap[jenis],
-        question: soalText,
-        ...(soalImg ? { image: soalImg } : {}),
-        options: [],
-        matching_right_options: [],
-        answer_key: null,
-        difficulty: 'Medium' as QuestionDifficulty,
-        weight: 1,
-        topic: 'Umum',
-        cognitive_level: 'L1' as CognitiveLevel,
+      // Auto-detect indeks kolom dari baris header
+      const headerRow = textGrid[0].map(normalize);
+      const findCol = (keywords: string[]): number => {
+        for (const kw of keywords) {
+          const idx = headerRow.findIndex(h => h === kw || h.includes(kw));
+          if (idx !== -1) return idx;
+        }
+        return -1;
       };
 
-      if (jenis === 1 || jenis === 2) {
-        const opts: string[] = [];
-        const correct: number[] = [];
-        rowIndices.forEach((r, i) => {
-          const jawaban = textGrid[r][4].trim();
-          const kunci = textGrid[r][5].trim().toUpperCase();
-          if (jawaban) { opts.push(jawaban); if (kunci === 'V') correct.push(i); }
-        });
-        qObj.options = opts;
-        if (jenis === 1) {
-          if (correct.length !== 1) {
-            errors.push(`Soal #${qIdx + 1}: PG Biasa harus memiliki tepat 1 kunci (V).`);
-            return;
-          }
-          qObj.answer_key = { index: correct[0] };
-        } else {
-          if (correct.length === 0) {
-            errors.push(`Soal #${qIdx + 1}: PG Kompleks harus memiliki minimal 1 kunci (V).`);
-            return;
-          }
-          qObj.answer_key = { indices: correct };
+      const COL_NO     = findCol(['no','nomor']) !== -1 ? findCol(['no','nomor']) : 0;
+      const COL_SOAL   = findCol(['soal','pertanyaan','question']) !== -1 ? findCol(['soal','pertanyaan','question']) : 1;
+      const COL_JENIS  = findCol(['jenis','tipe','type']) !== -1 ? findCol(['jenis','tipe','type']) : 2;
+      const COL_OPSI   = findCol(['opsi','pilihan','option']) !== -1 ? findCol(['opsi','pilihan','option']) : 3;
+      const COL_JAWABAN= findCol(['jawaban','answer']) !== -1 ? findCol(['jawaban','answer']) : 4;
+      const COL_KUNCI  = findCol(['kunci','key','benar']) !== -1 ? findCol(['kunci','key','benar']) : 5;
+
+      // Grouping soal: deteksi soal baru saat kolom NO berubah ke angka berbeda
+      const groups: number[][] = [];
+      let cur: number[] | null = null;
+      let prevNo = '';
+      for (let r = 1; r < textGrid.length; r++) {
+        const noVal = (textGrid[r][COL_NO] ?? '').trim();
+        if (noVal !== '' && /^\d+$/.test(noVal) && noVal !== prevNo) {
+          cur = [r];
+          groups.push(cur);
+          prevNo = noVal;
+        } else if (cur) {
+          cur.push(r);
         }
-      } else if (jenis === 3) {
-        // Menjodohkan: JAWABAN=item kiri, KUNCI=pasangan jawaban kanan
-        const left: string[] = [];
-        const right: string[] = [];
-        const pairs: Record<string, string> = {};
-        rowIndices.forEach((r, i) => {
-          const jawaban = textGrid[r][4].trim();
-          const kunci = textGrid[r][5].trim();
-          if (jawaban) {
-            left.push(jawaban);
-            right.push(kunci || `Pasangan ${i + 1}`);
-            pairs[`L${i + 1}`] = `R${i + 1}`;
-          }
-        });
-        qObj.options = left;
-        qObj.matching_right_options = right;
-        qObj.answer_key = { pairs };
-      } else if (jenis === 4) {
-        // Benar/Salah: JAWABAN=pernyataan, KUNCI=B/S
-        const stmts: string[] = [];
-        const tfKey: Record<string, boolean> = {};
-        rowIndices.forEach((r, i) => {
-          const jawaban = textGrid[r][4].trim();
-          const kunci = textGrid[r][5].trim().toUpperCase();
-          stmts.push(jawaban);
-          tfKey[String(i)] = kunci === 'B' || kunci === 'BENAR';
-        });
-        qObj.options = stmts;
-        qObj.answer_key = tfKey;
-      } else if (jenis === 5) {
-        // Essay: JAWABAN=kunci/rubrik
-        qObj.options = [];
-        qObj.answer_key = { text: rowIndices.length > 0 ? textGrid[rowIndices[0]][4].trim() : '' };
       }
 
-      questions.push(qObj);
-    });
+      const tableBaseIdx = questions.length;
+
+      groups.forEach((rowIndices, qIdx) => {
+        const f = rowIndices[0];
+        const soalText = (textGrid[f][COL_SOAL] ?? '').trim();
+        const soalImg  = imgGrid[f][COL_SOAL];
+
+        // Ambil JENIS dari baris pertama grup; jika invalid coba baris berikutnya
+        let jenisRaw = (textGrid[f][COL_JENIS] ?? '').trim();
+        let jenis = parseJenis(jenisRaw);
+        if (isNaN(jenis)) {
+          for (let ri = 1; ri < rowIndices.length && isNaN(jenis); ri++) {
+            jenisRaw = (textGrid[rowIndices[ri]][COL_JENIS] ?? '').trim();
+            jenis = parseJenis(jenisRaw);
+          }
+        }
+
+        // Jika SOAL kosong: skip diam-diam jika tidak ada konten, atau catat error
+        if (!soalText) {
+          const hasContent = rowIndices.some(r =>
+            (textGrid[r][COL_JAWABAN] ?? '').trim() || (textGrid[r][COL_KUNCI] ?? '').trim()
+          );
+          if (!hasContent) return; // baris phantom dari tabel data dalam soal — skip
+          errors.push(`Soal #${tableBaseIdx + qIdx + 1}: Kolom SOAL kosong.`);
+          return;
+        }
+
+        // Inferensi JENIS dari struktur kolom OPSI jika masih kosong
+        if (isNaN(jenis)) {
+          const opsiVals = rowIndices.map(r => (textGrid[r][COL_OPSI] ?? '').trim().toUpperCase());
+          const kunciVals = rowIndices.map(r => (textGrid[r][COL_KUNCI] ?? '').trim().toUpperCase());
+          if (opsiVals.some(o => /^[ABCDE]$/.test(o))) {
+            // Opsi huruf A/B/C/D/E → PG
+            const hasMultiKunci = kunciVals.filter(k => k === 'V' || k === '✓').length > 1;
+            jenis = hasMultiKunci ? 2 : 1;
+          } else if (kunciVals.some(k => k === 'B' || k === 'S' || k === 'BENAR' || k === 'SALAH')) {
+            jenis = 4; // Benar/Salah
+          } else if (rowIndices.length === 1) {
+            jenis = 5; // Satu baris tanpa opsi → Essay
+          } else {
+            jenis = 1; // Default PG Biasa
+          }
+        }
+
+        if (isNaN(jenis)) {
+          errors.push(`Soal #${tableBaseIdx + qIdx + 1}: JENIS "${jenisRaw}" tidak dikenali. Gunakan: 1=PG Biasa, 2=PG Kompleks, 3=Menjodohkan, 4=Benar/Salah, 5=Essay.`);
+          return;
+        }
+
+        const soalNo = tableBaseIdx + qIdx + 1;
+        const qObj: any = {
+          type: typeMap[jenis],
+          question: soalText,
+          ...(soalImg ? { image_url: soalImg } : {}),
+          options: [],
+          matching_right_options: [],
+          answer_key: null,
+          difficulty: 'Medium' as QuestionDifficulty,
+          weight: 1,
+          topic: 'Umum',
+          cognitive_level: 'L1' as CognitiveLevel,
+        };
+
+        if (jenis === 1 || jenis === 2) {
+          const opts: string[] = [];
+          const correct: number[] = [];
+          rowIndices.forEach((r, i) => {
+            const jawaban = (textGrid[r][COL_JAWABAN] ?? '').trim();
+            const kunci = (textGrid[r][COL_KUNCI] ?? '').trim().toUpperCase();
+            if (jawaban) { opts.push(jawaban); if (kunci === 'V' || kunci === '✓' || kunci === '√') correct.push(i); }
+          });
+          qObj.options = opts;
+          if (jenis === 1) {
+            if (correct.length !== 1) {
+              errors.push(`Soal #${soalNo}: PG Biasa harus memiliki tepat 1 kunci (V).`);
+              return;
+            }
+            qObj.answer_key = { index: correct[0] };
+          } else {
+            if (correct.length === 0) {
+              errors.push(`Soal #${soalNo}: PG Kompleks harus memiliki minimal 1 kunci (V).`);
+              return;
+            }
+            qObj.answer_key = { indices: correct };
+          }
+        } else if (jenis === 3) {
+          // Menjodohkan: JAWABAN=item kiri, KUNCI=pasangan kanan
+          const left: string[] = [];
+          const right: string[] = [];
+          const pairs: Record<string, string> = {};
+          rowIndices.forEach((r, i) => {
+            const col1 = (textGrid[r][COL_JAWABAN] ?? '').trim();
+            const col2 = (textGrid[r][COL_KUNCI] ?? '').trim();
+            const colOpsi = COL_OPSI < (textGrid[r]?.length ?? 0) ? (textGrid[r][COL_OPSI] ?? '').trim() : '';
+            const leftItem = col1 || colOpsi;
+            const rightItem = col2 || `Pasangan ${i + 1}`;
+            if (leftItem) {
+              left.push(leftItem);
+              right.push(rightItem);
+              pairs[`L${i + 1}`] = `R${i + 1}`;
+            }
+          });
+          qObj.options = left;
+          qObj.matching_right_options = right;
+          qObj.answer_key = { pairs };
+        } else if (jenis === 4) {
+          // Benar/Salah: JAWABAN=pernyataan, KUNCI=B/S/Benar/Salah
+          const stmts: string[] = [];
+          const tfKey: Record<string, boolean> = {};
+          rowIndices.forEach((r, i) => {
+            const jawaban = (textGrid[r][COL_JAWABAN] ?? '').trim();
+            const kunci = (textGrid[r][COL_KUNCI] ?? '').trim().toUpperCase();
+            if (jawaban) {
+              stmts.push(jawaban);
+              tfKey[String(i)] = kunci === 'B' || kunci === 'BENAR' || kunci === 'TRUE' || kunci === 'T' || kunci === '1';
+            }
+          });
+          qObj.options = stmts;
+          qObj.answer_key = tfKey;
+        } else if (jenis === 5) {
+          // Essay: JAWABAN=kunci/rubrik penilaian
+          qObj.options = [];
+          const jawabanEssay = rowIndices.map(r => (textGrid[r][COL_JAWABAN] ?? '').trim()).filter(Boolean).join(' ');
+          qObj.answer_key = { text: jawabanEssay };
+        }
+
+        questions.push(qObj);
+      }); // end groups.forEach
+    } // end for questionTables
 
     if (errors.length > 0) { setErrorLog(errors); }
     else if (questions.length === 0) { setErrorLog(['Tidak ada soal yang berhasil diparse dari tabel.']); }
@@ -595,7 +782,7 @@ const WordQuestionImportModal: React.FC<WordQuestionImportModalProps> = ({ testT
                       <div className="flex gap-2 mb-1">
                         <span className="text-[10px] font-bold bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded uppercase">{row.type}</span>
                         <span className="text-[10px] font-bold bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded uppercase">{row.difficulty}</span>
-                        {row.image && <span className="text-[10px] font-bold bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded">+Gambar</span>}
+                        {row.image_url && <span className="text-[10px] font-bold bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded">+Gambar</span>}
                       </div>
                       <p className="text-xs text-gray-800 line-clamp-2 font-medium">{row.question}</p>
                       <p className="text-[10px] text-gray-500 mt-1">

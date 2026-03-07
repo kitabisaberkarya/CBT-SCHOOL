@@ -58,12 +58,13 @@ const isOnline = (): boolean => {
 
 /**
  * Wrap promise dengan timeout agar tidak hang jika jaringan lambat.
+ * Menerima PromiseLike<T> agar kompatibel dengan PostgrestFilterBuilder.
  */
-const withTimeout = <T>(promise: Promise<T>, ms: number): Promise<T> => {
+const withTimeout = <T>(promise: PromiseLike<T>, ms: number): Promise<T> => {
   const timeout = new Promise<never>((_, reject) =>
     setTimeout(() => reject(new Error('Request timeout')), ms)
   );
-  return Promise.race([promise, timeout]);
+  return Promise.race([Promise.resolve(promise), timeout]);
 };
 
 // ==============================================================================
