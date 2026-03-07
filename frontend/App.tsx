@@ -47,6 +47,14 @@ const DEFAULT_CONFIG: AppConfig = {
   timezone: 'Asia/Jakarta', // WIB default
 };
 
+// Helper: pastikan admin/teacher tidak mendapat foto siswa (boy.png / girl.png)
+const STUDENT_PHOTO_PATTERNS = ['boy.png', 'girl.png', 'student'];
+const resolveAdminPhoto = (photoUrl: string | null | undefined, fallback: string): string => {
+  if (!photoUrl) return fallback;
+  const isStudentPhoto = STUDENT_PHOTO_PATTERNS.some(p => photoUrl.includes(p));
+  return isStudentPhoto ? fallback : photoUrl;
+};
+
 const App: React.FC = () => {
   const [isConfigLoading, setIsConfigLoading] = useState(true);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
@@ -215,7 +223,7 @@ const App: React.FC = () => {
             username: email,
             fullName: dbData?.full_name || user.user_metadata?.full_name || 'Administrator',
             nisn: 'N/A', class: 'Admin', major: 'System', religion: 'Islam', gender: 'Laki-laki', role: 'admin',
-            photoUrl: dbData?.photo_url || user.user_metadata?.avatar_url || DEFAULT_PROFILE_IMAGES.ADMIN
+            photoUrl: resolveAdminPhoto(dbData?.photo_url, DEFAULT_PROFILE_IMAGES.ADMIN)
           };
           setCurrentUser(adminUser);
           setAppState(AppState.ADMIN_DASHBOARD);
@@ -234,7 +242,7 @@ const App: React.FC = () => {
             religion: dbData?.religion || 'Islam', 
             gender: dbData?.gender || 'Laki-laki', 
             role: 'teacher',
-            photoUrl: dbData?.photo_url || DEFAULT_PROFILE_IMAGES.ADMIN
+            photoUrl: resolveAdminPhoto(dbData?.photo_url, DEFAULT_PROFILE_IMAGES.ADMIN)
           };
           setCurrentUser(teacherUser);
           setAppState(AppState.TEACHER_DASHBOARD);
@@ -490,7 +498,7 @@ const App: React.FC = () => {
                   id: dbAdmin.id,
                   fullName: dbAdmin.full_name || 'Administrator',
                   nisn: dbAdmin.nisn || 'admin',
-                  photoUrl: dbAdmin.photo_url || DEFAULT_PROFILE_IMAGES.ADMIN,
+                  photoUrl: resolveAdminPhoto(dbAdmin.photo_url, DEFAULT_PROFILE_IMAGES.ADMIN),
               };
           }
 

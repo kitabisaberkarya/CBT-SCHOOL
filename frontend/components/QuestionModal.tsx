@@ -14,6 +14,7 @@ interface QuestionModalProps {
 
 const QuestionModal: React.FC<QuestionModalProps> = ({ questionToEdit, onSave, onClose }) => {
   const [activeType, setActiveType] = useState<QuestionType>(questionToEdit?.type || 'multiple_choice');
+  const [soalImageUrl, setSoalImageUrl] = useState<string | null>(questionToEdit?.image || null);
   
   // Define initial state for reuse
   const initialFormData = {
@@ -199,6 +200,7 @@ const QuestionModal: React.FC<QuestionModalProps> = ({ questionToEdit, onSave, o
     const payload = {
       type: activeType,
       question: formData.question,
+      image: soalImageUrl || undefined,
       topic: formData.topic,
       difficulty: formData.difficulty as any,
       weight: formData.weight,
@@ -206,7 +208,7 @@ const QuestionModal: React.FC<QuestionModalProps> = ({ questionToEdit, onSave, o
       matchingRightOptions, // FIX: Include this in payload
       answerKey,
       metadata,
-      correctAnswerIndex: activeType === 'multiple_choice' ? formData.mcKey : 0 
+      correctAnswerIndex: activeType === 'multiple_choice' ? formData.mcKey : 0
     };
 
     onSave(questionToEdit ? { ...payload, id: questionToEdit.id } : payload, closeAfterSave);
@@ -514,13 +516,48 @@ const QuestionModal: React.FC<QuestionModalProps> = ({ questionToEdit, onSave, o
                     </div>
                     {/* Media buttons (Audio/Video) would go here */}
                 </div>
-                <RichTextEditor 
-                  value={formData.question} 
-                  onChange={(h) => setFormData(p => ({ ...p, question: h }))} 
+                <RichTextEditor
+                  value={formData.question}
+                  onChange={(h) => setFormData(p => ({ ...p, question: h }))}
                   onImageUpload={uploadImageAndGetUrl}
                   placeholder="Ketik instruksi soal di sini..."
                   height="h-64"
                 />
+                {/* Gambar soal (dari import Word atau upload manual) */}
+                {soalImageUrl && (
+                  <div className="mt-3 relative inline-block">
+                    <img
+                      src={soalImageUrl}
+                      alt="Gambar soal"
+                      className="max-h-48 rounded-lg border border-gray-200 shadow-sm object-contain"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setSoalImageUrl(null)}
+                      className="absolute -top-2 -right-2 bg-red-500 hover:bg-red-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold shadow"
+                      title="Hapus gambar"
+                    >✕</button>
+                  </div>
+                )}
+                {!soalImageUrl && (
+                  <label className="mt-2 inline-flex items-center gap-2 cursor-pointer text-xs text-blue-600 hover:text-blue-800">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          const url = await uploadImageAndGetUrl(file);
+                          if (url) setSoalImageUrl(url);
+                        }
+                        e.target.value = '';
+                      }}
+                    />
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                    Tambah Gambar Soal
+                  </label>
+                )}
             </section>
 
             {/* 4. Type Specific Editor */}

@@ -123,9 +123,14 @@ const TestScreen: React.FC<TestScreenProps> = ({ onFinishTest, user, onLogout, q
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'error'>('saved');
   const saveDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Current Question Sync Ref (untuk debounce)
+  const questionSyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // Timer Sync Refs (Mirror timeLeft untuk closure & beforeunload)
   const timeSyncIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const timeLeftRef = useRef<number>(durationMinutes * 60);
+  // answers ref agar sync interval bisa baca count terkini tanpa re-subscribe
+  const answersRef = useRef<Record<number, Answer>>({});
 
   // Matching Interaction State
   const [activeLeftPoint, setActiveLeftPoint] = useState<string | null>(null);
@@ -190,6 +195,9 @@ const TestScreen: React.FC<TestScreenProps> = ({ onFinishTest, user, onLogout, q
 
   const progressPercent = Math.round((answeredCount / questions.length) * 100);
 
+  // Sync answersRef agar interval timer dapat membaca count terkini
+  answersRef.current = answers;
+
   // --- Session Init ---
   useEffect(() => {
     const initSession = async () => {
@@ -218,24 +226,69 @@ const TestScreen: React.FC<TestScreenProps> = ({ onFinishTest, user, onLogout, q
                     setIsDisqualified(true);
                 }
 
-                // Restore jawaban - PRIORITAS DARI DATABASE SUPABASE
-                const { data: dbAnswers } = await supabase.from('student_answers').select('*').eq('session_id', session.id);
+                // Restore jawaban — DB adalah sumber kebenaran utama
+                const { data: dbAnswers } = await supabase
+                    .from('student_answers')
+                    .select('question_id, selected_answer_index, answer_value, is_unsure')
+                    .eq('session_id', session.id);
+
                 const restoredAnswers: Record<number, Answer> = {};
-                
+
                 if (dbAnswers && dbAnswers.length > 0) {
-                    dbAnswers.forEach(a => {
-                        // Support backward compatibility for 'answer_value' JSONB column vs legacy structure
-                        const val = a.answer_value || a.student_answer?.value;
-                        restoredAnswers[a.question_id] = { value: val, unsure: a.is_unsure };
+                    // Ada jawaban di DB — gunakan langsung
+                    dbAnswers.forEach((a: any) => {
+                        // Prioritas: selected_answer_index (angka bersih) → answer_value (JSONB)
+                        let val: any = null;
+                        if (a.selected_answer_index !== null && a.selected_answer_index !== undefined) {
+                            val = Number(a.selected_answer_index);
+                        } else if (a.answer_value !== null && a.answer_value !== undefined) {
+                            val = a.answer_value;
+                        }
+                        restoredAnswers[a.question_id] = { value: val, unsure: a.is_unsure ?? false };
                     });
                     setAnswers(restoredAnswers);
-                    // Update local storage to match DB (Single Source of Truth is DB)
-                    localStorage.setItem(storageKey, JSON.stringify(restoredAnswers));
                 } else {
-                    // Fallback to local only if DB is empty (rare case, maybe first load offline)
+                    // DB kosong → cek localStorage sebagai fallback darurat lalu sync ke DB
                     const local = localStorage.getItem(storageKey);
-                    if (local) setAnswers(JSON.parse(local));
+                    if (local) {
+                        try {
+                            const localAnswers: Record<number, Answer> = JSON.parse(local);
+                            setAnswers(localAnswers);
+                            // Sync localStorage → DB agar analisis bisa membaca
+                            const upsertBatch = Object.entries(localAnswers)
+                                .filter(([, ans]) => ans.value !== null && ans.value !== undefined)
+                                .map(([qId, ans]) => {
+                                    const val = ans.value;
+                                    const p: any = {
+                                        session_id: Number(session.id),
+                                        question_id: Number(qId),
+                                        is_unsure: ans.unsure ?? false,
+                                    };
+                                    if (typeof val === 'number' && Number.isInteger(val) && val >= 0) {
+                                        p.selected_answer_index = val;
+                                    } else {
+                                        p.selected_answer_index = null;
+                                    }
+                                    p.answer_value = (val === null || val === undefined) ? null
+                                        : typeof val === 'object' ? JSON.stringify(val)
+                                        : String(val);
+                                    return p;
+                                });
+                            if (upsertBatch.length > 0) {
+                                supabase.from('student_answers')
+                                    .upsert(upsertBatch, { onConflict: 'session_id,question_id' })
+                                    .then(({ error }) => {
+                                        if (error) console.warn('[Restore-Sync] localStorage→DB gagal:', error.message);
+                                        else console.log(`[Restore-Sync] ${upsertBatch.length} jawaban dari localStorage → DB`);
+                                    });
+                            }
+                        } catch {
+                            // localStorage corrupt
+                        }
+                    }
                 }
+                // Hapus localStorage — DB sudah menjadi sumber kebenaran
+                localStorage.removeItem(storageKey);
             }
         } catch (e) {
             console.error("Init error", e);
@@ -250,36 +303,47 @@ const TestScreen: React.FC<TestScreenProps> = ({ onFinishTest, user, onLogout, q
   const handleFinishExam = async () => {
       if (!sessionId) return;
       setIsSessionLoading(true);
-      setFinishConfirmOpen(false); // Close modal immediately
+      setFinishConfirmOpen(false);
 
       try {
-          // 1. Flush any pending saves (e.g. essay debounce)
+          // 1. Cancel any pending essay debounce
           if (saveDebounceRef.current) {
               clearTimeout(saveDebounceRef.current);
               saveDebounceRef.current = null;
-              // Force save current question immediately
-              const currentQ = questions[currentQuestionIndex];
-              const currentAns = answers[currentQ.id];
-              if (currentAns) {
-                  await saveToSupabase(currentQ.id, currentAns.value, currentAns.unsure);
+          }
+
+          // 2. CRITICAL: Batch flush SEMUA jawaban dari state ke DB
+          //    Ini memastikan tidak ada jawaban yang hilang meski save individual gagal
+          const answersSnapshot = { ...answers }; // snapshot sebelum async
+          const batchPayloads = Object.entries(answersSnapshot)
+              .filter(([, ans]) => ans.value !== null && ans.value !== undefined)
+              .map(([qId, ans]) => buildAnswerPayload(Number(qId), ans.value, ans.unsure ?? false));
+
+          if (batchPayloads.length > 0) {
+              const { error: batchErr } = await supabase.from('student_answers')
+                  .upsert(batchPayloads, { onConflict: 'session_id,question_id' });
+              if (batchErr) {
+                  console.error('[Finish] Batch flush error:', batchErr.message);
+                  // Tidak throw — lanjut submit meski ada error batch (jawaban mungkin sudah tersimpan sebagian)
+              } else {
+                  console.log(`[Finish] Batch flush OK: ${batchPayloads.length} jawaban disimpan ke DB.`);
               }
           }
 
-          // 2. Calculate Final Score
-          const finalScore = calculateScore(questions, answers);
+          // 3. Calculate Final Score
+          const finalScore = calculateScore(questions, answersSnapshot);
           console.log("Exam Finished. Final Score:", finalScore);
 
-          // 3. Submit Exam via RPC (Secure & Atomic)
+          // 4. Submit Exam via RPC (Secure & Atomic)
           const { error } = await supabase.rpc('submit_exam', {
               p_session_id: sessionId,
               p_score: finalScore
           });
-
           if (error) throw error;
 
-          // Clear local storage
+          // 5. Bersihkan localStorage (DB sudah jadi sumber kebenaran)
           localStorage.removeItem(storageKey);
-          
+
           onFinishTest();
       } catch (err: any) {
           console.error("Failed to finish exam:", err);
@@ -306,26 +370,47 @@ const TestScreen: React.FC<TestScreenProps> = ({ onFinishTest, user, onLogout, q
       });
     }, 1000);
 
-    // Sync sisa waktu ke DB setiap 60 detik
-    // 5000 siswa × 1 req/60det = ~83 req/det — aman untuk PostgreSQL
+    // Sync sisa waktu + progress ke DB setiap 30 detik
     timeSyncIntervalRef.current = setInterval(async () => {
       if (!sessionId || isDisqualified) return;
       try {
+        // answeredCount diakses via ref agar tidak perlu sessionId sebagai dependency
+        const answered = Object.values(answersRef.current).filter(a =>
+          a.value !== null && a.value !== undefined
+        ).length;
         await supabase.rpc('sync_time_left', {
           p_session_id:        Number(sessionId),
           p_time_left_seconds: timeLeftRef.current,
+          p_answered_count:    answered,
         });
       } catch (err) {
-        // Abaikan error — timer tetap jalan di client
         console.warn('[Timer-Sync] Gagal sinkronisasi waktu:', err);
       }
-    }, 60000);
+    }, 30000);
 
     return () => {
       clearInterval(timer);
       if (timeSyncIntervalRef.current) clearInterval(timeSyncIntervalRef.current);
     };
   }, [isSessionLoading, sessionId, isDisqualified]);
+
+  // Sync nomor soal yang sedang dikerjakan ke DB (debounced 800ms)
+  useEffect(() => {
+    if (!sessionId || isSessionLoading) return;
+    if (questionSyncTimerRef.current) clearTimeout(questionSyncTimerRef.current);
+    questionSyncTimerRef.current = setTimeout(() => {
+      supabase.from('student_exam_sessions')
+        .update({ current_question_number: currentQuestionIndex + 1 })
+        .eq('id', Number(sessionId))
+        .then(({ error }) => {
+          if (error) console.warn('[Q-Sync] Gagal sync nomor soal:', error.message);
+        });
+    }, 800);
+    return () => {
+      if (questionSyncTimerRef.current) clearTimeout(questionSyncTimerRef.current);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentQuestionIndex, sessionId, isSessionLoading]);
 
   // Sync waktu terakhir saat siswa menutup/refresh tab (gunakan sendBeacon agar terkirim)
   useEffect(() => {
@@ -445,26 +530,18 @@ const TestScreen: React.FC<TestScreenProps> = ({ onFinishTest, user, onLogout, q
       requestFullScreen(); // Coba paksa fullscreen lagi
   };
 
-  // --- Answer Update Logic (Robust Auto-Save) ---
-  
-  const saveToSupabase = async (qId: number, val: any, isUnsure: boolean) => {
-      if (!sessionId) {
-          console.error("No session ID found, cannot save answer.");
-          setSaveStatus('error');
-          return;
-      }
-      
-      setSaveStatus('saving');
-      
-      // Construct payload
+  // --- Answer Payload Builder ---
+  const buildAnswerPayload = (qId: number, val: any, isUnsure: boolean) => {
       const payload: any = {
           session_id: Number(sessionId),
           question_id: Number(qId),
-          student_answer: { value: val }, // JSONB: Preserves type (array, object, etc.)
-          is_unsure: isUnsure
+          is_unsure: isUnsure,
       };
-
-      // Handle answer_value (TEXT column) for quick viewing/debugging
+      if (typeof val === 'number' && Number.isInteger(val) && val >= 0) {
+          payload.selected_answer_index = val;
+      } else {
+          payload.selected_answer_index = null;
+      }
       if (val === null || val === undefined) {
           payload.answer_value = null;
       } else if (typeof val === 'object') {
@@ -472,35 +549,36 @@ const TestScreen: React.FC<TestScreenProps> = ({ onFinishTest, user, onLogout, q
       } else {
           payload.answer_value = String(val);
       }
+      return payload;
+  };
+
+  // --- Answer Update Logic — DB adalah sumber kebenaran utama ---
+  const saveToSupabase = async (qId: number, val: any, isUnsure: boolean) => {
+      if (!sessionId) {
+          console.error("[SAVE] sessionId null, jawaban tidak tersimpan.");
+          setSaveStatus('error');
+          return;
+      }
+
+      setSaveStatus('saving');
+      const payload = buildAnswerPayload(qId, val, isUnsure);
 
       // Retry Logic with Exponential Backoff
       const maxRetries = 3;
-      let attempt = 0;
-      let success = false;
-
-      while (attempt < maxRetries && !success) {
+      for (let attempt = 0; attempt < maxRetries; attempt++) {
           try {
-              // PENTING: Gunakan upsert dengan conflict target yang tepat
-              const { error } = await supabase.from('student_answers').upsert(payload, { 
-                  onConflict: 'session_id,question_id' 
+              const { error } = await supabase.from('student_answers').upsert(payload, {
+                  onConflict: 'session_id,question_id',
               });
-
-              if (error) {
-                  console.error(`[SAVE-ERROR] Attempt ${attempt + 1} failed:`, error.message, error.details, error.hint);
-                  throw error;
-              }
-              
-              success = true;
+              if (error) throw error;
               setSaveStatus('saved');
-              console.log(`[SAVE-SUCCESS] Question ${qId} saved.`);
+              return; // success
           } catch (err: any) {
-              attempt++;
-              if (attempt >= maxRetries) {
-                  console.error("[SAVE-FATAL] All save attempts failed:", err);
-                  setSaveStatus('error');
+              console.error(`[SAVE-ERROR] Attempt ${attempt + 1}:`, err?.message);
+              if (attempt < maxRetries - 1) {
+                  await new Promise(r => setTimeout(r, 500 * Math.pow(2, attempt)));
               } else {
-                  const delay = 500 * Math.pow(2, attempt - 1);
-                  await new Promise(resolve => setTimeout(resolve, delay));
+                  setSaveStatus('error');
               }
           }
       }
@@ -508,31 +586,27 @@ const TestScreen: React.FC<TestScreenProps> = ({ onFinishTest, user, onLogout, q
 
   const handleUpdateAnswer = async (qId: number, val: any, isUnsure?: boolean) => {
     if (isDisqualified) return;
-    
-    // 1. Optimistic Local Update (Instant UI Feedback)
+
+    // 1. Update state React (UI instan)
     let newUnsure = false;
     setAnswers(prev => {
         const current = prev[qId] || { value: null, unsure: false };
         newUnsure = isUnsure !== undefined ? isUnsure : current.unsure;
-        const newState = { 
-            ...prev, 
-            [qId]: { value: val, unsure: newUnsure } 
-        };
-        localStorage.setItem(storageKey, JSON.stringify(newState));
-        return newState;
+        return { ...prev, [qId]: { value: val, unsure: newUnsure } };
     });
 
-    // 2. Intelligent Auto-Save (Debounce for Essays, Instant for others)
+    // 2. Simpan ke DB — DB adalah sumber kebenaran, BUKAN localStorage
     const qType = questions.find(q => q.id === qId)?.type;
-    
+
     if (qType === 'essay') {
+        // Essay: debounce 1.5s agar tidak spam DB saat mengetik
         if (saveDebounceRef.current) clearTimeout(saveDebounceRef.current);
-        setSaveStatus('saving'); // Indicate pending
+        setSaveStatus('saving');
         saveDebounceRef.current = setTimeout(() => {
             saveToSupabase(qId, val, newUnsure);
-        }, 1500); // 1.5s delay for text input
+        }, 1500);
     } else {
-        // Immediate save for multiple choice / matching
+        // PG / Matching / dll: simpan langsung ke DB
         saveToSupabase(qId, val, newUnsure);
     }
   };

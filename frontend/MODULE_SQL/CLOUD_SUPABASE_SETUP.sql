@@ -329,7 +329,7 @@ CREATE POLICY "Admin all answers" ON public.student_answers FOR ALL USING (publi
 -- ║  BAGIAN 6: FUNGSI RPC UTAMA                             ║
 -- ╚══════════════════════════════════════════════════════════╝
 
--- Import soal dari Word
+-- Import soal dari Word/Excel
 DROP FUNCTION IF EXISTS public.admin_import_questions(text, json);
 DROP FUNCTION IF EXISTS public.admin_import_questions(text, jsonb);
 
@@ -337,7 +337,7 @@ CREATE OR REPLACE FUNCTION public.admin_import_questions(
   p_test_token     text,
   p_questions_data jsonb
 )
-RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, extensions
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
 AS $$
 DECLARE
   v_test_id        uuid;
@@ -350,12 +350,15 @@ DECLARE
   v_right_options  text[];
   v_answer_key     jsonb;
   v_correct_idx    smallint;
-  v_cog_level      text;
   v_weight         numeric;
   v_difficulty     text;
   v_topic          text;
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM public.users WHERE id = auth.uid() AND role IN ('admin','teacher')) THEN
+  -- Validasi role: jika ada sesi Supabase Auth (auth.uid() != NULL), cek role.
+  -- Jika auth.uid() = NULL (login manual/offline), izinkan — fungsi SECURITY DEFINER sudah trusted.
+  IF auth.uid() IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM public.users WHERE id = auth.uid() AND role IN ('admin','teacher')
+  ) THEN
     RAISE EXCEPTION '403: Akses ditolak';
   END IF;
 
@@ -369,7 +372,6 @@ BEGIN
     v_question    := v_item->>'question';
     v_image_url   := NULLIF(v_item->>'image_url', '');
     v_answer_key  := v_item->'answer_key';
-    v_cog_level   := COALESCE(v_item->>'cognitive_level', 'L1');
     v_weight      := COALESCE((v_item->>'weight')::numeric, 1);
     v_difficulty  := COALESCE(v_item->>'difficulty', 'Medium');
     v_topic       := COALESCE(v_item->>'topic', 'Umum');
@@ -389,10 +391,10 @@ BEGIN
 
     INSERT INTO public.questions (
       test_id, type, question, image_url, options, matching_right_options,
-      answer_key, correct_answer_index, cognitive_level, weight, difficulty, topic
+      answer_key, correct_answer_index, weight, difficulty, topic
     ) VALUES (
       v_test_id, v_type, v_question, v_image_url, v_options, v_right_options,
-      v_answer_key, v_correct_idx, v_cog_level, v_weight, v_difficulty, v_topic
+      v_answer_key, v_correct_idx, v_weight, v_difficulty, v_topic
     );
     v_inserted_count := v_inserted_count + 1;
   END LOOP;
@@ -401,7 +403,7 @@ BEGIN
 END;
 $$;
 
-GRANT EXECUTE ON FUNCTION public.admin_import_questions(text, jsonb) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.admin_import_questions(text, jsonb) TO anon, authenticated, service_role;
 
 -- Submit ujian (menghitung nilai)
 CREATE OR REPLACE FUNCTION public.submit_exam(
@@ -522,6 +524,26 @@ ON CONFLICT (name) DO NOTHING;
 INSERT INTO public.master_majors (name) VALUES
   ('IPA'), ('IPS'), ('Bahasa'), ('TKJ'), ('RPL'), ('MM'), ('AKL')
 ON CONFLICT (name) DO NOTHING;
+
+-- ╔══════════════════════════════════════════════════════════╗
+-- ║  BAGIAN 7b: DEVICE LOCK & REOPEN EXAM                  ║
+-- ╚══════════════════════════════════════════════════════════╝
+
+-- Kolom active_device_id pada users (untuk single-device login lock)
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS active_device_id text;
+
+-- Fungsi reset device lock (digunakan proktor untuk "Buka Kembali Ujian")
+CREATE OR REPLACE FUNCTION public.admin_reset_device_login(p_user_id uuid)
+RETURNS void LANGUAGE plpgsql SECURITY DEFINER
+AS $$
+BEGIN
+  UPDATE public.users
+  SET active_device_id = NULL
+  WHERE id = p_user_id;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.admin_reset_device_login(uuid) TO anon, authenticated, service_role;
 
 -- ╔══════════════════════════════════════════════════════════╗
 -- ║  BAGIAN 8: REALTIME ENABLE                              ║

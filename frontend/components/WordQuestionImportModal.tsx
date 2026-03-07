@@ -387,9 +387,10 @@ const WordQuestionImportModal: React.FC<WordQuestionImportModalProps> = ({ testT
       if (!isNaN(n) && n >= 1 && n <= 5) return n;
       const lo = trimmed.toLowerCase();
       if (lo.includes('kompleks') || lo.includes('complex')) return 2;
+      if (lo.includes('pg') && (lo.includes('+') || lo.includes('k'))) return 2; // PG+, PGK, PGKompleks
       if (lo.includes('jodoh') || lo.includes('pasang') || lo.includes('match')) return 3;
       if (lo.includes('benar') || lo.includes('salah') || lo.includes('true') || lo.includes('false') || lo.includes('b/s')) return 4;
-      if (lo.includes('essay') || lo.includes('uraian')) return 5;
+      if (lo.includes('essay') || lo.includes('uraian') || lo.includes('esai')) return 5;
       if (lo.includes('pg') || lo.includes('pilihan') || lo.includes('ganda') || lo.includes('multiple')) return 1;
       return NaN;
     };
@@ -426,7 +427,9 @@ const WordQuestionImportModal: React.FC<WordQuestionImportModalProps> = ({ testT
           cur = [r];
           groups.push(cur);
           prevNo = noVal;
-        } else if (cur) {
+        } else if (cur && (noVal === '' || /^\d+$/.test(noVal))) {
+          // Hanya append baris dengan NO kosong (baris opsi) atau angka (jarang)
+          // Skip baris dengan teks non-angka di NO (separator/divider rows)
           cur.push(r);
         }
       }
@@ -497,33 +500,73 @@ const WordQuestionImportModal: React.FC<WordQuestionImportModalProps> = ({ testT
         if (jenis === 1 || jenis === 2) {
           const opts: string[] = [];
           const correct: number[] = [];
-          rowIndices.forEach((r, i) => {
+          // Cek apakah kunci dianggap benar (berbagai varian tanda centang)
+          const isCorrectMark = (k: string) =>
+            k === 'V' || k === '✓' || k === '√' || k === '✔' || k === '☑' || k === '✅';
+
+          rowIndices.forEach((r) => {
             const jawaban = (textGrid[r][COL_JAWABAN] ?? '').trim();
             const kunci = (textGrid[r][COL_KUNCI] ?? '').trim().toUpperCase();
-            if (jawaban) { opts.push(jawaban); if (kunci === 'V' || kunci === '✓' || kunci === '√') correct.push(i); }
+            if (jawaban) {
+              const optIdx = opts.length; // indeks SEBELUM push
+              opts.push(jawaban);
+              if (isCorrectMark(kunci)) correct.push(optIdx);
+            }
           });
-          // Fallback: jika tidak ada 'V' ditemukan, cek apakah KUNCI berisi huruf opsi (A/B/C/D/E)
-          // Ini terjadi saat kolom KUNCI di-merge pada baris SOAL dan diisi huruf jawaban
+
+          // Fallback 1: tidak ada centang → cek apakah KUNCI berisi huruf opsi (A/B/C/D/E)
+          // Format ini terjadi saat kolom KUNCI diisi huruf jawaban (misal: "C" = pilih opsi C)
           if (correct.length === 0) {
             const kunciLetters = rowIndices
               .map(r => (textGrid[r][COL_KUNCI] ?? '').trim().toUpperCase())
               .filter(k => /^[A-E]$/.test(k));
             const uniqueLetters = [...new Set(kunciLetters)];
             if (uniqueLetters.length === 1) {
-              const optIdx = uniqueLetters[0].charCodeAt(0) - 65; // A=0,B=1,...
+              const optIdx = uniqueLetters[0].charCodeAt(0) - 65; // A=0, B=1, ...
               if (optIdx < opts.length) correct.push(optIdx);
             }
           }
-          // Fallback 2: jika semua kunci sama (merged "V") → ambil dari OPSI kolom jika ada huruf
+
+          // Fallback 3: KUNCI berisi TEKS jawaban yang benar (bukan centang, bukan huruf A-E)
+          // Format ini terjadi saat guru menulis teks kunci jawaban di kolom KUNCI
+          // Contoh: KUNCI="Saccharomyces cerevisiae" → cocokkan dengan teks di kolom JAWABAN
+          if (correct.length === 0 && opts.length > 0) {
+            const kunciTexts = rowIndices
+              .map(r => (textGrid[r][COL_KUNCI] ?? '').trim())
+              .filter(k => k !== '' && !isCorrectMark(k.toUpperCase()) && !/^[A-E]$/.test(k.toUpperCase()));
+            if (kunciTexts.length === 1) {
+              const target = kunciTexts[0].toLowerCase().trim();
+              // Normalisasi: hilangkan prefix huruf opsi "A. ", "A) " dll
+              const normalize = (s: string) => s.toLowerCase().trim().replace(/^[a-e][.)]\s*/i, '');
+              const targetNorm = normalize(kunciTexts[0]);
+              let matchIdx = opts.findIndex(opt => normalize(opt) === targetNorm);
+              // Jika tidak exact, coba partial match (hanya untuk teks >= 3 karakter)
+              if (matchIdx === -1 && targetNorm.length >= 3) {
+                matchIdx = opts.findIndex(opt => {
+                  const o = normalize(opt);
+                  return o.includes(targetNorm) || targetNorm.includes(o);
+                });
+              }
+              if (matchIdx !== -1) correct.push(matchIdx);
+            }
+          }
+
+          // Fallback 2: semua KUNCI sama (merged cell) → identifikasi opsi dari kolom OPSI
           if (correct.length > 1) {
             const allSame = new Set(rowIndices.map(r => (textGrid[r][COL_KUNCI] ?? '').trim().toUpperCase())).size === 1;
             if (allSame) {
-              // Semua baris dapat nilai yang sama dari merged cell — cari dari kolom OPSI
-              const opsiLetterIdx = rowIndices.findIndex(r => /^[A-E]$/.test((textGrid[r][COL_OPSI] ?? '').trim().toUpperCase()) &&
-                (textGrid[r][COL_KUNCI] ?? '').trim().toUpperCase() === 'V');
-              if (opsiLetterIdx !== -1) {
-                correct.length = 0;
-                correct.push(opsiLetterIdx);
+              const opsiLetterRowIdx = rowIndices.findIndex(r =>
+                /^[A-E]$/.test((textGrid[r][COL_OPSI] ?? '').trim().toUpperCase()) &&
+                isCorrectMark((textGrid[r][COL_KUNCI] ?? '').trim().toUpperCase())
+              );
+              if (opsiLetterRowIdx !== -1) {
+                let oi = 0;
+                const optsIdxMap: number[] = rowIndices.map((r) => {
+                  if ((textGrid[r][COL_JAWABAN] ?? '').trim()) return oi++;
+                  return -1;
+                });
+                const mappedIdx = optsIdxMap[opsiLetterRowIdx];
+                if (mappedIdx !== -1) { correct.length = 0; correct.push(mappedIdx); }
               }
             }
           }
@@ -531,7 +574,9 @@ const WordQuestionImportModal: React.FC<WordQuestionImportModalProps> = ({ testT
           qObj.options = opts;
           if (jenis === 1) {
             if (correct.length !== 1) {
-              errors.push(`Soal #${soalNo}: PG Biasa harus memiliki tepat 1 kunci (V). Ditemukan ${correct.length} kunci.`);
+              // Tampilkan nilai KUNCI aktual untuk membantu diagnosis template
+              const kunciActual = rowIndices.map(r => (textGrid[r][COL_KUNCI] ?? '').trim() || '(kosong)').join(' | ');
+              errors.push(`Soal #${soalNo}: PG Biasa harus memiliki tepat 1 kunci (V). Ditemukan ${correct.length} kunci. Nilai KUNCI: [${kunciActual}]`);
               return;
             }
             qObj.answer_key = { index: correct[0] };
