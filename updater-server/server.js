@@ -23,6 +23,36 @@ const DIST_DIR   = '/opt/cbt-enterprise/frontend/dist';
 const BACKUP_DIR = '/opt/cbt-enterprise/backups/dist';
 const TEMP_BASE  = '/tmp/cbt-updater';
 
+// ── DB CREDENTIALS (untuk SQL migration) ──────────────────────────────────
+function getDbCredentials() {
+  const envPath     = '/opt/cbt-enterprise/.env';
+  const composePath = '/opt/cbt-enterprise/supabase/docker-compose.yml';
+
+  let pgUser = 'postgres';
+  let pgDb   = 'postgres';
+  let pgPass = 'your-super-secret-and-long-postgres-password';
+
+  try {
+    if (fs.existsSync(envPath)) {
+      const env = fs.readFileSync(envPath, 'utf8');
+      const u = env.match(/^POSTGRES_USER=(.+)$/m);
+      const d = env.match(/^POSTGRES_DB=(.+)$/m);
+      if (u) pgUser = u[1].trim();
+      if (d) pgDb   = d[1].trim();
+    }
+  } catch {}
+
+  try {
+    if (fs.existsSync(composePath)) {
+      const compose = fs.readFileSync(composePath, 'utf8');
+      const p = compose.match(/POSTGRES_PASSWORD:\s*["']?([^"'\r\n]+)["']?/);
+      if (p) pgPass = p[1].trim();
+    }
+  } catch {}
+
+  return { pgUser, pgDb, pgPass };
+}
+
 // ── HELPERS ────────────────────────────────────────────────────────────────
 const CORS = {
   'Access-Control-Allow-Origin':  '*',
@@ -97,7 +127,7 @@ function downloadFile(url, dest, onProgress) {
 }
 
 // ── PROSES UPDATE ─────────────────────────────────────────────────────────
-async function applyUpdate(res, { download_url, version, release_notes }) {
+async function applyUpdate(res, { download_url, version, release_notes, sql_migration }) {
   const send = (step, percent, message, extra = {}) =>
     sendSSE(res, 'progress', { step, percent, message, ...extra });
 
@@ -150,16 +180,43 @@ async function applyUpdate(res, { download_url, version, release_notes }) {
     await runCmd(`rm -rf "${DIST_DIR}" && cp -r "${srcDir}" "${DIST_DIR}"`);
     send('applied', 92, 'File berhasil diterapkan.');
 
-    // ── 6. TULIS VERSION ───────────────────────────────────────────────
+    // ── 6. SQL MIGRATION ───────────────────────────────────────────────
+    if (sql_migration && sql_migration.trim().length > 0) {
+      send('sql_migration', 88, 'Menjalankan migrasi database...');
+      const sqlPath = path.join(tempDir, 'migration.sql');
+      try {
+        fs.writeFileSync(sqlPath, sql_migration, 'utf8');
+
+        // Pastikan container supabase-db berjalan
+        await runCmd("docker ps --format '{{.Names}}' | grep -q supabase-db");
+
+        const { pgUser, pgDb, pgPass } = getDbCredentials();
+        await runCmd(
+          `PGPASSWORD="${pgPass}" cat "${sqlPath}" | docker exec -i supabase-db psql` +
+          ` -U "${pgUser}" -d "${pgDb}" --set ON_ERROR_STOP=0 -q 2>&1 | head -20`
+        );
+        send('sql_migrated', 91, 'Migrasi database berhasil.');
+      } catch (sqlErr) {
+        // Non-fatal: update tetap dilanjutkan, hanya log peringatan
+        send('sql_warning', 91,
+          `Peringatan: Migrasi SQL tidak dapat dijalankan (${sqlErr.message.slice(0, 80)}). ` +
+          'Frontend tetap diupdate.'
+        );
+      }
+    } else {
+      send('sql_skip', 91, 'Tidak ada migrasi database untuk versi ini.');
+    }
+
+    // ── 7. TULIS VERSION ───────────────────────────────────────────────
     fs.writeFileSync(path.join(DIST_DIR, 'version.txt'), version, 'utf8');
     send('versioned', 94, `Versi ${version} dicatat.`);
 
-    // ── 7. RELOAD NGINX ────────────────────────────────────────────────
+    // ── 8. RELOAD NGINX ────────────────────────────────────────────────
     send('reloading', 97, 'Memuat ulang web server...');
     await runCmd('systemctl reload nginx 2>/dev/null || nginx -s reload 2>/dev/null || true');
     send('reloaded', 99, 'Web server siap.');
 
-    // ── 8. CLEANUP ─────────────────────────────────────────────────────
+    // ── 9. CLEANUP ─────────────────────────────────────────────────────
     await runCmd(`rm -rf "${tempDir}"`);
     // Pertahankan max 3 backup
     await runCmd(`ls -dt "${BACKUP_DIR}"/dist_v* 2>/dev/null | tail -n +4 | xargs rm -rf 2>/dev/null || true`);
@@ -212,6 +269,7 @@ const server = http.createServer((req, res) => {
         sendJSON(res, 400, { error: 'Field download_url dan version wajib diisi.' });
         return;
       }
+      // sql_migration opsional — boleh kosong/tidak ada
 
       // Setup SSE stream
       res.writeHead(200, {

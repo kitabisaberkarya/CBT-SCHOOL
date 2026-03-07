@@ -1,15 +1,16 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Download, RefreshCw, CheckCircle2, XCircle, ArrowUpCircle,
-  Shield, Zap, Package, HardDrive, Globe, Sparkles, X,
+  Shield, Zap, Package, HardDrive, Globe, Sparkles, X, Database,
 } from 'lucide-react';
 
 // ─── TYPES ──────────────────────────────────────────────────────────────────
 export interface UpdateInfo {
-  version:       string;
-  download_url:  string;
+  version:        string;
+  download_url:   string;
   release_notes?: string;
-  created_at?:   string;
+  sql_migration?: string;
+  created_at?:    string;
 }
 
 type UpdatePhase =
@@ -34,23 +35,25 @@ interface UpdateModalProps {
 
 // ─── STEP DEFINITION ────────────────────────────────────────────────────────
 const STEPS = [
-  { key: 'downloading', label: 'Mengunduh',   icon: Download    },
-  { key: 'verifying',   label: 'Verifikasi',  icon: Shield      },
-  { key: 'backup',      label: 'Backup',      icon: HardDrive   },
-  { key: 'extracting',  label: 'Ekstrak',     icon: Package     },
-  { key: 'applying',    label: 'Terapkan',    icon: Zap         },
-  { key: 'reloading',   label: 'Reload',      icon: Globe       },
+  { key: 'downloading',   label: 'Mengunduh',  icon: Download  },
+  { key: 'verifying',     label: 'Verifikasi', icon: Shield    },
+  { key: 'backup',        label: 'Backup',     icon: HardDrive },
+  { key: 'extracting',    label: 'Ekstrak',    icon: Package   },
+  { key: 'applying',      label: 'Terapkan',   icon: Zap       },
+  { key: 'sql_migration', label: 'Database',   icon: Database  },
+  { key: 'reloading',     label: 'Reload',     icon: Globe     },
 ];
 
 function getStepIndex(step: string): number {
   const map: Record<string, number> = {
-    downloading: 0, downloaded: 0,
-    verifying: 1,   verified: 1,
-    backup: 2,      backed_up: 2,
-    extracting: 3,  extracted: 3,
-    applying: 4,    applied: 4,    versioned: 4,
-    reloading: 5,   reloaded: 5,
-    done: 6,
+    downloading: 0,   downloaded: 0,
+    verifying: 1,     verified: 1,
+    backup: 2,        backed_up: 2,
+    extracting: 3,    extracted: 3,
+    applying: 4,      applied: 4,
+    sql_migration: 5, sql_migrated: 5, sql_warning: 5, sql_skip: 5, versioned: 5,
+    reloading: 6,     reloaded: 6,
+    done: 7,
   };
   return map[step] ?? -1;
 }
@@ -189,6 +192,7 @@ const UpdateModal: React.FC<UpdateModalProps> = ({
         download_url:  updateInfo.download_url,
         version:       updateInfo.version,
         release_notes: updateInfo.release_notes || '',
+        sql_migration: updateInfo.sql_migration  || '',
       }),
     }).then((res) => {
       if (!res.ok || !res.body) throw new Error(`Server error: ${res.status}`);
