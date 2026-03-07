@@ -138,6 +138,22 @@ const App: React.FC = () => {
   useEffect(() => {
     if (isConfigLoading) return;
 
+    // Cek session storage admin (restore setelah refresh)
+    try {
+        const adminSession = sessionStorage.getItem('cbt_admin_session');
+        if (adminSession) {
+            const user: User = JSON.parse(adminSession);
+            if (user.role === 'admin') {
+                setCurrentUser(user);
+                setAppState(AppState.ADMIN_DASHBOARD);
+                setIsAuthLoading(false);
+                return;
+            }
+        }
+    } catch(e) {
+        sessionStorage.removeItem('cbt_admin_session');
+    }
+
     // Cek session storage guru manual (Non-Supabase Auth — bcrypt GoTrue incompatible)
     try {
         const teacherSession = sessionStorage.getItem('cbt_teacher_session');
@@ -178,7 +194,7 @@ const App: React.FC = () => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (isBatchProcessing) return;
 
-      if (event === 'SIGNED_IN' && session?.user) {
+      if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session?.user) {
         // FAST PATH: Jika manual session sudah aktif (student/guru), skip event ini
         // untuk menghindari double DB fetch yang memperlambat
         try {
@@ -225,10 +241,11 @@ const App: React.FC = () => {
             nisn: 'N/A', class: 'Admin', major: 'System', religion: 'Islam', gender: 'Laki-laki', role: 'admin',
             photoUrl: resolveAdminPhoto(dbData?.photo_url, DEFAULT_PROFILE_IMAGES.ADMIN)
           };
+          sessionStorage.setItem('cbt_admin_session', JSON.stringify(adminUser));
           setCurrentUser(adminUser);
           setAppState(AppState.ADMIN_DASHBOARD);
 
-        } 
+        }
         // 2. GURU (TEACHER) - LOGIC DIPERBAIKI
         // Kita percayai role 'teacher' dari DB sepenuhnya, tanpa peduli format email.
         else if (dbRole === 'teacher') {
@@ -502,6 +519,7 @@ const App: React.FC = () => {
               };
           }
 
+          sessionStorage.setItem('cbt_admin_session', JSON.stringify(adminUser));
           setCurrentUser(adminUser);
           setAppState(AppState.ADMIN_DASHBOARD);
           setIsAuthLoading(false);
@@ -518,6 +536,7 @@ const App: React.FC = () => {
             nisn: 'GURU001', class: 'STAFF', major: 'GURU', religion: 'Islam', gender: 'Laki-laki', role: 'teacher',
             photoUrl: DEFAULT_PROFILE_IMAGES.ADMIN
           };
+          sessionStorage.setItem('cbt_teacher_session', JSON.stringify(teacherUser));
           setCurrentUser(teacherUser);
           setAppState(AppState.TEACHER_DASHBOARD);
           setIsAuthLoading(false);
