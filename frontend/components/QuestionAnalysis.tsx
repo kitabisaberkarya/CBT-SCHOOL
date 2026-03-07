@@ -18,6 +18,7 @@ const QuestionAnalysis: React.FC<QuestionAnalysisProps> = ({ tests, users }) => 
   const [fetchedQuestions, setFetchedQuestions] = useState<any[]>([]);
   // questionId → array of counts per option index
   const [realOptionCounts, setRealOptionCounts] = useState<Record<number, number[]> | null>(null);
+  const [answeredCountMap, setAnsweredCountMap] = useState<Record<number, number>>({});
 
   const testsArray = Array.from(tests.entries());
   const selectedTest = selectedToken ? tests.get(selectedToken) : null;
@@ -36,6 +37,7 @@ const QuestionAnalysis: React.FC<QuestionAnalysisProps> = ({ tests, users }) => 
       setRealOptionCounts(null);
       setTotalRespondents(0);
       setFetchedQuestions([]);
+      setAnsweredCountMap({});
 
       try {
         const testId = selectedTest.details.id;
@@ -94,7 +96,7 @@ const QuestionAnalysis: React.FC<QuestionAnalysisProps> = ({ tests, users }) => 
         // 4. Fetch all student answers
         const { data: answers, error: ansErr } = await supabase
           .from('student_answers')
-          .select('question_id, selected_answer_index')
+          .select('question_id, selected_answer_index, answer_value')
           .in('session_id', sessionIds);
 
         if (ansErr || !answers) {
@@ -104,20 +106,70 @@ const QuestionAnalysis: React.FC<QuestionAnalysisProps> = ({ tests, users }) => 
 
         // 5. Build optionCounts map per question (pre-filled with zeros)
         const optionCountMap: Record<number, number[]> = {};
+        const answeredCounts: Record<number, number> = {};
         questions.forEach((q: any) => {
           optionCountMap[q.id] = Array(q.options.length || 4).fill(0);
+          answeredCounts[q.id] = 0;
         });
 
-        // Tally
+        // Tally: tipe-aware parsing per question type
         answers.forEach((ans: any) => {
           const qId = ans.question_id;
-          const idx = ans.selected_answer_index;
-          if (optionCountMap[qId] !== undefined && idx >= 0 && idx < optionCountMap[qId].length) {
-            optionCountMap[qId][idx]++;
+          if (optionCountMap[qId] === undefined) return;
+          const q = questions.find((qq: any) => qq.id === qId);
+          if (!q) return;
+
+          // Prioritas 1: selected_answer_index eksplisit (PG biasa)
+          if (ans.selected_answer_index !== null && ans.selected_answer_index !== undefined) {
+            const idx = Number(ans.selected_answer_index);
+            if (idx >= 0 && idx < optionCountMap[qId].length) {
+              optionCountMap[qId][idx]++;
+              answeredCounts[qId]++;
+            }
+            return;
+          }
+
+          const rawVal = ans.answer_value;
+          if (rawVal === null || rawVal === undefined) return;
+          const rawStr = String(rawVal).trim();
+          if (!rawStr) return;
+
+          switch (q.type) {
+            case 'multiple_choice': {
+              const parsed = parseInt(rawStr, 10);
+              if (!isNaN(parsed) && parsed >= 0 && parsed < optionCountMap[qId].length) {
+                optionCountMap[qId][parsed]++;
+                answeredCounts[qId]++;
+              }
+              break;
+            }
+            case 'complex_multiple_choice': {
+              try {
+                const arr = JSON.parse(rawStr);
+                if (Array.isArray(arr) && arr.length > 0) {
+                  arr.forEach((i: any) => {
+                    const ni = Number(i);
+                    if (!isNaN(ni) && ni >= 0 && ni < optionCountMap[qId].length) {
+                      optionCountMap[qId][ni]++;
+                    }
+                  });
+                  answeredCounts[qId]++;
+                }
+              } catch { /* ignore */ }
+              break;
+            }
+            case 'true_false':
+            case 'matching':
+            case 'essay':
+            default: {
+              answeredCounts[qId]++;
+              break;
+            }
           }
         });
 
         setRealOptionCounts(optionCountMap);
+        setAnsweredCountMap(answeredCounts);
       } catch (err) {
         console.error('QuestionAnalysis fetch error:', err);
       } finally {
@@ -134,10 +186,17 @@ const QuestionAnalysis: React.FC<QuestionAnalysisProps> = ({ tests, users }) => 
 
     return fetchedQuestions.map((q: any) => {
       const optionCounts = realOptionCounts[q.id] ?? Array(q.options?.length ?? 0).fill(0);
-
+      const answeredCount = answeredCountMap[q.id] ?? 0;
       const correctAnswerIndex = q.correctAnswerIndex;
-      const correctCount = correctAnswerIndex >= 0 ? (optionCounts[correctAnswerIndex] ?? 0) : 0;
-      const difficulty = totalRespondents > 0 ? (correctCount / totalRespondents) * 100 : 0;
+
+      let difficulty: number;
+      if (q.type === 'multiple_choice' && correctAnswerIndex >= 0) {
+        const correctCount = optionCounts[correctAnswerIndex] ?? 0;
+        difficulty = totalRespondents > 0 ? (correctCount / totalRespondents) * 100 : 0;
+      } else {
+        // Untuk non-PG: tampilkan persentase partisipasi (menjawab)
+        difficulty = totalRespondents > 0 ? (answeredCount / totalRespondents) * 100 : 0;
+      }
 
       return {
         id: q.id,
@@ -145,12 +204,14 @@ const QuestionAnalysis: React.FC<QuestionAnalysisProps> = ({ tests, users }) => 
         image: q.image,
         optionImages: q.optionImages,
         options: q.options ?? [],
+        type: q.type,
         difficulty,
         optionCounts,
+        answeredCount,
         correctAnswerIndex,
       };
     });
-  }, [selectedTest, realOptionCounts, totalRespondents, fetchedQuestions]);
+  }, [selectedTest, realOptionCounts, answeredCountMap, totalRespondents, fetchedQuestions]);
 
   // ─── Excel Export ────────────────────────────────────────────────────────
   const handleDownloadExcel = async () => {
@@ -483,54 +544,81 @@ const QuestionAnalysis: React.FC<QuestionAnalysisProps> = ({ tests, users }) => 
                   dangerouslySetInnerHTML={{ __html: `${index + 1}. ${data.question}` }}
                 />
                 <div className="flex items-center gap-3 mb-4 text-sm flex-wrap">
-                  <span className="font-semibold text-gray-600">Tingkat Kesulitan:</span>
-                  <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${diffClass}`}>
-                    {data.difficulty.toFixed(1)}% Benar — {diffLabel}
-                  </span>
-                  <span className="text-gray-400 text-xs">
-                    ({data.correctAnswerIndex >= 0 ? data.optionCounts[data.correctAnswerIndex] ?? 0 : 0} dari {totalRespondents} siswa menjawab benar)
-                  </span>
+                  {data.type === 'multiple_choice' ? (
+                    <>
+                      <span className="font-semibold text-gray-600">Tingkat Kesulitan:</span>
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${diffClass}`}>
+                        {data.difficulty.toFixed(1)}% Benar — {diffLabel}
+                      </span>
+                      <span className="text-gray-400 text-xs">
+                        ({data.correctAnswerIndex >= 0 ? data.optionCounts[data.correctAnswerIndex] ?? 0 : 0} dari {totalRespondents} siswa menjawab benar)
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="font-semibold text-gray-600">Partisipasi:</span>
+                      <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-800">
+                        {data.difficulty.toFixed(1)}% menjawab
+                      </span>
+                      <span className="text-gray-400 text-xs">
+                        ({data.answeredCount} dari {totalRespondents} siswa)
+                      </span>
+                    </>
+                  )}
                 </div>
 
                 <div className="space-y-3">
                   <p className="font-semibold text-sm text-gray-600">Distribusi Jawaban:</p>
-                  {data.options.map((opt, optIndex) => {
-                    const count = data.optionCounts[optIndex] ?? 0;
-                    const percentage = totalRespondents > 0 ? (count / totalRespondents) * 100 : 0;
-                    const isCorrect = optIndex === data.correctAnswerIndex;
-                    const optionImage = data.optionImages?.[optIndex];
+                  {(data.type === 'multiple_choice' || data.type === 'complex_multiple_choice') && data.options.length > 0 ? (
+                    data.options.map((opt: string, optIndex: number) => {
+                      const count = data.optionCounts[optIndex] ?? 0;
+                      const percentage = totalRespondents > 0 ? (count / totalRespondents) * 100 : 0;
+                      const isCorrect = data.type === 'multiple_choice' && optIndex === data.correctAnswerIndex;
+                      const optionImage = data.optionImages?.[optIndex];
 
-                    return (
-                      <div key={optIndex} className="flex items-start text-sm mb-2 last:mb-0">
-                        <span className={`font-mono mr-3 w-5 flex-shrink-0 pt-1 ${isCorrect ? 'text-green-600 font-bold' : 'text-gray-500'}`}>
-                          {String.fromCharCode(65 + optIndex)}.
-                        </span>
-
-                        <div className="flex-grow">
-                          {optionImage && (
-                            <img
-                              src={optionImage}
-                              alt={`Opsi ${String.fromCharCode(65 + optIndex)}`}
-                              className="h-16 w-auto mb-2 rounded border border-gray-200 object-contain bg-white"
-                            />
-                          )}
-                          <div className="w-full bg-gray-200 rounded-full h-5 overflow-hidden relative">
-                            <div
-                              className={`h-full rounded-full transition-all duration-500 ${isCorrect ? 'bg-green-500' : 'bg-blue-400'}`}
-                              style={{ width: `${Math.max(percentage, 0)}%` }}
-                            />
-                            <div className="absolute inset-0 flex items-center pl-2 text-[10px] font-bold text-gray-700">
-                              {count} Siswa ({percentage.toFixed(0)}%)
+                      return (
+                        <div key={optIndex} className="flex items-start text-sm mb-2 last:mb-0">
+                          <span className={`font-mono mr-3 w-5 flex-shrink-0 pt-1 ${isCorrect ? 'text-green-600 font-bold' : 'text-gray-500'}`}>
+                            {String.fromCharCode(65 + optIndex)}.
+                          </span>
+                          <div className="flex-grow">
+                            {optionImage && (
+                              <img
+                                src={optionImage}
+                                alt={`Opsi ${String.fromCharCode(65 + optIndex)}`}
+                                className="h-16 w-auto mb-2 rounded border border-gray-200 object-contain bg-white"
+                              />
+                            )}
+                            <div className="w-full bg-gray-200 rounded-full h-5 overflow-hidden relative">
+                              <div
+                                className={`h-full rounded-full transition-all duration-500 ${isCorrect ? 'bg-green-500' : 'bg-blue-400'}`}
+                                style={{ width: `${Math.max(percentage, 0)}%` }}
+                              />
+                              <div className="absolute inset-0 flex items-center pl-2 text-[10px] font-bold text-gray-700">
+                                {count} Siswa ({percentage.toFixed(0)}%)
+                              </div>
                             </div>
+                            <p
+                              className="text-xs text-gray-500 mt-1"
+                              dangerouslySetInnerHTML={{ __html: opt }}
+                            />
                           </div>
-                          <p
-                            className="text-xs text-gray-500 mt-1"
-                            dangerouslySetInnerHTML={{ __html: opt }}
-                          />
                         </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })
+                  ) : (
+                    <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-700 flex items-center gap-2">
+                      <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <span>
+                        <strong>{data.answeredCount}</strong> dari <strong>{totalRespondents}</strong> siswa menjawab soal ini
+                        {data.type === 'true_false' && ' (Benar/Salah — cek jawaban per siswa di menu Analisa Jawaban)'}
+                        {data.type === 'matching' && ' (Menjodohkan — cek jawaban per siswa di menu Analisa Jawaban)'}
+                        {data.type === 'essay' && ' (Uraian — perlu koreksi manual)'}
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
             );

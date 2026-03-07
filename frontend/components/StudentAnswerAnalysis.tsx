@@ -14,7 +14,7 @@ interface StudentRow {
   fullName: string;
   studentClass: string;
   nisn: string;
-  answers: Record<number, number | null>; // questionId → selected_answer_index | null
+  answers: Record<number, { idx: number | null; raw: string | null }>; // questionId → answer
   submittedAt: string;
 }
 
@@ -106,7 +106,7 @@ const StudentAnswerAnalysis: React.FC<StudentAnswerAnalysisProps> = ({ tests, us
         // bukan di selected_answer_index. Kita harus cek ketiga kolom secara berurutan.
         const { data: answers, error: ansErr } = await supabase
           .from('student_answers')
-          .select('session_id, question_id, selected_answer_index, student_answer, answer_value')
+          .select('session_id, question_id, selected_answer_index, answer_value')
           .in('session_id', sessionIds);
 
         if (ansErr) {
@@ -114,35 +114,32 @@ const StudentAnswerAnalysis: React.FC<StudentAnswerAnalysisProps> = ({ tests, us
           return;
         }
 
-        // 5. Build answer map: sessionId → { questionId → answerIndex }
-        const answerMap: Record<string, Record<number, number | null>> = {};
+        // 5. Build answer map: sessionId → { questionId → {idx, raw} }
+        const answerMap: Record<string, Record<number, { idx: number | null; raw: string | null }>> = {};
         sessionIds.forEach((sid: string) => {
           answerMap[sid] = {};
-          parsedQuestions.forEach(q => { answerMap[sid][q.id] = null; });
+          parsedQuestions.forEach(q => { answerMap[sid][q.id] = { idx: null, raw: null }; });
         });
         (answers ?? []).forEach((ans: any) => {
           if (!answerMap[ans.session_id]) return;
 
           let idx: number | null = null;
+          let raw: string | null = null;
 
-          // Prioritas 1: selected_answer_index (kolom lama, mungkin tidak terisi)
+          // Prioritas 1: selected_answer_index (untuk soal PG)
           if (ans.selected_answer_index !== null && ans.selected_answer_index !== undefined) {
             idx = Number(ans.selected_answer_index);
           }
-          // Prioritas 2: student_answer.value (JSONB) — cara TestScreen menyimpan jawaban PG
-          else if (ans.student_answer?.value !== null && ans.student_answer?.value !== undefined) {
-            const v = ans.student_answer.value;
-            if (typeof v === 'number') idx = v;
-            else if (typeof v === 'string' && v !== '' && !isNaN(parseInt(v, 10))) idx = parseInt(v, 10);
-          }
-          // Prioritas 3: answer_value (TEXT/JSONB fallback)
-          else if (ans.answer_value !== null && ans.answer_value !== undefined) {
-            const v = ans.answer_value;
-            const parsed = typeof v === 'number' ? v : parseInt(String(v), 10);
-            if (!isNaN(parsed)) idx = parsed;
+          // Prioritas 2: answer_value — semua tipe jawaban
+          if (ans.answer_value !== null && ans.answer_value !== undefined) {
+            raw = String(ans.answer_value);
+            if (idx === null) {
+              const parsed = parseInt(raw, 10);
+              if (!isNaN(parsed)) idx = parsed;
+            }
           }
 
-          answerMap[ans.session_id][ans.question_id] = idx;
+          answerMap[ans.session_id][ans.question_id] = { idx, raw };
         });
 
         // 6. Build student rows with user info
@@ -197,9 +194,10 @@ const StudentAnswerAnalysis: React.FC<StudentAnswerAnalysisProps> = ({ tests, us
     let answered = 0;
     questions.forEach(q => {
       const ans = row.answers[q.id];
-      if (ans !== null && ans !== undefined) {
+      const hasAnswer = ans && (ans.idx !== null || ans.raw !== null);
+      if (hasAnswer) {
         answered++;
-        if (ans === q.correctAnswerIndex) correct++;
+        if (ans.idx !== null && ans.idx === q.correctAnswerIndex) correct++;
       }
     });
     const pct = questions.length > 0 ? (correct / questions.length) * 100 : 0;
@@ -213,15 +211,38 @@ const StudentAnswerAnalysis: React.FC<StudentAnswerAnalysisProps> = ({ tests, us
       let answered = 0;
       filteredRows.forEach(row => {
         const ans = row.answers[q.id];
-        if (ans !== null && ans !== undefined) {
+        const hasAnswer = ans && (ans.idx !== null || ans.raw !== null);
+        if (hasAnswer) {
           answered++;
-          if (ans === q.correctAnswerIndex) correct++;
+          if (ans.idx !== null && ans.idx === q.correctAnswerIndex) correct++;
         }
       });
       const pct = filteredRows.length > 0 ? (correct / filteredRows.length) * 100 : 0;
       return { correct, answered, pct };
     });
   }, [questions, filteredRows]);
+
+  // ─── Format display string per tipe soal ──────────────────────────────
+  const formatAnswerDisplay = (ans: { idx: number | null; raw: string | null }, q: QuestionMeta): string => {
+    if (ans.idx !== null) return String.fromCharCode(65 + ans.idx);
+    if (ans.raw === null) return '—';
+    switch (q.type) {
+      case 'complex_multiple_choice': {
+        try {
+          const arr = JSON.parse(ans.raw);
+          if (Array.isArray(arr) && arr.length > 0) {
+            return arr.map((i: number) => String.fromCharCode(65 + i)).join(',');
+          }
+        } catch { /* ignore */ }
+        return '✓';
+      }
+      case 'true_false':
+      case 'matching':
+      case 'essay':
+      default:
+        return '✓';
+    }
+  };
 
   // ─── Excel Export ─────────────────────────────────────────────────────
   const handleDownloadExcel = async () => {
@@ -307,7 +328,7 @@ const StudentAnswerAnalysis: React.FC<StudentAnswerAnalysisProps> = ({ tests, us
       const keyLabels: any[] = ['', 'KUNCI JAWABAN', '', ''];
       questions.forEach(q => {
         keyLabels.push(
-          q.correctAnswerIndex >= 0
+          q.type === 'multiple_choice' && q.correctAnswerIndex >= 0
             ? String.fromCharCode(65 + q.correctAnswerIndex)
             : '-'
         );
@@ -369,10 +390,13 @@ const StudentAnswerAnalysis: React.FC<StudentAnswerAnalysisProps> = ({ tests, us
         const rowValues: any[] = [rowIndex + 1, row.fullName, row.studentClass, row.nisn];
         questions.forEach(q => {
           const ans = row.answers[q.id];
-          if (ans === null || ans === undefined) {
+          const hasAnswer = ans && (ans.idx !== null || ans.raw !== null);
+          if (!hasAnswer) {
             rowValues.push('-');
+          } else if (ans.idx !== null) {
+            rowValues.push(String.fromCharCode(65 + ans.idx));
           } else {
-            rowValues.push(String.fromCharCode(65 + ans));
+            rowValues.push(formatAnswerDisplay(ans, q));
           }
         });
         rowValues.push(score.correct, parseFloat(score.pct.toFixed(1)));
@@ -402,15 +426,20 @@ const StudentAnswerAnalysis: React.FC<StudentAnswerAnalysisProps> = ({ tests, us
             const qIdx = colNo - FIXED_COLS - 1;
             const q = questions[qIdx];
             const ans = row.answers[q.id];
-            if (ans === null || ans === undefined) {
+            const hasAnswer = ans && (ans.idx !== null || ans.raw !== null);
+            if (!hasAnswer) {
               cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: C.gray100 } };
               cell.font = { size: 9, color: { argb: C.gray700 } };
-            } else if (ans === q.correctAnswerIndex) {
+            } else if (ans.idx !== null && ans.idx === q.correctAnswerIndex) {
               cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: C.lightGreen } };
               cell.font = { bold: true, size: 9, color: { argb: C.green } };
-            } else {
+            } else if (ans.idx !== null && ans.idx !== q.correctAnswerIndex) {
               cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: C.lightRed } };
               cell.font = { bold: true, size: 9, color: { argb: C.red } };
+            } else {
+              // Non-PG answered
+              cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: C.lightBlue } };
+              cell.font = { bold: true, size: 9, color: { argb: C.blue } };
             }
           } else if (colNo === FIXED_COLS + questions.length + 1) {
             // Jumlah Benar
@@ -649,7 +678,9 @@ const StudentAnswerAnalysis: React.FC<StudentAnswerAnalysisProps> = ({ tests, us
                   {questions.map(q => (
                     <th key={q.id}
                       className="px-1 py-2 text-center font-bold text-emerald-700 border border-gray-200 min-w-[32px]">
-                      {q.correctAnswerIndex >= 0 ? String.fromCharCode(65 + q.correctAnswerIndex) : '—'}
+                      {q.type === 'multiple_choice' && q.correctAnswerIndex >= 0
+                        ? String.fromCharCode(65 + q.correctAnswerIndex)
+                        : '—'}
                     </th>
                   ))}
                   <th className="px-2 py-2 border border-gray-200" colSpan={2} />
@@ -693,18 +724,26 @@ const StudentAnswerAnalysis: React.FC<StudentAnswerAnalysisProps> = ({ tests, us
                       </td>
                       {questions.map(q => {
                         const ans = row.answers[q.id];
-                        const isNull = ans === null || ans === undefined;
-                        const isCorrect = !isNull && ans === q.correctAnswerIndex;
+                        const hasAnswer = ans && (ans.idx !== null || ans.raw !== null);
+                        if (!hasAnswer) {
+                          return (
+                            <td key={q.id} className="px-1 py-1.5 text-center font-bold border border-gray-200 text-[11px] bg-gray-100 text-gray-400">
+                              —
+                            </td>
+                          );
+                        }
+                        const display = formatAnswerDisplay(ans, q);
+                        const isPg = q.type === 'multiple_choice';
+                        const isCorrect = isPg && ans.idx !== null && ans.idx === q.correctAnswerIndex;
+                        const isWrong = isPg && ans.idx !== null && ans.idx !== q.correctAnswerIndex;
                         return (
                           <td key={q.id}
                             className={`px-1 py-1.5 text-center font-bold border border-gray-200 text-[11px] ${
-                              isNull
-                                ? 'bg-gray-100 text-gray-400'
-                                : isCorrect
-                                ? 'bg-green-50 text-green-700'
-                                : 'bg-red-50 text-red-600'
+                              isCorrect ? 'bg-green-50 text-green-700' :
+                              isWrong   ? 'bg-red-50 text-red-600' :
+                                          'bg-blue-50 text-blue-700'
                             }`}>
-                            {isNull ? '—' : String.fromCharCode(65 + (ans as number))}
+                            {display}
                           </td>
                         );
                       })}
