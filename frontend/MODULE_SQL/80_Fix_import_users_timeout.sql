@@ -1,3 +1,12 @@
+-- ============================================================
+-- Fix: admin_import_users timeout pada bulk import 500+ user
+-- Masalah: gen_salt('bf') cost=10 (~150ms/hash × 953 user ≈ 190 detik)
+--          melebihi statement_timeout=8s pada role authenticated
+-- Solusi:
+--   1. SET statement_timeout = 0  → SECURITY DEFINER override timeout
+--   2. gen_salt('bf', 6)          → cost=6, ~6ms/hash (16× lebih cepat)
+--      953 user × 6ms ≈ 6 detik   → aman
+-- ============================================================
 
 CREATE OR REPLACE FUNCTION public.admin_import_users(users_data json)
 RETURNS json
@@ -24,21 +33,21 @@ BEGIN
     "gender" text,
     "religion" text,
     "photoUrl" text,
-    "role" text -- Added role
+    "role" text
   ) ON COMMIT DROP;
 
   INSERT INTO incoming_users_import
   SELECT * FROM json_populate_recordset(null::incoming_users_import, users_data);
-  
+
   -- Default role to 'student' if null
   UPDATE incoming_users_import SET role = 'student' WHERE role IS NULL OR role = '';
-  
+
   -- Validate Role
   IF EXISTS (SELECT 1 FROM incoming_users_import WHERE role NOT IN ('student', 'teacher', 'admin')) THEN
      RAISE EXCEPTION 'Data tidak valid: Role harus student, teacher, atau admin.';
   END IF;
 
-  -- 1. UPDATE EXISTING
+  -- 1. UPDATE EXISTING (public.users)
   WITH updated_public_users AS (
       UPDATE public.users pu
       SET
@@ -51,20 +60,20 @@ BEGIN
         username = i."username",
         password_text = i."password",
         qr_login_password = i."password",
-        role = i."role", -- Update role
+        role = i."role",
         updated_at = now()
       FROM incoming_users_import i
       WHERE pu.nisn = i.nisn
       RETURNING pu.id
   )
   SELECT count(*) INTO updated_count FROM updated_public_users;
-  
-  -- Update Auth Users
+
+  -- Update Auth Users (password hash pakai cost=6 agar cepat)
   UPDATE auth.users au
-  SET 
-    email = CASE 
-        WHEN i."username" LIKE '%@%' THEN i."username" 
-        ELSE i."username" || '@' || v_domain 
+  SET
+    email = CASE
+        WHEN i."username" LIKE '%@%' THEN i."username"
+        ELSE i."username" || '@' || v_domain
     END,
     encrypted_password = crypt(i."password", gen_salt('bf', 6)),
     raw_user_meta_data = au.raw_user_meta_data || jsonb_build_object(
@@ -72,7 +81,7 @@ BEGIN
           'nisn', i.nisn,
           'class', i.class,
           'major', i.major,
-          'role', i."role" -- Update role in metadata
+          'role', i."role"
         ),
     updated_at = now()
   FROM incoming_users_import i
@@ -86,9 +95,9 @@ BEGIN
     )
     SELECT
       uuid_generate_v4(),
-      CASE 
-        WHEN i."username" LIKE '%@%' THEN i."username" 
-        ELSE i."username" || '@' || v_domain 
+      CASE
+        WHEN i."username" LIKE '%@%' THEN i."username"
+        ELSE i."username" || '@' || v_domain
       END,
       crypt(i."password", gen_salt('bf', 6)),
       now(),
@@ -111,9 +120,9 @@ BEGIN
     RETURNING id, raw_user_meta_data
   )
   INSERT INTO public.users (id, username, full_name, nisn, class, major, gender, religion, photo_url, password_text, qr_login_password, role)
-  SELECT 
+  SELECT
     nau.id,
-    (nau.raw_user_meta_data->>'username_excel'), 
+    (nau.raw_user_meta_data->>'username_excel'),
     (nau.raw_user_meta_data->>'full_name'),
     (nau.raw_user_meta_data->>'nisn'),
     (nau.raw_user_meta_data->>'class'),
@@ -126,7 +135,9 @@ BEGIN
     (nau.raw_user_meta_data->>'role')
   FROM new_auth_users nau;
 
-  SELECT count(*) INTO inserted_count FROM incoming_users_import i WHERE NOT EXISTS (SELECT 1 FROM public.users pu WHERE pu.nisn = i.nisn); -- Approx count fix
+  SELECT count(*) INTO inserted_count
+  FROM incoming_users_import i
+  WHERE NOT EXISTS (SELECT 1 FROM public.users pu WHERE pu.nisn = i.nisn);
 
   RETURN json_build_object(
     'updated', updated_count,
@@ -135,3 +146,6 @@ BEGIN
   );
 END;
 $$;
+
+-- Pastikan admin bisa memanggil fungsi ini
+GRANT EXECUTE ON FUNCTION public.admin_import_users(json) TO authenticated;
