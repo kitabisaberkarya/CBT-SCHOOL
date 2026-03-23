@@ -6,33 +6,34 @@ import { Check } from 'lucide-react';
 import { PricingPlan } from '../types';
 
 const Pricing: React.FC = () => {
-  const { pricingPlans: pricingPlansID, contactInfo } = useContent();
+  const { pricingPlans: pricingPlansID, contacts } = useContent();
   const { t, language } = useLanguage();
+  const adminContact = contacts[0];
 
   const pricingPlans = language === 'id' ? pricingPlansID : PRICING_EN;
 
   const generateWaLink = (plan: PricingPlan) => {
     // Extract numbers only from the dynamic phone number in context
-    const cleanPhone = contactInfo.phone.replace(/\D/g, '');
+    const cleanPhone = adminContact.phone.replace(/\D/g, '');
     const phoneNumber = cleanPhone.startsWith('0') ? '62' + cleanPhone.slice(1) : cleanPhone;
     
-    // Default message template in ID
+    // Professional message template in ID
     let message = `Halo Admin CBT School,
 
-Saya tertarik dengan penawaran paket:
+Saya tertarik untuk mengetahui lebih lanjut mengenai layanan CBT School untuk paket:
 *${plan.name}*
-Harga: ${plan.price} ${plan.period}
 
-Mohon informasi lebih lanjut mengenai detail fitur dan prosedur pemesanannya.`;
+Mohon informasi mengenai penawaran harga terbaik dan detail implementasinya.
+Terima kasih.`;
 
     if (language === 'en') {
-        message = `Hello Admin CBT School,
+        message = `Hello CBT School Admin,
 
-I am interested in the package offer:
+I am interested in learning more about CBT School services for the package:
 *${plan.name}*
-Price: ${plan.price} ${plan.period}
 
-Please provide more information regarding feature details and ordering procedures.`;
+Please provide information regarding the best price offer and implementation details.
+Thank you.`;
     }
 
     return `https://wa.me/${phoneNumber}?text=${encodeURIComponent(message)}`;
@@ -70,9 +71,9 @@ Please provide more information regarding feature details and ordering procedure
 
               <div className="mb-8">
                 <h3 className="text-xl font-medium text-slate-600 dark:text-slate-300 mb-2">{plan.name}</h3>
-                <div className="flex items-baseline">
-                  <span className="text-4xl font-bold text-slate-900 dark:text-white">{plan.price}</span>
-                  <span className="text-slate-500 ml-2 text-sm">{plan.period}</span>
+                <div className="flex flex-col">
+                  <span className="text-3xl font-bold text-slate-900 dark:text-white">{plan.price}</span>
+                  <span className="text-slate-500 mt-1 text-sm">{plan.period}</span>
                 </div>
               </div>
 

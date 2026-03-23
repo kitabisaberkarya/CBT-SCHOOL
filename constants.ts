@@ -1,12 +1,24 @@
 import { Zap, Shield, Smartphone, QrCode, Activity, PieChart, Database, Server, UserCheck, Clock, FileText, Lock, Save, LayoutDashboard, Calendar, Users, Printer, Settings, HardDrive, BrainCircuit } from 'lucide-react';
-import { Feature, PricingPlan, ComparisonRow, DocItem, Client } from './types';
+import { Feature, PricingPlan, ComparisonRow, DocItem, Client, ContactInfo } from './types';
 
-export const COMPANY_CONTACT = {
-  name: "Ari Wijaya",
-  role: "Developer & Lead Consultant CBT SCHOOL",
-  phone: "0821-3489-4442",
-  whatsappUrl: "https://wa.me/6282134894442?text=Halo%20Admin%20CBT%20School,%20saya%20tertarik%20dengan%20penawaran%20aplikasi%20ini."
-};
+export const COMPANY_CONTACTS: ContactInfo[] = [
+  {
+    id: "c1",
+    name: "Ari Wijaya",
+    role: "Developer & Lead Consultant CBT SCHOOL",
+    phone: "0821-3489-4442",
+    whatsappUrl: "https://wa.me/6282134894442?text=Halo%20Admin%20CBT%20School,%20saya%20tertarik%20dengan%20penawaran%20aplikasi%20ini.",
+    imageUrl: "https://res.cloudinary.com/dt1nrarpq/image/upload/v1763714368/software-engineer_xgdvou.png"
+  },
+  {
+    id: "c2",
+    name: "Nudik Setyawan Purnomo",
+    role: "Marketing CBT SCHOOL",
+    phone: "+62 812-1606-7318",
+    whatsappUrl: "https://wa.me/6281216067318?text=Halo%20Pak%20Nudik,%20saya%20tertarik%20dengan%20penawaran%20aplikasi%20CBT%20School.",
+    imageUrl: "https://res.cloudinary.com/dt1nrarpq/image/upload/v1763714368/software-engineer_xgdvou.png" // Placeholder image
+  }
+];
 
 // Updated to a Kanban/Board style image
 export const INITIAL_HERO_IMAGE = "https://images.unsplash.com/photo-1531403009284-440f080d1e12?q=80&w=1740&auto=format&fit=crop";
@@ -65,11 +77,11 @@ export const FEATURES_DATA: Feature[] = [
 export const PRICING_DATA: PricingPlan[] = [
   {
     name: "Sistem Sewa (SaaS)",
-    price: "Rp 2.000",
-    period: "/ siswa / event",
+    price: "Harga Spesial",
+    period: "Hubungi Kami",
     type: "sewa",
     isRecommended: false,
-    ctaText: "Pilih Sewa",
+    ctaText: "Tanya Harga",
     features: [
       "Tanpa biaya server bulanan",
       "Hosting Gratis (High Performance)",
@@ -81,11 +93,11 @@ export const PRICING_DATA: PricingPlan[] = [
   },
   {
     name: "Paket Permanen (Aplikasi Online)",
-    price: "Rp 5.500.000",
-    period: "1x Bayar (Lifetime)",
+    price: "Investasi Terbaik",
+    period: "Hubungi Kami",
     type: "beli",
     isRecommended: true,
-    ctaText: "Hubungi untuk Beli",
+    ctaText: "Hubungi untuk Penawaran",
     features: [
       "Aplikasi Siap Pakai Online",
       "Sekali bayar untuk selamanya",

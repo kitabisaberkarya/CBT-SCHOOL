@@ -38,3 +38,12 @@ export interface Client {
   name: string;
   logoUrl: string;
 }
+
+export interface ContactInfo {
+  id: string;
+  name: string;
+  role: string;
+  phone: string;
+  whatsappUrl: string;
+  imageUrl?: string;
+}

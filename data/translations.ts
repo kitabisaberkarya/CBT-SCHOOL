@@ -9,12 +9,13 @@ export const translations = {
       details: 'Keunggulan',
       pricing: 'Harga',
       contact: 'Kontak',
+      download: 'Download',
       offer: 'Penawaran',
       viewOffer: 'Lihat Penawaran'
     },
     hero: {
       tag: 'Solusi Ujian Digital Masa Depan',
-      cta_primary: 'Lihat Harga',
+      cta_primary: 'Lihat Penawaran',
       cta_secondary: 'Hubungi Kami',
       system_status: 'Status Sistem',
       online_secure: '100% Online & Aman',
@@ -80,6 +81,7 @@ export const translations = {
       details: 'Why Us',
       pricing: 'Pricing',
       contact: 'Contact',
+      download: 'Download',
       offer: 'Get Offer',
       viewOffer: 'View Offers'
     },
@@ -88,7 +90,7 @@ export const translations = {
       subtitle: 'Efficient, Secure, Integrity-First',
       description: 'Transform your school evaluation system with a modern, web-based digital exam platform. Supports thousands of students with advanced anti-cheat and auto-analysis.',
       tag: 'Future-Ready Digital Exam Solution',
-      cta_primary: 'See Pricing',
+      cta_primary: 'View Offers',
       cta_secondary: 'Contact Us',
       system_status: 'System Status',
       online_secure: '100% Online & Secure',
@@ -324,11 +326,11 @@ export const ADMIN_DOCS_EN: DocItem[] = [
 export const PRICING_EN: PricingPlan[] = [
   {
     name: "Rental System (SaaS)",
-    price: "Rp 2,000",
-    period: "/ student / event",
+    price: "Special Price",
+    period: "Contact Us",
     type: "sewa",
     isRecommended: false,
-    ctaText: "Choose Rental",
+    ctaText: "Ask for Price",
     features: [
       "No monthly server fees",
       "Free Hosting (High Performance)",
@@ -340,11 +342,11 @@ export const PRICING_EN: PricingPlan[] = [
   },
   {
     name: "Permanent Package (Lifetime)",
-    price: "Rp 5,500,000",
-    period: "One-time Payment",
+    price: "Best Investment",
+    period: "Contact Us",
     type: "beli",
     isRecommended: true,
-    ctaText: "Contact to Buy",
+    ctaText: "Contact for Quote",
     features: [
       "Ready-to-use Online Application",
       "Pay once for lifetime",

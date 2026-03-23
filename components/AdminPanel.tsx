@@ -4,9 +4,9 @@ import { useContent } from '../context/ContentContext';
 import { supabase } from '../lib/supabaseClient';
 import { 
   X, Image, Save, Lock, LayoutDashboard, Type, 
-  CreditCard, Phone, List, Layers, LogOut, Upload, Loader2, Trash2, Plus, Video, Users, ArrowLeft, Menu, Images
+  CreditCard, Phone, List, Layers, LogOut, Upload, Loader2, Trash2, Plus, Video, Users, ArrowLeft, Menu, Images, User
 } from 'lucide-react';
-import { Feature, DocItem, PricingPlan } from '../types';
+import { Feature, DocItem, PricingPlan, ContactInfo } from '../types';
 
 type TabId = 'dashboard' | 'hero' | 'features' | 'docs' | 'pricing' | 'contact' | 'clients';
 
@@ -22,7 +22,7 @@ const AdminPanel: React.FC = () => {
     studentDocs, updateStudentDoc,
     adminDocs, updateAdminDoc,
     pricingPlans, updatePricingPlan,
-    contactInfo, updateContactInfo,
+    contacts, updateContact,
     clients, addClient, deleteClient,
     uploadImage,
     loading
@@ -58,7 +58,7 @@ const AdminPanel: React.FC = () => {
   const [localStudentDocs, setLocalStudentDocs] = useState<DocItem[]>(studentDocs);
   const [localAdminDocs, setLocalAdminDocs] = useState<DocItem[]>(adminDocs);
   const [localPricing, setLocalPricing] = useState<PricingPlan[]>(pricingPlans);
-  const [localContact, setLocalContact] = useState(contactInfo);
+  const [localContacts, setLocalContacts] = useState(contacts);
 
   // Sync Context to Local State
   useEffect(() => {
@@ -70,9 +70,9 @@ const AdminPanel: React.FC = () => {
       setLocalStudentDocs(studentDocs);
       setLocalAdminDocs(adminDocs);
       setLocalPricing(pricingPlans);
-      setLocalContact(contactInfo);
+      setLocalContacts(contacts);
     }
-  }, [loading, heroContent, heroImage, heroImage2, heroImage3, heroVideo, features, studentDocs, adminDocs, pricingPlans, contactInfo]);
+  }, [loading, heroContent, heroImage, heroImage2, heroImage3, heroVideo, features, studentDocs, adminDocs, pricingPlans, contacts]);
 
   // Cek sesi
   useEffect(() => {
@@ -196,10 +196,13 @@ const AdminPanel: React.FC = () => {
      } catch(e) { alert("Gagal menyimpan harga."); }
   };
 
-  const handleSaveContact = async () => {
+  const handleSaveContact = async (id: string) => {
     try {
-      await updateContactInfo(localContact);
-      alert("Kontak berhasil disimpan!");
+      const contact = localContacts.find(c => c.id === id);
+      if (contact) {
+        await updateContact(id, contact);
+        alert("Kontak berhasil disimpan!");
+      }
     } catch(e) { alert("Gagal menyimpan kontak."); }
   };
 
@@ -1050,46 +1053,90 @@ const AdminPanel: React.FC = () => {
             
             {/* CONTACT */}
             {activeTab === 'contact' && (
-                <div className="space-y-8 animate-fade-in max-w-2xl mx-auto">
-                  <div className="bg-slate-800/40 p-8 rounded-3xl border border-white/5 space-y-6">
-                    <div className="flex items-center justify-between">
-                       <h2 className="text-xl font-bold text-white">Kontak Personal</h2>
-                       <button 
-                         onClick={handleSaveContact}
-                         className="bg-green-600 hover:bg-green-500 text-white px-5 py-2 rounded-lg font-bold flex items-center text-sm"
-                       >
-                         <Save size={16} className="mr-2" /> Simpan
-                       </button>
-                    </div>
-                    
-                    <div className="space-y-4">
-                       <div>
-                         <label className="block text-xs font-bold uppercase text-slate-500 mb-2 ml-1">Nama Lengkap</label>
-                         <input 
-                           value={localContact.name}
-                           onChange={(e) => setLocalContact({...localContact, name: e.target.value})}
-                           className="w-full bg-slate-950/50 border border-white/10 rounded-xl px-5 py-3 text-white focus:border-secondary transition-colors"
-                         />
-                       </div>
-                       <div>
-                         <label className="block text-xs font-bold uppercase text-slate-500 mb-2 ml-1">Jabatan / Role</label>
-                         <input 
-                           value={localContact.role}
-                           onChange={(e) => setLocalContact({...localContact, role: e.target.value})}
-                           className="w-full bg-slate-950/50 border border-white/10 rounded-xl px-5 py-3 text-white focus:border-secondary transition-colors"
-                         />
-                       </div>
-                       <div>
-                         <label className="block text-xs font-bold uppercase text-slate-500 mb-2 ml-1">Nomor WhatsApp</label>
-                         <input 
-                           value={localContact.phone}
-                           onChange={(e) => setLocalContact({...localContact, phone: e.target.value})}
-                           className="w-full bg-slate-950/50 border border-white/10 rounded-xl px-5 py-3 text-white focus:border-secondary transition-colors"
-                           placeholder="Contoh: 0821-xxxx-xxxx"
-                         />
-                         <p className="text-[10px] text-slate-500 mt-2 ml-1">*Nomor ini akan digunakan untuk link WA otomatis.</p>
-                       </div>
-                    </div>
+                <div className="space-y-8 animate-fade-in max-w-4xl mx-auto">
+                  <div className="grid md:grid-cols-2 gap-6">
+                    {localContacts.map((contact, idx) => (
+                      <div key={contact.id} className="bg-slate-800/40 p-8 rounded-3xl border border-white/5 space-y-6 relative overflow-hidden">
+                        <div className="absolute top-0 left-0 w-1 h-full bg-secondary"></div>
+                        <div className="flex items-center justify-between">
+                           <h2 className="text-xl font-bold text-white">Kontak {idx === 0 ? 'Admin' : 'Marketing'}</h2>
+                           <button 
+                             onClick={() => handleSaveContact(contact.id)}
+                             className="bg-green-600 hover:bg-green-500 text-white px-5 py-2 rounded-lg font-bold flex items-center text-sm transition-colors"
+                           >
+                             <Save size={16} className="mr-2" /> Simpan
+                           </button>
+                        </div>
+                        
+                        <div className="space-y-4">
+                           <div className="flex justify-center mb-4">
+                              <div className="relative group">
+                                 <div className="w-24 h-24 rounded-2xl bg-slate-950 border border-white/10 overflow-hidden flex items-center justify-center">
+                                    {uploadingState.isUploading && uploadingState.id === `contact_img_${contact.id}` ? (
+                                       <Loader2 className="animate-spin text-white" />
+                                    ) : contact.imageUrl ? (
+                                       <img src={contact.imageUrl} alt="Profile" className="w-full h-full object-cover" />
+                                    ) : (
+                                       <User size={32} className="text-slate-700" />
+                                    )}
+                                 </div>
+                                 <input 
+                                    type="file"
+                                    title="Upload Foto"
+                                    onChange={(e) => handleFileUpload(e, 'contacts', (url) => {
+                                       const newContacts = [...localContacts];
+                                       newContacts[idx].imageUrl = url;
+                                       setLocalContacts(newContacts);
+                                    }, `contact_img_${contact.id}`)}
+                                    className="absolute inset-0 opacity-0 cursor-pointer z-10"
+                                 />
+                                 <div className="absolute -bottom-2 -right-2 bg-secondary p-2 rounded-lg text-white shadow-lg pointer-events-none">
+                                    <Upload size={14} />
+                                 </div>
+                              </div>
+                           </div>
+
+                           <div>
+                             <label className="block text-xs font-bold uppercase text-slate-500 mb-2 ml-1">Nama Lengkap</label>
+                             <input 
+                               value={contact.name}
+                               onChange={(e) => {
+                                  const newContacts = [...localContacts];
+                                  newContacts[idx].name = e.target.value;
+                                  setLocalContacts(newContacts);
+                               }}
+                               className="w-full bg-slate-950/50 border border-white/10 rounded-xl px-5 py-3 text-white focus:border-secondary transition-colors"
+                             />
+                           </div>
+                           <div>
+                             <label className="block text-xs font-bold uppercase text-slate-500 mb-2 ml-1">Jabatan / Role</label>
+                             <input 
+                               value={contact.role}
+                               onChange={(e) => {
+                                  const newContacts = [...localContacts];
+                                  newContacts[idx].role = e.target.value;
+                                  setLocalContacts(newContacts);
+                               }}
+                               className="w-full bg-slate-950/50 border border-white/10 rounded-xl px-5 py-3 text-white focus:border-secondary transition-colors"
+                             />
+                           </div>
+                           <div>
+                             <label className="block text-xs font-bold uppercase text-slate-500 mb-2 ml-1">Nomor WhatsApp</label>
+                             <input 
+                               value={contact.phone}
+                               onChange={(e) => {
+                                  const newContacts = [...localContacts];
+                                  newContacts[idx].phone = e.target.value;
+                                  setLocalContacts(newContacts);
+                               }}
+                               className="w-full bg-slate-950/50 border border-white/10 rounded-xl px-5 py-3 text-white focus:border-secondary transition-colors"
+                               placeholder="Contoh: 0821-xxxx-xxxx"
+                             />
+                             <p className="text-[10px] text-slate-500 mt-2 ml-1">*Nomor ini akan digunakan untuk link WA otomatis.</p>
+                           </div>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
             )}

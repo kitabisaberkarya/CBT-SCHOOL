@@ -4,8 +4,9 @@ import { useLanguage } from '../context/LanguageContext';
 import { Calendar } from 'lucide-react';
 
 const CTA: React.FC = () => {
-  const { contactInfo } = useContent();
+  const { contacts } = useContent();
   const { t } = useLanguage();
+  const adminContact = contacts[0];
 
   return (
     <section className="py-24 relative overflow-hidden">
@@ -22,7 +23,7 @@ const CTA: React.FC = () => {
         
         <div className="flex flex-col sm:flex-row justify-center gap-4">
           <a 
-            href={contactInfo.whatsappUrl}
+            href={adminContact.whatsappUrl}
             target="_blank"
             rel="noreferrer"
             className="bg-white text-primary hover:bg-slate-100 px-8 py-4 rounded-full font-bold transition-all shadow-xl flex items-center justify-center group"
@@ -35,7 +36,7 @@ const CTA: React.FC = () => {
             {t('cta.btn_wa')}
           </a>
           <a 
-            href={contactInfo.whatsappUrl}
+            href={adminContact.whatsappUrl}
             target="_blank"
             rel="noreferrer"
             className="bg-secondary/20 backdrop-blur-md border border-white/30 text-white hover:bg-secondary/30 px-8 py-4 rounded-full font-bold transition-all flex items-center justify-center"

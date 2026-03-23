@@ -18,6 +18,7 @@ import Contact from './components/Contact';
 import Footer from './components/Footer';
 import FloatingWA from './components/FloatingWA';
 import AdminPanel from './components/AdminPanel';
+import Downloads from './components/Downloads';
 
 function App() {
   useEffect(() => {
@@ -43,6 +44,8 @@ function App() {
               <Clients />
               {/* Menu: Dokumentasi */}
               <FeatureDocs />
+              {/* Menu: Download Resource */}
+              <Downloads />
               {/* Menu: Keunggulan (Why Choose Us) */}
               <Details />
               {/* Menu: Harga */}

@@ -1,14 +1,14 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { supabase } from '../lib/supabaseClient';
-import { Feature, DocItem, PricingPlan, Client } from '../types';
+import { Feature, DocItem, PricingPlan, Client, ContactInfo } from '../types';
 import { 
   FEATURES_DATA, 
   STUDENT_MODULE_DOCS, 
   ADMIN_MODULE_DOCS, 
   INITIAL_HERO_IMAGE,
   PRICING_DATA,
-  COMPANY_CONTACT,
+  COMPANY_CONTACTS,
   CLIENTS_DATA
 } from '../constants';
 
@@ -17,13 +17,6 @@ interface HeroContent {
   subtitle: string;
   description: string;
   ctaText: string;
-}
-
-interface ContactInfo {
-  name: string;
-  role: string;
-  phone: string;
-  whatsappUrl: string;
 }
 
 interface ContentContextType {
@@ -53,8 +46,8 @@ interface ContentContextType {
   updatePricingPlan: (index: number, updates: Partial<PricingPlan>) => void;
   
   // Contact
-  contactInfo: ContactInfo;
-  updateContactInfo: (updates: Partial<ContactInfo>) => void;
+  contacts: ContactInfo[];
+  updateContact: (id: string, updates: Partial<ContactInfo>) => void;
 
   // Clients
   clients: Client[];
@@ -95,7 +88,7 @@ export const ContentProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [pricingPlans, setPricingPlans] = useState<PricingPlan[]>(PRICING_DATA);
 
   // 4. Contact
-  const [contactInfo, setContactInfoState] = useState<ContactInfo>(COMPANY_CONTACT);
+  const [contacts, setContacts] = useState<ContactInfo[]>(COMPANY_CONTACTS);
 
   // 5. Clients
   const [clients, setClients] = useState<Client[]>(CLIENTS_DATA);
@@ -126,14 +119,20 @@ export const ContentProvider: React.FC<{ children: React.ReactNode }> = ({ child
       }
 
       // 2. Fetch Contact
-      const { data: contactData } = await supabase.from('contact').select('*').single();
-      if (contactData) {
-        setContactInfoState({
-          name: contactData.name,
-          role: contactData.role,
-          phone: contactData.phone,
-          whatsappUrl: generateWaUrl(contactData.phone)
-        });
+      const { data: contactData } = await supabase.from('contact').select('*').order('id', { ascending: true });
+      if (contactData && contactData.length > 0) {
+        setContacts(prev => prev.map((item, idx) => {
+          const dbItem = contactData[idx];
+          if (!dbItem) return item;
+          return {
+            ...item,
+            name: dbItem.name,
+            role: dbItem.role,
+            phone: dbItem.phone,
+            whatsappUrl: generateWaUrl(dbItem.phone),
+            imageUrl: dbItem.image_url || item.imageUrl
+          };
+        }));
       }
 
       // 3. Fetch Features
@@ -280,18 +279,23 @@ export const ContentProvider: React.FC<{ children: React.ReactNode }> = ({ child
     await supabase.from('pricing').update(dbPayload).eq('id', dbId);
   };
 
-  const updateContactInfo = async (updates: Partial<ContactInfo>) => {
-    let newInfo = { ...contactInfo, ...updates };
-    if (updates.phone) {
-      newInfo.whatsappUrl = generateWaUrl(updates.phone);
-    }
-    setContactInfoState(newInfo);
+  const updateContact = async (id: string, updates: Partial<ContactInfo>) => {
+    setContacts(prev => prev.map(c => {
+      if (c.id !== id) return c;
+      const newInfo = { ...c, ...updates };
+      if (updates.phone) {
+        newInfo.whatsappUrl = generateWaUrl(updates.phone);
+      }
+      return newInfo;
+    }));
 
-    await supabase.from('contact').update({
-      name: newInfo.name,
-      role: newInfo.role,
-      phone: newInfo.phone
-    }).eq('id', 1);
+    const dbPayload: any = {};
+    if (updates.name) dbPayload.name = updates.name;
+    if (updates.role) dbPayload.role = updates.role;
+    if (updates.phone) dbPayload.phone = updates.phone;
+    if (updates.imageUrl) dbPayload.image_url = updates.imageUrl;
+
+    await supabase.from('contact').update(dbPayload).eq('id', id === 'c1' ? 1 : 2);
   };
 
   const addClient = async (name: string, logoUrl: string) => {
@@ -344,7 +348,7 @@ export const ContentProvider: React.FC<{ children: React.ReactNode }> = ({ child
       studentDocs, updateStudentDoc,
       adminDocs, updateAdminDoc,
       pricingPlans, updatePricingPlan,
-      contactInfo, updateContactInfo,
+      contacts, updateContact,
       clients, addClient, deleteClient,
       isAdminOpen, setIsAdminOpen,
       uploadImage
