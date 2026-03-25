@@ -1,4 +1,4 @@
-import { Zap, Shield, Smartphone, QrCode, Activity, PieChart, Database, BrainCircuit, UserCheck, FileText, LayoutDashboard, Save, Printer } from 'lucide-react';
+import { Zap, Shield, Smartphone, QrCode, Activity, PieChart, Database, BrainCircuit, UserCheck, FileText, LayoutDashboard, Save, Printer, Settings, Globe, Network, HardDrive, Cpu } from 'lucide-react';
 import { Feature, DocItem, PricingPlan, ComparisonRow } from '../types';
 
 export const translations = {
@@ -37,6 +37,7 @@ export const translations = {
       desc: 'Pelajari detail kemampuan aplikasi CBT School baik dari sisi Siswa maupun Administrator.',
       tab_student: 'Modul Siswa',
       tab_admin: 'Modul Admin',
+      tab_network: 'Menu Konfigurasi Jaringan',
       tech_specs: 'Spesifikasi Teknis'
     },
     details: {
@@ -112,6 +113,7 @@ export const translations = {
       desc: 'Explore the capabilities of CBT School application for both Students and Administrators.',
       tab_student: 'Student Module',
       tab_admin: 'Admin Module',
+      tab_network: 'Network Configuration Menu',
       tech_specs: 'Technical Specifications'
     },
     details: {
@@ -372,4 +374,84 @@ export const DETAILS_TECH_EN = [
   { name: "PostgreSQL", icon: Database, desc: "Cloud Database (>5000 Students)" },
   { name: "AI Assistant", icon: BrainCircuit, desc: "Auto Question Creator" },
   { name: "Tailwind", icon: Zap, desc: "Premium UI Design" },
+];
+
+export const NETWORK_DOCS_EN: DocItem[] = [
+  {
+    id: "n1",
+    title: "Step 1: VM Settings",
+    icon: Settings,
+    points: [
+      "Open Oracle VM VirtualBox",
+      "Select 'New' or 'Settings' on existing VM",
+      "Ensure VM Name is correct (CBT-SCHOOL)"
+    ],
+    imageUrl: "https://res.cloudinary.com/dt1nrarpq/image/upload/v1774452682/Screenshot_2026-03-25_183735_a4wmk4.png"
+  },
+  {
+    id: "n2",
+    title: "Step 2: Adapter 1 (NAT)",
+    icon: Globe,
+    points: [
+      "Go to Network menu",
+      "Adapter 1: Enable Network Adapter",
+      "Attached to: NAT (For Internet/Sync access)"
+    ],
+    imageUrl: "https://res.cloudinary.com/dt1nrarpq/image/upload/v1774452682/Screenshot_2026-03-25_183801_ieytql.png"
+  },
+  {
+    id: "n3",
+    title: "Step 3: Adapter 2 (Bridged)",
+    icon: Network,
+    points: [
+      "Adapter 2: Enable Network Adapter",
+      "Attached to: Bridged Adapter",
+      "Name: Select LAN Card directed to Client/Hub"
+    ],
+    imageUrl: "https://res.cloudinary.com/dt1nrarpq/image/upload/v1774452681/Screenshot_2026-03-25_183826_h3r2ov.png"
+  },
+  {
+    id: "n4",
+    title: "Step 4: Server IP Address",
+    icon: HardDrive,
+    points: [
+      "Open Network Connections on Windows Host",
+      "Set Static IP on Client LAN Card",
+      "IP: 192.168.0.200 (Default Server)"
+    ],
+    imageUrl: "https://res.cloudinary.com/dt1nrarpq/image/upload/v1774452681/Screenshot_2026-03-25_183941_i6yuro.png"
+  },
+  {
+    id: "n5",
+    title: "Step 5: VHD Storage",
+    icon: Database,
+    points: [
+      "Go to Storage menu",
+      "Select Controller: SATA/IDE",
+      "Point to the downloaded CBT School VHD/VDI file"
+    ],
+    imageUrl: "https://res.cloudinary.com/dt1nrarpq/image/upload/v1774452682/Screenshot_2026-03-25_183912_zozftm.png"
+  },
+  {
+    id: "n6",
+    title: "Step 6: Running the Server",
+    icon: Cpu,
+    points: [
+      "Click 'Start' button (Normal Start)",
+      "Wait for Linux Server boot process",
+      "Ensure IP Address appears on console screen"
+    ],
+    imageUrl: "https://res.cloudinary.com/dt1nrarpq/image/upload/v1774452681/Screenshot_2026-03-25_183923_vxik1d.png"
+  },
+  {
+    id: "n7",
+    title: "Step 7: Client Connection",
+    icon: Smartphone,
+    points: [
+      "Connect Student Laptop/HP to same WiFi/LAN",
+      "Open Browser (Chrome/Edge)",
+      "Type Server IP: http://192.168.0.200"
+    ],
+    imageUrl: "https://res.cloudinary.com/dt1nrarpq/image/upload/v1774452681/WhatsApp_Image_2026-03-25_at_18.43.01_sgzgt0.jpg"
+  }
 ];

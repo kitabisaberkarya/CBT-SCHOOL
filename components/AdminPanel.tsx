@@ -4,11 +4,11 @@ import { useContent } from '../context/ContentContext';
 import { supabase } from '../lib/supabaseClient';
 import { 
   X, Image, Save, Lock, LayoutDashboard, Type, 
-  CreditCard, Phone, List, Layers, LogOut, Upload, Loader2, Trash2, Plus, Video, Users, ArrowLeft, Menu, Images, User
+  CreditCard, Phone, List, Layers, LogOut, Upload, Loader2, Trash2, Plus, Video, Users, ArrowLeft, Menu, Images, User, Network
 } from 'lucide-react';
 import { Feature, DocItem, PricingPlan, ContactInfo } from '../types';
 
-type TabId = 'dashboard' | 'hero' | 'features' | 'docs' | 'pricing' | 'contact' | 'clients';
+type TabId = 'dashboard' | 'hero' | 'features' | 'docs' | 'network-docs' | 'pricing' | 'contact' | 'clients';
 
 const AdminPanel: React.FC = () => {
   const { 
@@ -21,6 +21,7 @@ const AdminPanel: React.FC = () => {
     features, updateFeature,
     studentDocs, updateStudentDoc,
     adminDocs, updateAdminDoc,
+    networkDocs, updateNetworkDoc,
     pricingPlans, updatePricingPlan,
     contacts, updateContact,
     clients, addClient, deleteClient,
@@ -57,6 +58,7 @@ const AdminPanel: React.FC = () => {
   const [localFeatures, setLocalFeatures] = useState<Feature[]>(features);
   const [localStudentDocs, setLocalStudentDocs] = useState<DocItem[]>(studentDocs);
   const [localAdminDocs, setLocalAdminDocs] = useState<DocItem[]>(adminDocs);
+  const [localNetworkDocs, setLocalNetworkDocs] = useState<DocItem[]>(networkDocs);
   const [localPricing, setLocalPricing] = useState<PricingPlan[]>(pricingPlans);
   const [localContacts, setLocalContacts] = useState(contacts);
 
@@ -69,6 +71,7 @@ const AdminPanel: React.FC = () => {
       setLocalFeatures(features);
       setLocalStudentDocs(studentDocs);
       setLocalAdminDocs(adminDocs);
+      setLocalNetworkDocs(networkDocs);
       setLocalPricing(pricingPlans);
       setLocalContacts(contacts);
     }
@@ -190,13 +193,14 @@ const AdminPanel: React.FC = () => {
     } catch (e) { alert("Gagal update."); }
   };
 
-  const handleSaveDoc = async (id: string, type: 'student' | 'admin') => {
-    const docs = type === 'student' ? localStudentDocs : localAdminDocs;
+  const handleSaveDoc = async (id: string, type: 'student' | 'admin' | 'network') => {
+    const docs = type === 'student' ? localStudentDocs : type === 'admin' ? localAdminDocs : localNetworkDocs;
     const item = docs.find(d => d.id === id);
     if(!item) return;
     try {
       if(type === 'student') await updateStudentDoc(id, item);
-      else await updateAdminDoc(id, item);
+      else if(type === 'admin') await updateAdminDoc(id, item);
+      else await updateNetworkDoc(id, item);
       alert("Dokumentasi berhasil diupdate!");
     } catch (e) { alert("Gagal update."); }
   };
@@ -234,7 +238,7 @@ const AdminPanel: React.FC = () => {
   const addToGallery = (
     url: string, 
     docId: string, 
-    type: 'student' | 'admin'
+    type: 'student' | 'admin' | 'network'
   ) => {
     if (type === 'student') {
         setLocalStudentDocs(prev => prev.map(d => {
@@ -242,8 +246,14 @@ const AdminPanel: React.FC = () => {
             const currentGallery = d.gallery || [];
             return { ...d, gallery: [...currentGallery, url] };
         }));
-    } else {
+    } else if (type === 'admin') {
         setLocalAdminDocs(prev => prev.map(d => {
+            if (d.id !== docId) return d;
+            const currentGallery = d.gallery || [];
+            return { ...d, gallery: [...currentGallery, url] };
+        }));
+    } else {
+        setLocalNetworkDocs(prev => prev.map(d => {
             if (d.id !== docId) return d;
             const currentGallery = d.gallery || [];
             return { ...d, gallery: [...currentGallery, url] };
@@ -254,7 +264,7 @@ const AdminPanel: React.FC = () => {
   const removeFromGallery = (
     docId: string, 
     imgIndex: number, 
-    type: 'student' | 'admin'
+    type: 'student' | 'admin' | 'network'
   ) => {
     if (type === 'student') {
         setLocalStudentDocs(prev => prev.map(d => {
@@ -263,8 +273,15 @@ const AdminPanel: React.FC = () => {
             newGallery.splice(imgIndex, 1);
             return { ...d, gallery: newGallery };
         }));
-    } else {
+    } else if (type === 'admin') {
         setLocalAdminDocs(prev => prev.map(d => {
+            if (d.id !== docId) return d;
+            const newGallery = [...(d.gallery || [])];
+            newGallery.splice(imgIndex, 1);
+            return { ...d, gallery: newGallery };
+        }));
+    } else {
+        setLocalNetworkDocs(prev => prev.map(d => {
             if (d.id !== docId) return d;
             const newGallery = [...(d.gallery || [])];
             newGallery.splice(imgIndex, 1);
@@ -387,6 +404,7 @@ const AdminPanel: React.FC = () => {
             <SidebarItem id="hero" label="Hero Section" icon={Type} />
             <SidebarItem id="features" label="Fitur Aplikasi" icon={List} />
             <SidebarItem id="docs" label="Dokumentasi" icon={Layers} />
+            <SidebarItem id="network-docs" label="Konfigurasi Jaringan" icon={Network} />
             <SidebarItem id="clients" label="Clients & Partners" icon={Users} />
             
             <div className="px-4 py-2 text-xs font-bold text-slate-600 uppercase tracking-wider mb-2 mt-6">Commerce</div>
@@ -494,7 +512,7 @@ const AdminPanel: React.FC = () => {
                         </div>
                         <span className="text-xs font-bold bg-purple-500/20 text-purple-300 px-2 py-1 rounded">Modules</span>
                       </div>
-                      <h3 className="text-3xl font-bold text-white mb-1">{studentDocs.length + adminDocs.length}</h3>
+                      <h3 className="text-3xl font-bold text-white mb-1">{studentDocs.length + adminDocs.length + networkDocs.length}</h3>
                       <p className="text-sm text-slate-500">Item Dokumentasi</p>
                     </div>
                   </div>
@@ -1003,6 +1021,112 @@ const AdminPanel: React.FC = () => {
                </div>
             )}
 
+             {activeTab === 'network-docs' && (
+                <div className="space-y-10 animate-fade-in">
+                   <div>
+                     <h2 className="text-xl font-bold text-white mb-4 border-b border-white/5 pb-2">Konfigurasi Jaringan (VHD/VDI)</h2>
+                     <div className="grid gap-6">
+                       {localNetworkDocs.map((item, idx) => (
+                         <div key={item.id} className="bg-slate-800/40 p-6 rounded-xl border border-white/5 hover:border-white/20 transition-all space-y-5">
+                            
+                            {/* Header & Single Image */}
+                            <div className="flex flex-col md:flex-row gap-4 items-start">
+                                <div className="w-20 h-20 bg-slate-900 rounded-lg flex-shrink-0 overflow-hidden relative group border border-white/5">
+                                   {item.imageUrl ? (
+                                     <img src={item.imageUrl} className="w-full h-full object-cover" />
+                                   ) : (
+                                     <div className="w-full h-full flex items-center justify-center text-slate-600"><Image size={24}/></div>
+                                   )}
+                                   <input 
+                                     type="file" 
+                                     accept="image/*"
+                                     title="Upload Foto Utama"
+                                     onClick={(e) => (e.target as HTMLInputElement).value = ''}
+                                     onChange={(e) => handleFileUpload(e, 'docs', (url) => {
+                                         setLocalNetworkDocs(prev => {
+                                             const newDocs = [...prev];
+                                             newDocs[idx] = { ...newDocs[idx], imageUrl: url };
+                                             return newDocs;
+                                         });
+                                     }, `net-${item.id}`)}
+                                     className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-30" 
+                                   />
+                                   <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-20 pointer-events-none">
+                                      <Image size={18} className="text-white" />
+                                   </div>
+                                   {uploadingState.isUploading && uploadingState.id === `net-${item.id}` && (
+                                      <div className="absolute inset-0 bg-black/80 flex items-center justify-center z-40">
+                                         <Loader2 className="animate-spin text-white w-6 h-6" />
+                                      </div>
+                                   )}
+                                </div>
+                                
+                                <div className="flex-1 w-full">
+                                     <label className="text-[10px] text-slate-500 uppercase font-bold tracking-widest mb-1 block">Judul Langkah</label>
+                                     <input 
+                                         value={item.title}
+                                         onChange={(e) => {
+                                             const newDocs = [...localNetworkDocs];
+                                             newDocs[idx].title = e.target.value;
+                                             setLocalNetworkDocs(newDocs);
+                                         }}
+                                         className="w-full bg-slate-950/50 border border-white/10 rounded-lg px-4 py-2 text-white focus:border-secondary transition-colors"
+                                     />
+                                </div>
+
+                                <button 
+                                   onClick={() => handleSaveDoc(item.id, 'network')} 
+                                   className="h-10 px-4 mt-auto flex items-center justify-center bg-green-500/10 text-green-500 hover:bg-green-500 hover:text-white rounded-lg transition-colors font-bold text-sm"
+                                >
+                                   <Save size={16} className="mr-2"/> Simpan
+                                </button>
+                            </div>
+
+                            {/* Gallery / Slide Section */}
+                            <div className="bg-slate-950/30 rounded-lg p-4 border border-white/5">
+                                 <label className="flex items-center gap-2 text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">
+                                     <Images size={14} /> Galeri Slide Motion ({item.gallery?.length || 0})
+                                 </label>
+                                 <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-3">
+                                     {/* Existing Images */}
+                                     {item.gallery?.map((img, imgIdx) => (
+                                         <div key={imgIdx} className="relative aspect-square rounded-lg overflow-hidden group border border-white/10">
+                                             <img src={img} className="w-full h-full object-cover" />
+                                             <button 
+                                                 onClick={() => removeFromGallery(item.id, imgIdx, 'network')}
+                                                 className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded opacity-0 group-hover:opacity-100 transition-all hover:bg-red-600"
+                                             >
+                                                 <X size={12} />
+                                             </button>
+                                         </div>
+                                     ))}
+                                     
+                                     {/* Add Button */}
+                                     <div className="relative aspect-square bg-white/5 border border-dashed border-white/20 rounded-lg flex items-center justify-center hover:bg-white/10 hover:border-secondary transition-colors group cursor-pointer">
+                                          {uploadingState.isUploading && uploadingState.id === `net-gal-${item.id}` ? (
+                                              <Loader2 className="animate-spin text-secondary" size={20} />
+                                          ) : (
+                                              <Plus className="text-slate-500 group-hover:text-secondary" size={20} />
+                                          )}
+                                          <input 
+                                             type="file" 
+                                             accept="image/*"
+                                             onClick={(e) => (e.target as HTMLInputElement).value = ''}
+                                             onChange={(e) => handleFileUpload(e, 'docs', (url) => {
+                                                 addToGallery(url, item.id, 'network');
+                                             }, `net-gal-${item.id}`)}
+                                             className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                          />
+                                     </div>
+                                 </div>
+                            </div>
+                         </div>
+                       ))}
+                     </div>
+                   </div>
+                </div>
+             )}
+
             {/* PRICING */}
             {activeTab === 'pricing' && (
                 <div className="space-y-6 animate-fade-in">
@@ -1071,7 +1195,7 @@ const AdminPanel: React.FC = () => {
                       <div key={contact.id} className="bg-slate-800/40 p-8 rounded-3xl border border-white/5 space-y-6 relative overflow-hidden">
                         <div className="absolute top-0 left-0 w-1 h-full bg-secondary"></div>
                         <div className="flex items-center justify-between">
-                           <h2 className="text-xl font-bold text-white">Kontak {idx === 0 ? 'Admin' : 'Marketing'}</h2>
+                           <h2 className="text-xl font-bold text-white">Kontak {idx === 0 ? 'Admin' : 'Tim HelpDesk'}</h2>
                            <button 
                              onClick={() => handleSaveContact(contact.id)}
                              className="bg-green-600 hover:bg-green-500 text-white px-5 py-2 rounded-lg font-bold flex items-center text-sm transition-colors"

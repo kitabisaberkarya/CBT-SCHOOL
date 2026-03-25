@@ -1,4 +1,4 @@
-import { Zap, Shield, Smartphone, QrCode, Activity, PieChart, Database, Server, UserCheck, Clock, FileText, Lock, Save, LayoutDashboard, Calendar, Users, Printer, Settings, HardDrive, BrainCircuit } from 'lucide-react';
+import { Zap, Shield, Smartphone, QrCode, Activity, PieChart, Database, Server, UserCheck, Clock, FileText, Lock, Save, LayoutDashboard, Calendar, Users, Printer, Settings, HardDrive, BrainCircuit, Network, Globe, Cpu } from 'lucide-react';
 import { Feature, PricingPlan, ComparisonRow, DocItem, Client, ContactInfo } from './types';
 
 export const COMPANY_CONTACTS: ContactInfo[] = [
@@ -13,7 +13,7 @@ export const COMPANY_CONTACTS: ContactInfo[] = [
   {
     id: "c2",
     name: "Nudik Setyawan Purnomo",
-    role: "Marketing CBT SCHOOL",
+    role: "Tim HelpDesk CBT SCHOOL",
     phone: "+62 812-1606-7318",
     whatsappUrl: "https://wa.me/6281216067318?text=Halo%20Pak%20Nudik,%20saya%20tertarik%20dengan%20penawaran%20aplikasi%20CBT%20School.",
     imageUrl: "https://res.cloudinary.com/dt1nrarpq/image/upload/v1763714368/software-engineer_xgdvou.png" // Placeholder image
@@ -260,5 +260,85 @@ export const ADMIN_MODULE_DOCS: DocItem[] = [
       "White Label (Ganti Logo, Warna, Nama Sekolah)",
       "Backup & Restore Data JSON"
     ]
+  }
+];
+
+export const NETWORK_DOCS: DocItem[] = [
+  {
+    id: "n1",
+    title: "Langkah 1: Pengaturan VM",
+    icon: Settings,
+    points: [
+      "Buka Oracle VM VirtualBox",
+      "Pilih 'New' atau 'Settings' pada VM yang ada",
+      "Pastikan Nama VM sesuai (CBT-SCHOOL)"
+    ],
+    imageUrl: "https://res.cloudinary.com/dt1nrarpq/image/upload/v1774452682/Screenshot_2026-03-25_183735_a4wmk4.png"
+  },
+  {
+    id: "n2",
+    title: "Langkah 2: Adapter 1 (NAT)",
+    icon: Globe,
+    points: [
+      "Masuk ke menu Network",
+      "Adapter 1: Enable Network Adapter",
+      "Attached to: NAT (Untuk akses Internet/Sinkronisasi)"
+    ],
+    imageUrl: "https://res.cloudinary.com/dt1nrarpq/image/upload/v1774452682/Screenshot_2026-03-25_183801_ieytql.png"
+  },
+  {
+    id: "n3",
+    title: "Langkah 3: Adapter 2 (Bridged)",
+    icon: Network,
+    points: [
+      "Adapter 2: Enable Network Adapter",
+      "Attached to: Bridged Adapter",
+      "Name: Pilih LAN Card yang mengarah ke Client/Hub"
+    ],
+    imageUrl: "https://res.cloudinary.com/dt1nrarpq/image/upload/v1774452681/Screenshot_2026-03-25_183826_h3r2ov.png"
+  },
+  {
+    id: "n4",
+    title: "Langkah 4: IP Address Server",
+    icon: HardDrive,
+    points: [
+      "Buka Network Connections di Windows Host",
+      "Set IP Statis pada LAN Card Client",
+      "IP: 192.168.0.200 (Default Server)"
+    ],
+    imageUrl: "https://res.cloudinary.com/dt1nrarpq/image/upload/v1774452681/Screenshot_2026-03-25_183941_i6yuro.png"
+  },
+  {
+    id: "n5",
+    title: "Langkah 5: Storage VHD",
+    icon: Database,
+    points: [
+      "Masuk ke menu Storage",
+      "Pilih Controller: SATA/IDE",
+      "Arahkan ke file VHD/VDI CBT School yang sudah di-download"
+    ],
+    imageUrl: "https://res.cloudinary.com/dt1nrarpq/image/upload/v1774452682/Screenshot_2026-03-25_183912_zozftm.png"
+  },
+  {
+    id: "n6",
+    title: "Langkah 6: Menjalankan Server",
+    icon: Cpu,
+    points: [
+      "Klik tombol 'Start' (Normal Start)",
+      "Tunggu proses booting Linux Server",
+      "Pastikan muncul IP Address di layar console"
+    ],
+    imageUrl: "https://res.cloudinary.com/dt1nrarpq/image/upload/v1774452681/Screenshot_2026-03-25_183923_vxik1d.png"
+  },
+  {
+    id: "n7",
+    title: "Langkah 7: Koneksi Client",
+    icon: Smartphone,
+    points: [
+      "Hubungkan Laptop/HP Siswa ke WiFi/LAN yang sama",
+      "Buka Browser (Chrome/Edge)",
+      "Ketik IP Server: http://192.168.0.200"
+    ],
+    imageUrl: "https://res.cloudinary.com/dt1nrarpq/image/upload/v1774452681/WhatsApp_Image_2026-03-25_at_18.43.01_sgzgt0.jpg"
   }
 ];

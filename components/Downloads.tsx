@@ -1,6 +1,7 @@
 import React from 'react';
 import { Download, FileArchive, HardDrive, ShieldCheck, Zap } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
+import NetworkGuide from './NetworkGuide';
 
 const Downloads: React.FC = () => {
   const { language } = useLanguage();
@@ -41,8 +42,6 @@ const Downloads: React.FC = () => {
   };
 
   const c = language === 'id' ? content.id : content.en;
-
-  const presentationUrl = "https://docs.google.com/presentation/d/1ibUjNYZMzgWHglIXKPcbVrqE8zkjdzT6siVOPnG0HS4/embed?start=false&loop=false&delayms=3000";
 
   return (
     <section id="downloads" className="py-20 relative bg-slate-50 dark:bg-dark transition-colors duration-300">
@@ -113,41 +112,14 @@ const Downloads: React.FC = () => {
           </div>
         </div>
 
-        {/* Tutorial Section */}
-        <div className="max-w-5xl mx-auto" data-aos="fade-up">
-          <div className="text-center mb-8">
-            <h3 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">
-              {language === 'id' ? 'Panduan Konfigurasi VirtualBox' : 'VirtualBox Configuration Guide'}
-            </h3>
-            <p className="text-slate-600 dark:text-slate-400">
-              {language === 'id' 
-                ? 'Ikuti langkah-langkah di bawah ini untuk melakukan setting VHD/VDI pada VirtualBox.' 
-                : 'Follow the steps below to configure VHD/VDI on VirtualBox.'}
-            </p>
-          </div>
-          
-          <div className="relative w-full pb-[56.25%] rounded-2xl overflow-hidden shadow-2xl border border-slate-200 dark:border-white/10 bg-black">
-            <iframe 
-              src={presentationUrl}
-              className="absolute top-0 left-0 w-full h-full border-0"
-              allowFullScreen
-            ></iframe>
-          </div>
-          
-          <div className="mt-6 text-center">
-            <a 
-              href="https://docs.google.com/presentation/d/1ibUjNYZMzgWHglIXKPcbVrqE8zkjdzT6siVOPnG0HS4/edit" 
-              target="_blank" 
-              rel="noopener noreferrer"
-              className="text-secondary hover:underline text-sm font-medium"
-            >
-              {language === 'id' ? 'Buka Presentasi di Tab Baru' : 'Open Presentation in New Tab'}
-            </a>
-          </div>
+        {/* Tutorial Section - Network Configuration */}
+        <div id="network-guide" className="mt-12">
+          <NetworkGuide />
         </div>
       </div>
     </section>
   );
 };
+
 
 export default Downloads;

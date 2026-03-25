@@ -8,6 +8,7 @@ import {
   ADMIN_MODULE_DOCS, 
   INITIAL_HERO_IMAGE,
   PRICING_DATA,
+  NETWORK_DOCS,
   COMPANY_CONTACTS,
   CLIENTS_DATA
 } from '../constants';
@@ -44,6 +45,10 @@ interface ContentContextType {
   // Pricing
   pricingPlans: PricingPlan[];
   updatePricingPlan: (index: number, updates: Partial<PricingPlan>) => void;
+  
+  // Network
+  networkDocs: DocItem[];
+  updateNetworkDoc: (id: string, updates: Partial<DocItem>) => void;
   
   // Contact
   contacts: ContactInfo[];
@@ -83,6 +88,7 @@ export const ContentProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [features, setFeatures] = useState<Feature[]>(FEATURES_DATA);
   const [studentDocs, setStudentDocs] = useState<DocItem[]>(STUDENT_MODULE_DOCS);
   const [adminDocs, setAdminDocs] = useState<DocItem[]>(ADMIN_MODULE_DOCS);
+  const [networkDocs, setNetworkDocs] = useState<DocItem[]>(NETWORK_DOCS);
 
   // 3. Pricing
   const [pricingPlans, setPricingPlans] = useState<PricingPlan[]>(PRICING_DATA);
@@ -152,6 +158,10 @@ export const ContentProvider: React.FC<{ children: React.ReactNode }> = ({ child
           return dbItem ? { ...item, ...dbItem, imageUrl: dbItem.image_url, gallery: dbItem.gallery || [] } : item;
         }));
         setAdminDocs(prev => prev.map(item => {
+          const dbItem = docsData.find((d: any) => d.id === item.id);
+          return dbItem ? { ...item, ...dbItem, imageUrl: dbItem.image_url, gallery: dbItem.gallery || [] } : item;
+        }));
+        setNetworkDocs(prev => prev.map(item => {
           const dbItem = docsData.find((d: any) => d.id === item.id);
           return dbItem ? { ...item, ...dbItem, imageUrl: dbItem.image_url, gallery: dbItem.gallery || [] } : item;
         }));
@@ -263,6 +273,17 @@ export const ContentProvider: React.FC<{ children: React.ReactNode }> = ({ child
     await supabase.from('docs').update(dbPayload).eq('id', id);
   };
 
+  const updateNetworkDoc = async (id: string, updates: Partial<DocItem>) => {
+    setNetworkDocs(prev => prev.map(d => d.id === id ? { ...d, ...updates } : d));
+    
+    const dbPayload: any = {};
+    if (updates.title) dbPayload.title = updates.title;
+    if (updates.imageUrl) dbPayload.image_url = updates.imageUrl;
+    if (updates.gallery) dbPayload.gallery = updates.gallery;
+
+    await supabase.from('docs').update(dbPayload).eq('id', id);
+  };
+
   const updatePricingPlan = async (index: number, updates: Partial<PricingPlan>) => {
     setPricingPlans(prev => {
       const newPlans = [...prev];
@@ -347,6 +368,7 @@ export const ContentProvider: React.FC<{ children: React.ReactNode }> = ({ child
       features, updateFeature,
       studentDocs, updateStudentDoc,
       adminDocs, updateAdminDoc,
+      networkDocs, updateNetworkDoc,
       pricingPlans, updatePricingPlan,
       contacts, updateContact,
       clients, addClient, deleteClient,
