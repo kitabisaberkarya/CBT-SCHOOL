@@ -13,5 +13,10 @@ if (!supabaseUrl || !supabaseAnonKey) {
 
 export const supabase = createClient(
   supabaseUrl,
-  supabaseAnonKey
+  supabaseAnonKey,
+  {
+    global: {
+      fetch: (...args) => fetch(...args),
+    },
+  }
 );

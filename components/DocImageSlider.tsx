@@ -3,9 +3,10 @@ import React, { useState, useEffect } from 'react';
 interface DocImageSliderProps {
   images?: string[];
   title: string;
+  onImageClick?: (url: string) => void;
 }
 
-const DocImageSlider: React.FC<DocImageSliderProps> = ({ images = [], title }) => {
+const DocImageSlider: React.FC<DocImageSliderProps> = ({ images = [], title, onImageClick }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const safeImages = images || [];
 
@@ -24,7 +25,8 @@ const DocImageSlider: React.FC<DocImageSliderProps> = ({ images = [], title }) =
       {safeImages.map((img, index) => (
         <div
           key={index}
-          className={`absolute inset-0 w-full h-full transition-all duration-700 ease-in-out transform`}
+          className={`absolute inset-0 w-full h-full transition-all duration-700 ease-in-out transform ${onImageClick ? 'cursor-zoom-in' : ''}`}
+          onClick={() => onImageClick && onImageClick(img)}
           style={{
             opacity: index === currentIndex ? 1 : 0,
             transform: `translateX(${index === currentIndex ? '0%' : '10%'}) scale(${index === currentIndex ? '1' : '1.1'})`,

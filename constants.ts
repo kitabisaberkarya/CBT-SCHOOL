@@ -17,6 +17,14 @@ export const COMPANY_CONTACTS: ContactInfo[] = [
     phone: "+62 812-1606-7318",
     whatsappUrl: "https://wa.me/6281216067318?text=Halo%20Pak%20Nudik,%20saya%20tertarik%20dengan%20penawaran%20aplikasi%20CBT%20School.",
     imageUrl: "https://res.cloudinary.com/dt1nrarpq/image/upload/v1763714368/software-engineer_xgdvou.png" // Placeholder image
+  },
+  {
+    id: "c3",
+    name: "Mulyono, S.Pd",
+    role: "Tim HelpDesk CBT SCHOOL",
+    phone: "0852-1459-6325",
+    whatsappUrl: "https://wa.me/6285214596325",
+    imageUrl: "https://res.cloudinary.com/dt1nrarpq/image/upload/v1763714368/software-engineer_xgdvou.png"
   }
 ];
 

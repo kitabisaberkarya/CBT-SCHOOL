@@ -316,7 +316,8 @@ export const ContentProvider: React.FC<{ children: React.ReactNode }> = ({ child
     if (updates.phone) dbPayload.phone = updates.phone;
     if (updates.imageUrl) dbPayload.image_url = updates.imageUrl;
 
-    await supabase.from('contact').update(dbPayload).eq('id', id === 'c1' ? 1 : 2);
+    const dbId = parseInt(id.replace('c', ''));
+    await supabase.from('contact').update(dbPayload).eq('id', dbId);
   };
 
   const addClient = async (name: string, logoUrl: string) => {
