@@ -19,6 +19,7 @@ import Footer from './components/Footer';
 import FloatingWA from './components/FloatingWA';
 import AdminPanel from './components/AdminPanel';
 import Downloads from './components/Downloads';
+import WhatsAppChannel from './components/WhatsAppChannel';
 
 function App() {
   useEffect(() => {
@@ -46,6 +47,8 @@ function App() {
               <FeatureDocs />
               {/* Menu: Download Resource */}
               <Downloads />
+              {/* WhatsApp Channel Invitation */}
+              <WhatsAppChannel />
               {/* Menu: Keunggulan (Why Choose Us) */}
               <Details />
               {/* Menu: Harga */}

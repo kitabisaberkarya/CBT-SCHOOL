@@ -7,7 +7,22 @@ const Footer: React.FC = () => {
         <p className="text-slate-500 text-sm">
           &copy; {new Date().getFullYear()} CBT SCHOOL. All rights reserved. 
         </p>
-        <p className="text-slate-400 dark:text-slate-600 text-xs mt-2">
+        <div className="mt-4 flex justify-center gap-6">
+          <a 
+            href="https://whatsapp.com/channel/0029Vb7MKceHltY68fJhoe22" 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="text-green-500 hover:text-green-600 font-bold text-sm flex items-center gap-2"
+          >
+            <img 
+              src="https://res.cloudinary.com/dt1nrarpq/image/upload/v1764734104/logo-whatsapp-png-46041_bszwhg.png" 
+              alt="WA" 
+              className="w-4 h-4"
+            />
+            Gabung Saluran WhatsApp
+          </a>
+        </div>
+        <p className="text-slate-400 dark:text-slate-600 text-xs mt-4">
           Designed for Modern Education.
         </p>
       </div>

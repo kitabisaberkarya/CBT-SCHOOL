@@ -36,6 +36,19 @@ const CTA: React.FC = () => {
             {t('cta.btn_wa')}
           </a>
           <a 
+            href="https://whatsapp.com/channel/0029Vb7MKceHltY68fJhoe22"
+            target="_blank"
+            rel="noreferrer"
+            className="bg-green-500 text-white hover:bg-green-600 px-8 py-4 rounded-full font-bold transition-all shadow-xl flex items-center justify-center group"
+          >
+            <img 
+              src="https://res.cloudinary.com/dt1nrarpq/image/upload/v1764734104/logo-whatsapp-png-46041_bszwhg.png" 
+              alt="WA"
+              className="w-6 h-6 mr-2 object-contain brightness-0 invert"
+            />
+            Gabung Saluran
+          </a>
+          <a 
             href={adminContact.whatsappUrl}
             target="_blank"
             rel="noreferrer"

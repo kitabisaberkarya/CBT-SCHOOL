@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useContent } from '../context/ContentContext';
-import { X, MessageCircle, User } from 'lucide-react';
+import { X, MessageCircle, User, ArrowRight, Bell } from 'lucide-react';
 
 const FloatingWA: React.FC = () => {
   const { contacts } = useContent();
@@ -42,6 +42,31 @@ const FloatingWA: React.FC = () => {
           </div>
           
           <div className="p-2 space-y-1">
+            {/* WhatsApp Channel Link */}
+            <a
+              href="https://whatsapp.com/channel/0029Vb7MKceHltY68fJhoe22"
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center gap-3 p-3 rounded-2xl bg-green-500/10 hover:bg-green-500/20 transition-all group border border-green-500/20"
+            >
+              <div className="w-12 h-12 rounded-full overflow-hidden bg-green-500 flex items-center justify-center flex-shrink-0 shadow-lg shadow-green-500/20">
+                <Bell size={24} className="text-white animate-pulse" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h4 className="text-sm font-bold text-green-600 dark:text-green-400 truncate">
+                  Saluran WhatsApp
+                </h4>
+                <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate">
+                  Update & Info Tercepat
+                </p>
+              </div>
+              <div className="bg-green-500 p-2 rounded-full text-white shadow-lg shadow-green-500/20 group-hover:scale-110 transition-transform">
+                <ArrowRight size={14} />
+              </div>
+            </a>
+
+            <div className="h-px bg-slate-100 dark:bg-white/5 my-1 mx-2"></div>
+
             {contacts.map((contact) => (
               <a
                 key={contact.id}
