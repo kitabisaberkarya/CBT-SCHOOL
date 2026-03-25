@@ -119,12 +119,11 @@ export const COMPARISON_DATA: ComparisonRow[] = [
 ];
 
 export const CLIENTS_DATA: Client[] = [
-  { id: 1, name: "SMK Negeri 8 Surabaya", logoUrl: "https://imersa.co.id/toko/logo/images/logo-smk-8-surabaya.png" },
-  { id: 2, name: "SMA Pradita Dirgantara", logoUrl: "https://praditadirgantara.sch.id/wp-content/uploads/2023/12/logo-sma-pradita-dirgantara.png" },
-  { id: 3, name: "SMK Telkom Malang", logoUrl: "https://www.smktelkom-mlg.sch.id/assets/img/logo.png" },
-  { id: 4, name: "MAN 1 Yogyakarta", logoUrl: "https://man1yogyakarta.sch.id/wp-content/uploads/2022/10/cropped-logo-man-1-yogya-baru-2.png" },
-  { id: 5, name: "SMA Negeri 3 Semarang", logoUrl: "https://sman3-semarang.sch.id/templates/lt_school/images/logo.png" },
-  { id: 6, name: "SMA Labschool Kebayoran", logoUrl: "https://smaslabschoolkby.sch.id/wp-content/uploads/2022/08/logo-slabs-kby.png" },
+  { id: 1, name: "SMK NEGERI 8 SURABAYA", logoUrl: "https://imersa.co.id/toko/logo/images/logo-smk-8-surabaya.png" },
+  { id: 2, name: "SMK DR. SOETOMO SURABAYA", logoUrl: "https://res.cloudinary.com/dt1nrarpq/image/upload/v1757492045/Logo_Smekdors_wkmxjo.png" },
+  { id: 3, name: "SMP NEGERI DEMAK", logoUrl: "https://res.cloudinary.com/dt1nrarpq/image/upload/v1771116105/Desain_tanpa_judul_6_qslcij.png" },
+  { id: 4, name: "SMAN 2 TUBAN", logoUrl: "https://res.cloudinary.com/dt1nrarpq/image/upload/v1771398439/logo_jpg-removebg-preview_ttel5m.png" },
+  { id: 5, name: "YAYASAN IBNU SINA PEMATANG SIANTAR", logoUrl: "https://res.cloudinary.com/dt1nrarpq/image/upload/v1772947981/llo_hrr6gk.png" },
 ];
 
 export const TECH_STACK = [

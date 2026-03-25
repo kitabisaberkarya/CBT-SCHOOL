@@ -15,20 +15,25 @@ const Clients: React.FC = () => {
           </h2>
         </div>
 
-        <div className="mt-12 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-x-8 gap-y-12 items-center">
+        <div className="mt-12 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-x-8 gap-y-12 items-start">
           {clients.map((client, index) => (
             <div 
               key={client.id}
               data-aos="fade-up"
               data-aos-delay={index * 50}
-              className="flex justify-center items-center group"
+              className="flex flex-col justify-center items-center group text-center"
             >
-              <img 
-                src={client.logoUrl} 
-                alt={client.name} 
-                className="max-h-16 w-auto object-contain filter grayscale opacity-60 hover:grayscale-0 hover:opacity-100 transition-all duration-300 ease-in-out group-hover:scale-105"
-                title={client.name}
-              />
+              <div className="h-20 flex items-center justify-center mb-4">
+                <img 
+                  src={client.logoUrl} 
+                  alt={client.name} 
+                  className="max-h-16 w-auto object-contain transition-all duration-300 ease-in-out group-hover:scale-110"
+                  title={client.name}
+                />
+              </div>
+              <span className="text-[10px] md:text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-tight leading-tight max-w-[120px]">
+                {client.name}
+              </span>
             </div>
           ))}
           
