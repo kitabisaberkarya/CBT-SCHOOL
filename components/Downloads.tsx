@@ -5,16 +5,16 @@ import { useLanguage } from '../context/LanguageContext';
 const Downloads: React.FC = () => {
   const { language } = useLanguage();
 
-  const downloadUrl = "https://drive.google.com/uc?export=download&id=1Jk4Ka9hAcVjlueLUtb7e9v-78RwF8WIC";
+  const downloadUrl = "https://drive.google.com/uc?export=download&id=14fZo2mBOO9j1kzxq31R4Xxl3QelomSVD";
 
   const content = {
     id: {
       title: "Download Resource",
-      subtitle: "Virtual Machine (VHD/VDI)",
+      subtitle: "CBT SCHOOL V409_250326.rar",
       desc: "Unduh file Virtual Machine (VHD/VDI) untuk simulasi mandiri atau instalasi server lokal. File ini sudah terkonfigurasi dengan sistem CBT School terbaru.",
       btn: "Download Sekarang",
-      size: "Ukuran File: 4,6 GB",
-      version: "Versi: 4.0.8 (Stable)",
+      size: "Ukuran File: 7,7 GB",
+      version: "Versi: 4.0.9 (Stable)",
       note: "Catatan: Karena ukuran file besar, klik 'Tetap download' pada halaman Google Drive.",
       features: [
         "Siap pakai (Pre-configured)",
@@ -25,11 +25,11 @@ const Downloads: React.FC = () => {
     },
     en: {
       title: "Download Resource",
-      subtitle: "Virtual Machine (VHD/VDI)",
+      subtitle: "CBT SCHOOL V409_250326.rar",
       desc: "Download the Virtual Machine (VHD/VDI) file for standalone simulation or local server installation. This file is pre-configured with the latest CBT School system.",
       btn: "Download Now",
-      size: "File Size: 4.6 GB",
-      version: "Version: 4.0.8 (Stable)",
+      size: "File Size: 7.7 GB",
+      version: "Version: 4.0.9 (Stable)",
       note: "Note: Due to large size, click 'Download anyway' on the Google Drive page.",
       features: [
         "Ready to use (Pre-configured)",
