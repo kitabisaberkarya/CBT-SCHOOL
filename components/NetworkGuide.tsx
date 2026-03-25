@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   Monitor, 
   Cpu, 
@@ -19,10 +19,24 @@ import {
   MessageCircle,
   Activity,
   Globe,
-  UserCheck
+  UserCheck,
+  X,
+  ZoomIn
 } from 'lucide-react';
 
 const NetworkGuide: React.FC = () => {
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+
+  const openLightbox = (image: string) => {
+    setSelectedImage(image);
+    document.body.style.overflow = 'hidden';
+  };
+
+  const closeLightbox = () => {
+    setSelectedImage(null);
+    document.body.style.overflow = 'unset';
+  };
+
   const steps = [
     {
       id: 1,
@@ -283,19 +297,28 @@ const NetworkGuide: React.FC = () => {
                 
                 {/* Image Side */}
                 <div className="lg:w-1/2">
-                  <div className="relative rounded-2xl overflow-hidden border border-slate-200 dark:border-white/10 bg-slate-100 dark:bg-slate-900 aspect-video">
+                  <div 
+                    className="relative rounded-2xl overflow-hidden border border-slate-200 dark:border-white/10 bg-slate-100 dark:bg-slate-900 aspect-video cursor-zoom-in group/img"
+                    onClick={() => openLightbox(step.image)}
+                  >
                     <img 
                       src={step.image} 
                       alt={step.title} 
-                      className="w-full h-full object-contain"
+                      className="w-full h-full object-contain transition-transform duration-500 group-hover/img:scale-105"
                       referrerPolicy="no-referrer"
                     />
-                    <div className="absolute top-4 left-4 bg-blue-600 text-white w-10 h-10 rounded-full flex items-center justify-center font-bold shadow-lg">
+                    <div className="absolute top-4 left-4 bg-blue-600 text-white w-10 h-10 rounded-full flex items-center justify-center font-bold shadow-lg z-10">
                       {step.id}
+                    </div>
+                    {/* Hover Overlay */}
+                    <div className="absolute inset-0 bg-black/0 group-hover/img:bg-black/20 transition-colors flex items-center justify-center opacity-0 group-hover/img:opacity-100">
+                      <div className="bg-white/20 backdrop-blur-md p-3 rounded-full text-white">
+                        <ZoomIn size={24} />
+                      </div>
                     </div>
                   </div>
                   <p className="mt-4 text-xs text-slate-400 italic text-center">
-                    Gambar {step.id}: {step.title}
+                    Gambar {step.id}: {step.title} (Klik untuk memperbesar)
                   </p>
                 </div>
 
@@ -548,6 +571,32 @@ Akses URL: http://192.168.0.200`}
           </div>
         </section>
 
+        {/* Lightbox Modal */}
+        {selectedImage && (
+          <div 
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4 md:p-10 transition-all duration-300"
+            onClick={closeLightbox}
+          >
+            <button 
+              className="absolute top-6 right-6 p-3 bg-white/10 hover:bg-white/20 rounded-full text-white transition-colors z-[110]"
+              onClick={(e) => {
+                e.stopPropagation();
+                closeLightbox();
+              }}
+            >
+              <X size={24} />
+            </button>
+            
+            <div className="relative max-w-5xl w-full h-full flex items-center justify-center">
+              <img 
+                src={selectedImage} 
+                alt="Zoomed view" 
+                className="max-w-full max-h-full object-contain rounded-lg shadow-2xl transition-transform duration-300 scale-100"
+                onClick={(e) => e.stopPropagation()}
+              />
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
