@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "tsx server.ts",
     "build": "vite build",
     "preview": "vite preview",
     "lint": "tsc"
@@ -12,12 +12,17 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.39.7",
     "aos": "^2.3.4",
+    "cookie-parser": "^1.4.7",
+    "express": "^5.2.1",
     "lucide-react": "^0.344.0",
     "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+    "react-dom": "^18.2.0",
+    "tsx": "^4.21.0"
   },
   "devDependencies": {
     "@types/aos": "^3.0.7",
+    "@types/cookie-parser": "^1.4.10",
+    "@types/express": "^5.0.6",
     "@types/react": "^18.2.64",
     "@types/react-dom": "^18.2.21",
     "@vitejs/plugin-react": "^4.2.1",

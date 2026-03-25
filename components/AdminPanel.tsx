@@ -77,9 +77,14 @@ const AdminPanel: React.FC = () => {
   // Cek sesi
   useEffect(() => {
     const checkSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        setIsLoggedIn(true);
+      try {
+        const response = await fetch('/api/check-auth');
+        const data = await response.json();
+        if (data.authenticated) {
+          setIsLoggedIn(true);
+        }
+      } catch (err) {
+        console.error('Auth check failed', err);
       }
     };
     checkSession();
@@ -93,16 +98,19 @@ const AdminPanel: React.FC = () => {
     setAuthError('');
 
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: email,
-        password: password,
+      const response = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
       });
 
-      if (error) {
-        setAuthError(error.message || 'Login gagal. Periksa email dan password.');
-      } else if (data.session) {
+      const data = await response.json();
+
+      if (data.success) {
         setIsLoggedIn(true);
         setPassword(''); 
+      } else {
+        setAuthError(data.message || 'Login gagal. Periksa email dan password.');
       }
     } catch (err) {
       setAuthError('Terjadi kesalahan koneksi.');
@@ -112,7 +120,11 @@ const AdminPanel: React.FC = () => {
   };
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
+    try {
+      await fetch('/api/logout', { method: 'POST' });
+    } catch (err) {
+      console.error('Logout failed', err);
+    }
     setIsLoggedIn(false);
     setIsAdminOpen(false);
     setActiveTab('dashboard');
