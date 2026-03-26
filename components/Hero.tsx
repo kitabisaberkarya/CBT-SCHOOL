@@ -106,7 +106,7 @@ const Hero: React.FC = () => {
                 </div>
               ) : (
                 // --- 3D SLIDER MODE ---
-                <div className="relative w-full aspect-video rounded-xl overflow-hidden bg-slate-900 perspective-[1000px] group">
+                <div className="relative w-full aspect-video rounded-xl overflow-hidden bg-slate-900 perspective-1000 group">
                    {sliderImages.map((img, index) => (
                      <div 
                       key={index}

@@ -17,6 +17,7 @@ const Downloads: React.FC = () => {
       size: "Ukuran File: 7,7 GB",
       version: "Versi: 4.0.9 (Stable)",
       note: "Catatan: Karena ukuran file besar, klik 'Tetap download' pada halaman Google Drive.",
+      demoNote: "Bagi sekolah, instansi, dan lembaga yang ingin mencoba semua fitur, silakan masukkan lisensi demo: CBT-SCHOOL-DEMO",
       features: [
         "Siap pakai (Pre-configured)",
         "Mendukung VirtualBox & VMware",
@@ -32,6 +33,7 @@ const Downloads: React.FC = () => {
       size: "File Size: 7.7 GB",
       version: "Version: 4.0.9 (Stable)",
       note: "Note: Due to large size, click 'Download anyway' on the Google Drive page.",
+      demoNote: "For schools, institutions, and agencies that want to try all features, please use the demo license: CBT-SCHOOL-DEMO",
       features: [
         "Ready to use (Pre-configured)",
         "Supports VirtualBox & VMware",
@@ -93,9 +95,14 @@ const Downloads: React.FC = () => {
                     {c.size}
                   </div>
                 </div>
-                <p className="text-xs text-slate-400 dark:text-slate-500 italic">
-                  * {c.note}
-                </p>
+                <div className="space-y-1">
+                  <p className="text-xs text-slate-400 dark:text-slate-500 italic">
+                    * {c.note}
+                  </p>
+                  <p className="text-xs font-bold text-secondary dark:text-blue-400">
+                    * {c.demoNote}
+                  </p>
+                </div>
               </div>
             </div>
 

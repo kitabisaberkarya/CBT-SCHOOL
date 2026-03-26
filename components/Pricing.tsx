@@ -103,6 +103,23 @@ Thank you.`;
             </div>
           ))}
         </div>
+
+        {/* Demo License Note */}
+        <div className="mt-12 max-w-3xl mx-auto text-center" data-aos="fade-up">
+          <div className="inline-block p-4 rounded-2xl bg-secondary/10 border border-secondary/20">
+            <p className="text-slate-700 dark:text-slate-300 text-sm md:text-base">
+              {language === 'id' ? (
+                <>
+                  Bagi sekolah, instansi, dan lembaga yang ingin mencoba semua fitur di aplikasi CBT School ini bisa memasukkan lisensi demo nya: <span className="font-bold text-secondary dark:text-blue-400 select-all">CBT-SCHOOL-DEMO</span>
+                </>
+              ) : (
+                <>
+                  For schools, institutions, and agencies that want to try all features in this CBT School application, you can enter the demo license: <span className="font-bold text-secondary dark:text-blue-400 select-all">CBT-SCHOOL-DEMO</span>
+                </>
+              )}
+            </p>
+          </div>
+        </div>
       </div>
     </section>
   );

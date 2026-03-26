@@ -2,25 +2,20 @@
 export default {
   content: [
     "./index.html",
-    "./src/**/*.{js,ts,jsx,tsx}",
-    "./components/**/*.{js,ts,jsx,tsx}",
-    "./context/**/*.{js,ts,jsx,tsx}",
-    "./lib/**/*.{js,ts,jsx,tsx}",
-    "./App.tsx",
-    "./index.tsx",
+    "./**/*.{js,ts,jsx,tsx}",
   ],
   darkMode: 'class',
   theme: {
     extend: {
+      colors: {
+        primary: '#1e293b',
+        secondary: '#3b82f6',
+        accent: '#10b981',
+        dark: '#020617',
+      },
       fontFamily: {
         sans: ['Poppins', 'sans-serif'],
       },
-      colors: {
-        primary: '#1E3A8A', // Navy
-        secondary: '#3B82F6', // Blue
-        accent: '#0EA5E9', // Cyan
-        dark: '#0f172a',
-      }
     },
   },
   plugins: [],

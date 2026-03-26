@@ -55,7 +55,8 @@ export const translations = {
       title_prefix: 'Penawaran',
       title_suffix: 'Harga Spesial',
       desc: 'Pilih skema kerjasama yang paling sesuai dengan kebutuhan dan anggaran sekolah Anda.',
-      rec_badge: 'Rekomendasi'
+      rec_badge: 'Rekomendasi',
+      demo_note: 'Bagi sekolah, instansi, dan lembaga yang ingin mencoba semua fitur, silakan gunakan lisensi demo: **CBT-SCHOOL-DEMO**'
     },
     comparison: {
       title: 'Perbandingan Skema',
@@ -131,7 +132,8 @@ export const translations = {
       title_prefix: 'Special',
       title_suffix: 'Pricing Offers',
       desc: 'Choose the partnership scheme that best suits your school needs and budget.',
-      rec_badge: 'Recommended'
+      rec_badge: 'Recommended',
+      demo_note: 'For schools, institutions, and agencies that want to try all features, please use the demo license: **CBT-SCHOOL-DEMO**'
     },
     comparison: {
       title: 'Scheme Comparison',
