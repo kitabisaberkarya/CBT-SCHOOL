@@ -1,5 +1,5 @@
 import React from 'react';
-import { Download, FileArchive, HardDrive, ShieldCheck, Zap } from 'lucide-react';
+import { Download, FileArchive, HardDrive, ShieldCheck, Zap, FileSpreadsheet, ExternalLink, FileText } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
 import NetworkGuide from './NetworkGuide';
 
@@ -7,6 +7,8 @@ const Downloads: React.FC = () => {
   const { language } = useLanguage();
 
   const downloadUrl = "https://drive.google.com/uc?export=download&id=14fZo2mBOO9j1kzxq31R4Xxl3QelomSVD";
+  const templateSheetUrl = "https://docs.google.com/spreadsheets/d/1TX4pu1sehACBj696DTTtrrZ7owC1o_w99PQl1rfESUY/edit?usp=sharing";
+  const templateCsvUrl = "https://docs.google.com/spreadsheets/d/1TX4pu1sehACBj696DTTtrrZ7owC1o_w99PQl1rfESUY/export?format=csv";
 
   const content = {
     id: {
@@ -23,7 +25,13 @@ const Downloads: React.FC = () => {
         "Mendukung VirtualBox & VMware",
         "Optimasi Database PostgreSQL",
         "Keamanan Terjamin"
-      ]
+      ],
+      template: {
+        title: "Template Import Data",
+        desc: "Gunakan template spreadsheet ini untuk mengimpor data siswa, guru, dan mata pelajaran secara massal ke sistem CBT School.",
+        btnCopy: "Buka & Salin Template",
+        btnCsv: "Download Format CSV",
+      }
     },
     en: {
       title: "Download Resource",
@@ -39,7 +47,13 @@ const Downloads: React.FC = () => {
         "Supports VirtualBox & VMware",
         "PostgreSQL Database Optimization",
         "Guaranteed Security"
-      ]
+      ],
+      template: {
+        title: "Data Import Template",
+        desc: "Use this spreadsheet template to bulk import student, teacher, and subject data into the CBT School system.",
+        btnCopy: "Open & Copy Template",
+        btnCsv: "Download CSV Format",
+      }
     }
   };
 
@@ -57,7 +71,8 @@ const Downloads: React.FC = () => {
           </p>
         </div>
 
-        <div className="max-w-4xl mx-auto mb-16" data-aos="zoom-in">
+        {/* Main VM Download Card */}
+        <div className="max-w-4xl mx-auto mb-10" data-aos="zoom-in">
           <div className="glass-card rounded-3xl overflow-hidden border border-slate-200 dark:border-white/10 flex flex-col md:flex-row shadow-2xl shadow-blue-500/5">
             {/* Left Side: Info */}
             <div className="p-8 md:p-12 flex-grow">
@@ -119,6 +134,41 @@ const Downloads: React.FC = () => {
           </div>
         </div>
 
+        {/* Spreadsheet Template Card */}
+        <div className="max-w-4xl mx-auto mb-16" data-aos="fade-up">
+          <div className="glass-card rounded-3xl p-8 md:p-10 border border-slate-200 dark:border-white/10 shadow-xl">
+            <div className="flex flex-col md:flex-row items-center gap-8">
+              <div className="w-20 h-20 rounded-2xl bg-green-500/10 flex items-center justify-center flex-shrink-0">
+                <FileSpreadsheet className="w-10 h-10 text-green-600 dark:text-green-400" />
+              </div>
+              <div className="flex-grow text-center md:text-left">
+                <h3 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">{c.template.title}</h3>
+                <p className="text-slate-600 dark:text-slate-400 mb-6">
+                  {c.template.desc}
+                </p>
+                <div className="flex flex-wrap justify-center md:justify-start gap-4">
+                  <a 
+                    href={templateSheetUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-2 px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-xl font-semibold transition-all shadow-lg shadow-green-500/20"
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                    {c.template.btnCopy}
+                  </a>
+                  <a 
+                    href={templateCsvUrl}
+                    className="flex items-center gap-2 px-6 py-3 bg-slate-800 hover:bg-slate-900 text-white rounded-xl font-semibold transition-all shadow-lg shadow-slate-900/20"
+                  >
+                    <FileText className="w-4 h-4" />
+                    {c.template.btnCsv}
+                  </a>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* Tutorial Section - Network Configuration */}
         <div id="network-guide" className="mt-12">
           <NetworkGuide />
@@ -127,6 +177,5 @@ const Downloads: React.FC = () => {
     </section>
   );
 };
-
 
 export default Downloads;
