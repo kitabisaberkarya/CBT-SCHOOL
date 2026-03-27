@@ -21,6 +21,7 @@ import ToastNotification from '../components/ToastNotification';
 import BulkImportProgress from '../components/BulkImportProgress';
 import RestoreProgressModal from '../components/RestoreProgressModal';
 import PrintDocuments from '../components/PrintDocuments'; // Import New Component
+import TokenManagement from '../components/TokenManagement';
 import { DEFAULT_PROFILE_IMAGES } from '../constants';
 import { useCbtschoolLicense } from '../src/hooks/useCbtschoolLicense';
 import LicenseActivation from '../components/LicenseActivation';
@@ -29,7 +30,6 @@ import UpdaterService, { UpdateInfo as AppUpdateInfo } from '../src/services/Upd
 import { Lock, ShieldCheck, AlertTriangle, RefreshCw, ArrowUpCircle } from 'lucide-react';
 // @ts-ignore — vite resolves JSON imports
 import { version as APP_VERSION } from '../package.json';
-import DemoModeOverlay from '../components/DemoModeOverlay';
 
 interface AdminDashboardProps {
   user: User;
@@ -58,7 +58,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [users, setUsers] = useState<User[]>([]);
   const [tests, setTests] = useState<Map<string, Test>>(new Map());
-  const [masterData, setMasterData] = useState<MasterData>({ classes: [], majors: [] });
+  const [masterData, setMasterData] = useState<MasterData>({ classes: [], majors: [], examTypes: [] });
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [examSessions, setExamSessions] = useState<any[]>([]);
@@ -210,6 +210,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
       const formattedQuestions: Question[] = (questionsData || []).map((q: any) => ({
         ...q,
         image: q.image_url,
+        audio: q.audio_url,
+        video: q.video_url,
         optionImages: q.option_images,
         correctAnswerIndex: q.correct_answer_index,
         type: q.type,
@@ -236,12 +238,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
 
   const fetchMasterDataOnly = useCallback(async () => {
     try {
-        const [{ data: classesData, error: classesError }, { data: majorsData, error: majorsError }] = await Promise.all([
+        const [{ data: classesData, error: classesError }, { data: majorsData, error: majorsError }, { data: examTypesData }] = await Promise.all([
             supabase.from('master_classes').select('*'),
             supabase.from('master_majors').select('*'),
+            supabase.from('master_exam_types').select('*').order('name'),
         ]);
         if (classesError || majorsError) throw new Error('Gagal mengambil data master.');
-        setMasterData({ classes: classesData as MasterDataItem[], majors: majorsData as MasterDataItem[] });
+        setMasterData({ classes: classesData as MasterDataItem[], majors: majorsData as MasterDataItem[], examTypes: (examTypesData || []) as MasterDataItem[] });
     } catch (error: any) {
         showToast(error.message, 'error');
     }
@@ -288,7 +291,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
       setRealTeacherCount(teacherCountData || 0);
       setRealAdminCount(adminCountData || 0);
       setRealStudentCount(studentCountData || 0);
-      setMasterData({ classes: classesData as MasterDataItem[], majors: majorsData as MasterDataItem[] });
+      // Fetch exam types in background (non-critical); fallback to empty if table doesn't exist yet
+      supabase.from('master_exam_types').select('*').order('name').then(({ data: etData }) => {
+        setMasterData(prev => ({ ...prev, examTypes: (etData || []) as MasterDataItem[] }));
+      });
+      setMasterData({ classes: classesData as MasterDataItem[], majors: majorsData as MasterDataItem[], examTypes: [] });
       setAnnouncements(announcementsData.map(a => ({ ...a, date: a.created_at })) as Announcement[]);
       
       const newTestsMap = new Map<string, Test>();
@@ -517,18 +524,20 @@ const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
     const correctIdx = q.type === 'multiple_choice' ? (q.answerKey?.index || 0) : 0;
 
     const { error = null } = await supabase.from('questions').insert({
-      test_id: testId, 
-      type: q.type, // PENTING
-      question: q.question, 
-      image_url: q.image, 
-      options: q.options, 
+      test_id: testId,
+      type: q.type,
+      question: q.question,
+      image_url: q.image,
+      audio_url: q.audio,
+      video_url: q.video,
+      options: q.options,
       matching_right_options: q.matchingRightOptions,
       option_images: q.optionImages,
-      correct_answer_index: correctIdx, // PENTING: Wajib diisi untuk manual save
-      answer_key: q.answerKey, // PENTING (Fix: use answerKey from object)
-      metadata: q.metadata,    // PENTING
-      weight: q.weight,        // PENTING
-      difficulty: q.difficulty, 
+      correct_answer_index: correctIdx,
+      answer_key: q.answerKey,
+      metadata: q.metadata,
+      weight: q.weight,
+      difficulty: q.difficulty,
       topic: q.topic
     });
     if(error) {
@@ -545,17 +554,19 @@ const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
     const correctIdx = q.type === 'multiple_choice' ? (q.answerKey?.index || 0) : 0;
 
     const { error } = await supabase.from('questions').update({
-      type: q.type, // PENTING
-      question: q.question, 
-      image_url: q.image, 
-      options: q.options, 
+      type: q.type,
+      question: q.question,
+      image_url: q.image,
+      audio_url: q.audio,
+      video_url: q.video,
+      options: q.options,
       matching_right_options: q.matchingRightOptions,
       option_images: q.optionImages,
-      correct_answer_index: correctIdx, // PENTING
-      answer_key: q.answerKey, // PENTING (Fix: use answerKey from object)
-      metadata: q.metadata,    // PENTING
-      weight: q.weight,        // PENTING
-      difficulty: q.difficulty, 
+      correct_answer_index: correctIdx,
+      answer_key: q.answerKey,
+      metadata: q.metadata,
+      weight: q.weight,
+      difficulty: q.difficulty,
       topic: q.topic
     }).eq('id', q.id);
     if(error) {
@@ -587,18 +598,20 @@ const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
       if(!testId) return;
       
       const questionsToInsert = questions.map(q => ({
-        test_id: testId, 
-        type: q.type, // PENTING
-        question: q.question, 
-        image_url: q.image, 
-        options: q.options, 
+        test_id: testId,
+        type: q.type,
+        question: q.question,
+        image_url: q.image,
+        audio_url: q.audio,
+        video_url: q.video,
+        options: q.options,
         matching_right_options: q.matchingRightOptions,
         option_images: q.optionImages,
-        correct_answer_index: q.type === 'multiple_choice' ? (q.answerKey?.index || 0) : 0, // FIX: Bulk add also needs this
-        answer_key: q.answerKey, // PENTING (Fix: use answerKey from object)
-        metadata: q.metadata,    // PENTING
-        weight: q.weight,        // PENTING
-        difficulty: q.difficulty, 
+        correct_answer_index: q.type === 'multiple_choice' ? (q.answerKey?.index || 0) : 0,
+        answer_key: q.answerKey,
+        metadata: q.metadata,
+        weight: q.weight,
+        difficulty: q.difficulty,
         topic: q.topic
       }));
       const { error } = await supabase.from('questions').insert(questionsToInsert);
@@ -643,17 +656,23 @@ const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
 
   const masterClassHandlers = createCrudHandler('master_classes', 'id', fetchMasterDataOnly);
   const masterMajorHandlers = createCrudHandler('master_majors', 'id', fetchMasterDataOnly);
-  
-  const handleAddMasterItem = (type: 'classes' | 'majors', name: string, kkm?: number) => {
-      // Generate ID client-side to ensure it exists if DB doesn't auto-generate
+  const masterExamTypeHandlers = createCrudHandler('master_exam_types', 'id', fetchMasterDataOnly);
+
+  const handleAddMasterItem = (type: 'classes' | 'majors' | 'examTypes', name: string, kkm?: number) => {
       const payload = type === 'majors' ? { id: uuidv4(), name, kkm: kkm ?? 75 } : { id: uuidv4(), name };
-      if(type === 'classes') masterClassHandlers.add(payload); else masterMajorHandlers.add(payload);
+      if (type === 'classes') masterClassHandlers.add(payload);
+      else if (type === 'majors') masterMajorHandlers.add(payload);
+      else masterExamTypeHandlers.add(payload);
   };
-  const handleUpdateMasterItem = (type: 'classes' | 'majors', item: MasterDataItem) => {
-      if(type === 'classes') masterClassHandlers.update(item); else masterMajorHandlers.update(item);
+  const handleUpdateMasterItem = (type: 'classes' | 'majors' | 'examTypes', item: MasterDataItem) => {
+      if (type === 'classes') masterClassHandlers.update(item);
+      else if (type === 'majors') masterMajorHandlers.update(item);
+      else masterExamTypeHandlers.update(item);
   };
-  const handleDeleteMasterItem = (type: 'classes' | 'majors', item: MasterDataItem) => {
-      if(type === 'classes') masterClassHandlers.delete(item); else masterMajorHandlers.delete(item);
+  const handleDeleteMasterItem = (type: 'classes' | 'majors' | 'examTypes', item: MasterDataItem) => {
+      if (type === 'classes') masterClassHandlers.delete(item);
+      else if (type === 'majors') masterMajorHandlers.delete(item);
+      else masterExamTypeHandlers.delete(item);
   };
 
   
@@ -669,7 +688,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
       test_id: testId,
       start_time: s.startTime,
       end_time: s.endTime,
-      assigned_to: s.assignedTo
+      assigned_to: s.assignedTo,
+      session_name: s.sessionName ?? null,
+      session_number: s.sessionNumber ?? null,
     });
     
     setIsProcessing(false);
@@ -692,7 +713,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
       test_id: testId,
       start_time: s.startTime,
       end_time: s.endTime,
-      assigned_to: s.assignedTo
+      assigned_to: s.assignedTo,
+      session_name: s.sessionName ?? null,
+      session_number: s.sessionNumber ?? null,
     }).eq('id', s.id);
 
     setIsProcessing(false);
@@ -780,11 +803,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
   const questionCount = useMemo(() => Array.from(tests.values()).reduce((acc: number, test: Test) => acc + test.questions.length, 0), [tests]);
   const activeSessionCount = useMemo(() => examSessions.filter(s => s.status === 'Mengerjakan').length, [examSessions]);
   
-  // Menu yang terkunci di mode Demo (tampil tapi redirect ke overlay)
-  const DEMO_LOCKED_VIEWS = new Set([
-    AdminView.BACKUP_DATA, AdminView.CONFIG, AdminView.CETAK,
-    AdminView.CETAK_DOKUMEN, AdminView.CETAK_ADMIN_CARD,
-  ]);
+  // Di mode Demo, semua menu dapat diakses (tidak ada yang dikunci)
+  // Hanya nama sekolah & logo yang terkunci (diatur di ConfigurationScreen)
 
   // Navigation
   const navItems: NavItem[] = useMemo(() => {
@@ -800,14 +820,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
     { id: AdminView.QUESTION_BANK, label: 'Bank Soal', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M5 3a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2V5a2 2 0 00-2-2H5zm0 2h10v7h-2V7a1 1 0 00-1-1H6V5z" clipRule="evenodd" /></svg> },
     { id: AdminView.JADWAL_UJIAN, label: 'Jadwal Ujian', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clipRule="evenodd" /></svg> },
     { id: AdminView.UBK, label: 'Pemantauan Ujian', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 12a2 2 0 100-4 2 2 0 000 4z" /><path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd" /></svg> },
-    { id: AdminView.CETAK_DOKUMEN, label: 'Berita Acara & Absen', isDemoLocked: isDemoMode, icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clipRule="evenodd" /><path d="M9 11a1 1 0 100 2h6a1 1 0 100-2H9z" /></svg> },
-    { id: AdminView.CETAK, label: 'Cetak Kartu Siswa', isDemoLocked: isDemoMode, icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M5 4v3H4a2 2 0 00-2 2v3a2 2 0 002 2h1v3a2 2 0 002 2h8a2 2 0 002-2v-3h1a2 2 0 002-2V9a2 2 0 00-2-2h-1V4a2 2 0 00-2-2H7a2 2 0 00-2 2zm8 0H7v3h6V4zm0 8H7v4h6v-4z" clipRule="evenodd" /></svg> },
+    { id: AdminView.CETAK_DOKUMEN, label: 'Berita Acara & Absen', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clipRule="evenodd" /><path d="M9 11a1 1 0 100 2h6a1 1 0 100-2H9z" /></svg> },
+    { id: AdminView.CETAK, label: 'Cetak Kartu Siswa', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M5 4v3H4a2 2 0 00-2 2v3a2 2 0 002 2h1v3a2 2 0 002 2h8a2 2 0 002-2v-3h1a2 2 0 002-2V9a2 2 0 00-2-2h-1V4a2 2 0 00-2-2H7a2 2 0 00-2 2zm8 0H7v3h6V4zm0 8H7v4h6v-4z" clipRule="evenodd" /></svg> },
     { id: AdminView.REKAPITULASI_NILAI, label: 'Rekapitulasi Nilai', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg> },
     { id: AdminView.ANALISA_SOAL, label: 'Analisa Soal', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M2 10a8 8 0 018-8v8h8a8 8 0 11-16 0z" /><path d="M12 2.252A8.014 8.014 0 0117.748 8H12V2.252z" /></svg> },
     { id: AdminView.ANALISA_JAWABAN, label: 'Analisa Jawaban Siswa', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z" /><path fillRule="evenodd" d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm3 4a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h3a1 1 0 100-2h-3zm-3 4a1 1 0 100 2h.01a1 1 0 100-2H7zm3 0a1 1 0 100 2h3a1 1 0 100-2h-3z" clipRule="evenodd" /></svg> },
-    { id: AdminView.BACKUP_DATA, label: 'Backup & Restore', isDemoLocked: isDemoMode, icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" /></svg> },
-    { id: AdminView.CONFIG, label: 'Konfigurasi', isDemoLocked: isDemoMode, icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.96.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clipRule="evenodd" /></svg> },
-    { id: AdminView.CETAK_ADMIN_CARD, label: 'Cetak Kartu Admin', isDemoLocked: isDemoMode, icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 2a4 4 0 00-4 4v1H5a1 1 0 00-.994.89l-1 9A1 1 0 004 18h12a1 1 0 001-1.11l-1-9A1 1 0 0015 7h-1V6a4 4 0 00-4-4zm2 5V6a2 2 0 10-4 0v1h4zm-6 3a1 1 0 112 0 1 1 0 01-2 0zm7-1a1 1 0 100 2 1 1 0 000-2z" clipRule="evenodd" /></svg> },
+    { id: AdminView.BACKUP_DATA, label: 'Backup & Restore', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" /></svg> },
+    { id: AdminView.CONFIG, label: 'Konfigurasi', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.96.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clipRule="evenodd" /></svg> },
+    { id: AdminView.CETAK_ADMIN_CARD, label: 'Cetak Kartu Admin', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 2a4 4 0 00-4 4v1H5a1 1 0 00-.994.89l-1 9A1 1 0 004 18h12a1 1 0 001-1.11l-1-9A1 1 0 0015 7h-1V6a4 4 0 00-4-4zm2 5V6a2 2 0 10-4 0v1h4zm-6 3a1 1 0 112 0 1 1 0 01-2 0zm7-1a1 1 0 100 2 1 1 0 000-2z" clipRule="evenodd" /></svg> },
+    { id: AdminView.TOKEN, label: 'Token Ujian', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M18 8a6 6 0 01-7.743 5.743L10 14l-1 1-1 1H6v2H2v-4l4.257-4.257A6 6 0 1118 8zm-6-4a1 1 0 100 2 2 2 0 012 2 1 1 0 102 0 4 4 0 00-4-4z" clipRule="evenodd" /></svg> },
     { id: AdminView.LICENSE, label: 'Info Lisensi', icon: <ShieldCheck className="h-5 w-5" /> }
   ];
   }, [isLocked, isDemoMode]);
@@ -831,6 +852,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
     startTime: s.start_time,
     endTime: s.end_time,
     assignedTo: s.assigned_to || [],
+    sessionName: s.session_name ?? undefined,
+    sessionNumber: s.session_number ?? undefined,
   })).filter(s => s.testToken), [schedules, testIdToTokenMap]);
 
   // --- Realtime Subscription for Exam Sessions ---
@@ -882,35 +905,21 @@ const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
         return <LicenseActivation onActivate={activate} loading={isLicenseLoading} globalError={licenseError} />;
     }
 
-    // DEMO MODE: Block restricted views with overlay
-    if (isDemoMode && DEMO_LOCKED_VIEWS.has(activeView)) {
-        const featureNames: Partial<Record<AdminView, string>> = {
-            [AdminView.BACKUP_DATA]: 'Backup & Restore',
-            [AdminView.CONFIG]: 'Konfigurasi',
-            [AdminView.CETAK]: 'Cetak Kartu Siswa',
-            [AdminView.CETAK_DOKUMEN]: 'Berita Acara & Absen',
-            [AdminView.CETAK_ADMIN_CARD]: 'Cetak Kartu Admin',
-        };
-        return <DemoModeOverlay
-            featureName={featureNames[activeView] || 'Fitur ini'}
-            onGoToLicense={() => setActiveView(AdminView.LICENSE)}
-        />;
-    }
-
     switch (activeView) {
       case AdminView.HOME: return <DashboardHome adminUser={user} config={config} studentUsers={studentUsers} studentCount={realStudentCount} teacherCount={realTeacherCount} adminCount={realAdminCount} tests={tests} questionCount={questionCount} onNavigate={handleNavigate} activeSessionCount={activeSessionCount} examSessions={examSessions} totalDatabaseRecords={totalUserCount} />;
       case AdminView.DATA_MASTER: return <DataMaster masterData={masterData} users={users} onAddItem={handleAddMasterItem} onUpdateItem={handleUpdateMasterItem} onDeleteItem={handleDeleteMasterItem} onMergeMasterData={() => {}} isDemoMode={isDemoMode} />;
       case AdminView.MANAJEMEN_USER: return <UserManagement isDemoMode={isDemoMode} onRefresh={fetchData} />;
       case AdminView.JADWAL_UJIAN: return <ExamSchedule schedules={schedules} tests={tests} masterData={masterData} onAddSchedule={handleAddSchedule} onUpdateSchedule={handleUpdateSchedule} onDeleteSchedule={handleDeleteSchedule} isDemoMode={isDemoMode} />;
-      case AdminView.QUESTION_BANK: return <QuestionBank tests={tests} onAddQuestion={handleAddQuestion} onUpdateQuestion={handleUpdateQuestion} onDeleteQuestion={handleDeleteQuestion} onAddTest={handleAddTest} onUpdateTest={handleUpdateTest} onDeleteTest={handleDeleteTest} onBulkAddQuestions={handleBulkAddQuestions} onImportError={(msg) => showToast(msg, 'error')} preselectedToken={preselectedTestToken} onRefresh={() => fetchTestsData()} onFetchQuestions={fetchQuestionsForTest} isFetchingQuestions={isFetchingQuestions} isDemoMode={isDemoMode} />;
+      case AdminView.QUESTION_BANK: return <QuestionBank tests={tests} onAddQuestion={handleAddQuestion} onUpdateQuestion={handleUpdateQuestion} onDeleteQuestion={handleDeleteQuestion} onAddTest={handleAddTest} onUpdateTest={handleUpdateTest} onDeleteTest={handleDeleteTest} onBulkAddQuestions={handleBulkAddQuestions} onImportError={(msg) => showToast(msg, 'error')} preselectedToken={preselectedTestToken} onRefresh={() => fetchTestsData()} onFetchQuestions={fetchQuestionsForTest} isFetchingQuestions={isFetchingQuestions} isDemoMode={isDemoMode} examTypes={masterData.examTypes} />;
       case AdminView.UBK: return <UbkMonitor users={users} tests={tests} />;
       case AdminView.CETAK: return <ExamCards users={studentUsers} config={config} />;
       case AdminView.CETAK_DOKUMEN: return <PrintDocuments users={studentUsers} tests={tests} examSessions={examSessions} config={config} masterData={masterData} />; // New Component
       case AdminView.REKAPITULASI_NILAI: return <GradeRecap tests={tests} users={studentUsers} examSessions={examSessions} schedules={mappedSchedules} preselectedToken={preselectedTestToken} config={config} onRefresh={() => fetchData(true)} />;
       case AdminView.ANALISA_SOAL: return <QuestionAnalysis tests={tests} users={studentUsers} />;
       case AdminView.ANALISA_JAWABAN: return <StudentAnswerAnalysis tests={tests} users={studentUsers} />;
-      case AdminView.BACKUP_DATA: return <BackupScreen config={config} users={users} tests={tests} masterData={masterData} announcements={announcements} schedules={schedules} onRestoreData={handleRestoreData} onDeleteData={handleDeleteData} isProcessing={isProcessing} />;
-      case AdminView.CONFIG: return <ConfigurationScreen config={config} onUpdateConfig={onUpdateConfig} user={user} onLogout={onLogout} onAdminPasswordChange={handleAdminPasswordChange} onSyncAdminPasswordForQR={handleSyncAdminPasswordForQR} isProcessing={isProcessing} isLicensed={!isLocked} licenseProfile={licenseProfile} />;
+      case AdminView.BACKUP_DATA: return <BackupScreen config={config} users={users} tests={tests} masterData={masterData} announcements={announcements} schedules={schedules} onRestoreData={handleRestoreData} onDeleteData={handleDeleteData} isProcessing={isProcessing} isDemoMode={isDemoMode} />;
+      case AdminView.CONFIG: return <ConfigurationScreen config={config} onUpdateConfig={onUpdateConfig} user={user} onLogout={onLogout} onAdminPasswordChange={handleAdminPasswordChange} onSyncAdminPasswordForQR={handleSyncAdminPasswordForQR} isProcessing={isProcessing} isLicensed={!isLocked} licenseProfile={licenseProfile} isDemoMode={isDemoMode} />;
+      case AdminView.TOKEN: return <TokenManagement isDemoMode={isDemoMode} />;
       case AdminView.CETAK_ADMIN_CARD: return <AdminCard adminUser={user} config={config} />;
       case AdminView.LICENSE:
         if (isLocked) {
@@ -1141,9 +1150,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
       {notification && <ToastNotification key={notification.key} message={notification.message} type={notification.type} onClose={() => setNotification(null)} />}
       {isImporting && <BulkImportProgress processed={importProgress.processed} total={importProgress.total} errors={importProgress.errors} onClose={() => setIsImporting(false)} />}
       {restoreProgress !== null && <RestoreProgressModal progress={restoreProgress.percent} message={restoreProgress.message} />}
-      {isSidebarOpen && <div onClick={() => setSidebarOpen(false)} className="fixed inset-0 bg-black/50 z-30 lg:hidden" aria-hidden="true"></div>}
+      {isSidebarOpen && <div onClick={() => setSidebarOpen(false)} className="fixed inset-0 bg-black/50 z-30 md:hidden" aria-hidden="true"></div>}
 
-      <aside className={`fixed inset-y-0 left-0 z-40 w-64 bg-slate-900 text-slate-300 flex-col flex-shrink-0 transform transition-transform duration-300 ease-in-out lg:relative lg:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+      <aside className={`fixed inset-y-0 left-0 z-40 w-64 bg-slate-900 text-slate-300 flex-col flex-shrink-0 transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
           <div className="h-20 flex items-center justify-center px-4 border-b border-slate-800">
              <div className="flex items-center space-x-3"><img src={config.logoUrl} alt="Logo" className="h-10 w-10 object-contain" /><span className="font-bold text-white text-lg">{config.schoolName}</span></div>
           </div>
@@ -1194,7 +1203,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
                 </div>
             )}
             <div className="flex items-center min-w-0">
-                <button onClick={() => setSidebarOpen(true)} className="lg:hidden text-gray-500 mr-4"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg></button>
+                <button onClick={() => setSidebarOpen(true)} className="md:hidden text-gray-500 mr-3 p-2 rounded-lg hover:bg-gray-100 active:bg-gray-200 min-h-[44px] min-w-[44px] flex items-center justify-center"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg></button>
                 <div className="min-w-0"><h1 className="text-lg sm:text-xl font-bold text-gray-800 truncate">Selamat datang, {user.fullName}!</h1><p className="text-sm text-gray-500 hidden sm:block">Ini adalah ringkasan aktivitas sekolah Anda hari ini.</p></div>
             </div>
              <div className="flex items-center space-x-2 sm:space-x-4">

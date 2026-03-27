@@ -128,67 +128,82 @@ const CATEGORIES = [
   },
 ];
 
-// HTML templates for common structures
+// ── CATATAN PENTING UNTUK DEVELOPER ────────────────────────────────────────
+// Semua template math menggunakan pola:
+//   contenteditable="false"  → membuat formula menjadi atom (tidak bisa diedit di dalam)
+//   &#x200B;                 → zero-width space setelah formula agar kursor bisa diposisikan
+//                              tepat SETELAH formula, bukan terjebak di dalam elemen span
+// ── Ini memperbaiki bug: kursor tidak bisa pindah ke samping rumus ──────────
 const TEMPLATES = [
   {
     label: 'Pecahan a/b',
     icon: 'a/b',
-    html: '<span style="display:inline-flex;flex-direction:column;align-items:center;vertical-align:middle;line-height:1.3;font-size:0.95em;margin:0 2px"><span style="border-bottom:1.5px solid currentColor;padding:0 3px;text-align:center">a</span><span style="padding:0 3px;text-align:center">b</span></span>',
+    html: '<span contenteditable="false" style="display:inline-flex;flex-direction:column;align-items:center;vertical-align:middle;line-height:1.3;font-size:0.95em;margin:0 2px;cursor:default"><span style="border-bottom:1.5px solid currentColor;padding:0 4px;text-align:center;min-width:1em">a</span><span style="padding:0 4px;text-align:center;min-width:1em">b</span></span>&#x200B;',
   },
   {
     label: 'Akar √',
     icon: '√x',
-    html: '<span style="white-space:nowrap;font-size:0.95em">√<span style="border-top:1.5px solid currentColor;padding-left:1px">x</span></span>',
+    html: '<span contenteditable="false" style="white-space:nowrap;font-size:0.95em;cursor:default">√<span style="border-top:1.5px solid currentColor;padding-left:2px;padding-right:2px">x</span></span>&#x200B;',
+  },
+  {
+    label: 'Akar ke-n',
+    icon: 'ⁿ√x',
+    html: '<span contenteditable="false" style="white-space:nowrap;font-size:0.95em;cursor:default"><sup style="font-size:0.65em">n</sup>√<span style="border-top:1.5px solid currentColor;padding-left:2px;padding-right:2px">x</span></span>&#x200B;',
   },
   {
     label: 'Pangkat xⁿ',
     icon: 'xⁿ',
-    html: 'x<sup style="font-size:0.75em">n</sup>',
+    html: 'x<sup style="font-size:0.75em">n</sup>&#x200B;',
   },
   {
     label: 'Indeks xₙ',
     icon: 'xₙ',
-    html: 'x<sub style="font-size:0.75em">n</sub>',
+    html: 'x<sub style="font-size:0.75em">n</sub>&#x200B;',
   },
   {
     label: 'Mutlak |x|',
     icon: '|x|',
-    html: '|x|',
+    html: '|x|&#x200B;',
   },
   {
     label: 'log basis',
     icon: 'logₐb',
-    html: 'log<sub style="font-size:0.75em">a</sub>b',
+    html: 'log<sub style="font-size:0.75em">a</sub>b&#x200B;',
   },
   {
     label: 'lim',
     icon: 'lim',
-    html: 'lim<sub style="font-size:0.75em">x→0</sub>&nbsp;f(x)',
+    html: '<span contenteditable="false" style="cursor:default">lim<sub style="font-size:0.75em">x→0</sub>&thinsp;f(x)</span>&#x200B;',
   },
   {
     label: '∫ integral',
     icon: '∫dx',
-    html: '∫f(x)&nbsp;dx',
+    html: '<span contenteditable="false" style="cursor:default">∫f(x)&thinsp;dx</span>&#x200B;',
   },
   {
     label: 'Σ sigma',
     icon: 'Σᵢ',
-    html: '<span style="display:inline-flex;flex-direction:column;align-items:center;vertical-align:middle;font-size:0.85em;margin:0 2px"><span style="font-size:0.75em">n</span><span style="font-size:1.3em">Σ</span><span style="font-size:0.75em">i=1</span></span>&nbsp;aᵢ',
+    html: '<span contenteditable="false" style="display:inline-flex;flex-direction:column;align-items:center;vertical-align:middle;font-size:0.85em;margin:0 2px;cursor:default"><span style="font-size:0.75em">n</span><span style="font-size:1.3em">Σ</span><span style="font-size:0.75em">i=1</span></span>&thinsp;aᵢ&#x200B;',
   },
   {
     label: 'Vektor',
     icon: 'v⃗',
-    html: '<span style="display:inline-flex;flex-direction:column;align-items:center;vertical-align:middle;font-size:0.95em"><span style="border-top:1.5px solid currentColor;font-size:0.6em;letter-spacing:0.1em">→</span><span>AB</span></span>',
+    html: '<span contenteditable="false" style="display:inline-flex;flex-direction:column;align-items:center;vertical-align:middle;font-size:0.95em;cursor:default"><span style="border-top:1.5px solid currentColor;font-size:0.6em;letter-spacing:0.1em;padding:0 2px">→</span><span>AB</span></span>&#x200B;',
   },
   {
     label: 'Matriks 2×2',
     icon: '[ab]',
-    html: '<span style="display:inline-flex;align-items:center;vertical-align:middle;font-size:0.9em;margin:0 2px"><span style="font-size:1.5em;margin-right:1px">[</span><span style="display:inline-flex;flex-direction:column;line-height:1.4"><span>a &nbsp; b</span><span>c &nbsp; d</span></span><span style="font-size:1.5em;margin-left:1px">]</span></span>',
+    html: '<span contenteditable="false" style="display:inline-flex;align-items:center;vertical-align:middle;font-size:0.9em;margin:0 2px;cursor:default"><span style="font-size:1.5em;margin-right:1px">[</span><span style="display:inline-flex;flex-direction:column;line-height:1.6"><span>a &nbsp; b</span><span>c &nbsp; d</span></span><span style="font-size:1.5em;margin-left:1px">]</span></span>&#x200B;',
   },
   {
     label: 'Kombinasi Cₙ',
     icon: 'Cₙₖ',
-    html: 'C<sub style="font-size:0.7em">n,k</sub>',
+    html: 'C<sub style="font-size:0.7em">n,k</sub>&#x200B;',
+  },
+  {
+    label: 'Permutasi Pₙ',
+    icon: 'Pₙₖ',
+    html: 'P<sub style="font-size:0.7em">n,k</sub>&#x200B;',
   },
 ];
 
@@ -207,12 +222,20 @@ const MathPalette: React.FC<MathPaletteProps> = ({ onInsert, onInsertHtml, onSup
       if (left + panelWidth > window.innerWidth) {
         left = Math.max(8, window.innerWidth - panelWidth - 8);
       }
-      const top = rect.bottom + 4;
+      // Estimasi tinggi panel agar tidak terpotong di bagian bawah layar
+      const estimatedPanelHeight = 380;
+      const spaceBelow = window.innerHeight - rect.bottom - 8;
+      const showAbove = spaceBelow < estimatedPanelHeight && rect.top > estimatedPanelHeight;
+      const top = showAbove
+        ? Math.max(8, rect.top - estimatedPanelHeight - 4)
+        : rect.bottom + 4;
       setPanelStyle({
         top,
         left,
         width: panelWidth,
-        maxHeight: `calc(100vh - ${top + 8}px)`,
+        maxHeight: showAbove
+          ? `${rect.top - 12}px`
+          : `calc(100vh - ${top + 8}px)`,
         overflowY: 'auto',
       });
     }

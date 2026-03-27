@@ -139,8 +139,8 @@ const UserModal: React.FC<UserModalProps> = ({ userToEdit, masterData, onSave, o
   const religions = ['Islam', 'Kristen Protestan', 'Katolik', 'Hindu', 'Buddha', 'Khonghucu'];
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[60] p-4 animate-fade-in overflow-y-auto">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg my-auto flex flex-col">
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-start justify-center z-[60] p-4 animate-fade-in overflow-y-auto">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl my-8 flex flex-col">
         {/* Header */}
         <div className="p-5 border-b flex justify-between items-center bg-gray-50 rounded-t-2xl">
           <div>

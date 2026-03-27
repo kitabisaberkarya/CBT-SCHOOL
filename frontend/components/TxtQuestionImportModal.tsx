@@ -163,7 +163,7 @@ BOBOT: 5
         }
       } 
       else if (systemType === 'matching') {
-         // KIRI_1, KIRI_2...
+         // Parsing KIRI_1, KIRI_2...
          const leftOpts: string[] = [];
          lines.forEach(l => {
             if (l.toUpperCase().startsWith('KIRI_')) {
@@ -174,21 +174,27 @@ BOBOT: 5
          qObj.options = leftOpts;
 
          const rightRaw = getValue('KANAN');
-         qObj.matching_right_options = rightRaw.split(',').map(s => s.trim()).filter(s => s !== '');
+         const rightOpts = rightRaw.split(',').map(s => s.trim()).filter(s => s !== '');
+         qObj.matching_right_options = rightOpts;
 
-         // Answer: 1-C, 2-B
+         // ── FIX MATCHING: Bangun metadata dengan struktur yang sama seperti QuestionModal ──
+         // Ini diperlukan agar soal menjodohkan bisa tampil dengan benar di bank soal & ujian
+         const matchingLeft = leftOpts.map((content, i) => ({ id: `L${i + 1}`, content }));
+         const matchingRight = rightOpts.map((content, i) => ({ id: `R${i + 1}`, content }));
+         qObj.metadata = { matchingLeft, matchingRight };
+
+         // Answer: 1-C, 2-B → L1: R3 (C=3rd option)
          const pairParts = answerRaw.split(',');
-         // DB uses UI-Friendly ID pairing (L1->R3)
-         const pairObj: Record<string, string> = {}; 
-         
+         const pairObj: Record<string, string> = {};
+
          pairParts.forEach(p => {
             const [l, r] = p.trim().split('-');
             if (l && r) {
-               // Assuming user inputs 1-C (1 is index 0 of left, C is index 2 of right)
-               // Frontend usually needs specific ID mapping, but for raw import we can simplify
-               // Let's store L{idx}: R{char}
                const rightChar = r.trim().toUpperCase();
-               pairObj[`L${l}`] = `R${rightChar.charCodeAt(0) - 64}`;
+               const rightIdx = rightChar.charCodeAt(0) - 64; // A=1, B=2, C=3
+               if (rightIdx >= 1 && rightIdx <= rightOpts.length) {
+                  pairObj[`L${l.trim()}`] = `R${rightIdx}`;
+               }
             }
          });
          qObj.answer_key = { pairs: pairObj };

@@ -227,6 +227,15 @@ const TestPreviewModal: React.FC<TestPreviewModalProps> = ({ testName, questions
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-2 sm:p-4 animate-fade-in">
 
+        {/* Tombol tutup darurat — selalu terlihat di pojok kanan atas layar */}
+        <button
+          onClick={onClose}
+          className="absolute top-3 right-3 z-[110] bg-red-600 hover:bg-red-700 text-white w-9 h-9 rounded-full flex items-center justify-center shadow-xl font-bold text-lg leading-none"
+          title="Tutup Preview"
+        >
+          ×
+        </button>
+
         {/* Mock Device Frame */}
         <div className={`w-full max-w-5xl max-h-[92vh] min-h-[500px] ${currentTheme.bgApp} rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col relative border-8 border-gray-800`}>
             

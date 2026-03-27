@@ -26,7 +26,7 @@ LOG_TAG="[CBT-AutoUpdate]"
 # Vendor Supabase (server lisensi & update)
 VENDOR_URL="https://yiuamqcfgdgcwxtrihfd.supabase.co"
 VENDOR_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlpdWFtcWNmZ2RnY3d4dHJpaGZkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU4NTU5MDUsImV4cCI6MjA4MTQzMTkwNX0.tRUkfK3cx2Cpwqv14ZXYoUpwwpi_hDhl90EfARAA_IA"
-APP_ID="cbt_pro"
+APP_ID="cbtschool"
 
 # Timeout koneksi ke vendor (detik) — jika sekolah lambat, jangan hang lama
 CURL_TIMEOUT=10

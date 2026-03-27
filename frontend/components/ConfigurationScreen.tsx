@@ -1,10 +1,10 @@
 
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { AppConfig, User } from '../types';
 import ConfirmationModal from './ConfirmationModal';
 import { v4 as uuidv4 } from 'uuid';
 import { supabase } from '../supabaseClient';
-import { compressImage } from '../utils/imageCompression'; 
+import { compressImage } from '../utils/imageCompression';
 import { EXAM_EVENT_TYPES } from '../constants'; // Import daftar event
 
 interface PasswordSyncModalProps {
@@ -78,6 +78,7 @@ interface ConfigurationScreenProps {
   isProcessing: boolean;
   isLicensed?: boolean; // New Prop
   licenseProfile?: any; // New Prop for License Data
+  isDemoMode?: boolean; // Mode Demo: nama sekolah & logo terkunci
 }
 
 const ToggleSwitch: React.FC<{id: string, label: string, checked: boolean, onChange: (e: React.ChangeEvent<HTMLInputElement>) => void}> = ({ id, label, checked, onChange }) => (
@@ -95,8 +96,11 @@ const ImageUploader: React.FC<{
   label: string;
   currentUrl?: string;
   onUploadSuccess: (url: string) => void;
+  onReset?: () => void;
   helperText?: string;
-}> = ({ label, currentUrl, onUploadSuccess, helperText }) => {
+  disabled?: boolean;
+  disabledBadge?: string;
+}> = ({ label, currentUrl, onUploadSuccess, onReset, helperText, disabled = false, disabledBadge }) => {
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -109,13 +113,13 @@ const ImageUploader: React.FC<{
         const { data, error } = await supabase.storage
             .from('config_assets')
             .upload(fileName, processedFile);
-        
+
         if (error) throw error;
 
         const { data: { publicUrl } } = supabase.storage
             .from('config_assets')
             .getPublicUrl(fileName);
-            
+
         onUploadSuccess(publicUrl);
     } catch (error: any) {
         alert('Gagal mengunggah gambar: ' + error.message);
@@ -123,7 +127,7 @@ const ImageUploader: React.FC<{
         setIsUploading(false);
     }
   };
-  
+
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) handleUpload(file);
@@ -131,25 +135,41 @@ const ImageUploader: React.FC<{
 
   return (
     <div>
-      <label className="block text-sm font-medium text-gray-700">{label}</label>
+      <div className="flex items-center gap-2 mb-1">
+        <label className="block text-sm font-medium text-gray-700">{label}</label>
+        {disabled && disabledBadge && <span className="text-xs text-amber-600 font-bold px-2 py-0.5 bg-amber-100 rounded">{disabledBadge}</span>}
+      </div>
       {helperText && <p className="text-xs text-gray-500 mb-2">{helperText}</p>}
-      
-      <div className="mt-1 flex items-center space-x-4 p-2 border-2 border-dashed rounded-lg bg-gray-50">
+
+      <div className={`mt-1 flex items-center space-x-4 p-2 border-2 border-dashed rounded-lg ${disabled ? 'bg-gray-100 opacity-70' : 'bg-gray-50'}`}>
         {currentUrl ? (
           <img src={currentUrl} alt={label} className="h-20 w-auto object-contain bg-white border p-1 rounded" />
         ) : (
           <div className="h-16 w-24 bg-white border rounded flex items-center justify-center text-xs text-gray-400">Preview</div>
         )}
         <div className="flex-grow">
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={isUploading}
-            className="bg-white hover:bg-gray-100 border border-gray-300 text-gray-700 font-semibold py-2 px-4 rounded-lg text-sm disabled:opacity-50 shadow-sm"
-          >
-            {isUploading ? 'Mengompres & Upload...' : 'Pilih Gambar'}
-          </button>
-          <input type="file" ref={fileInputRef} onChange={handleFileSelect} className="hidden" accept="image/png, image/jpeg" />
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isUploading || disabled}
+              className="bg-white hover:bg-gray-100 border border-gray-300 text-gray-700 font-semibold py-2 px-4 rounded-lg text-sm disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+            >
+              {isUploading ? 'Mengompres & Upload...' : 'Pilih Gambar'}
+            </button>
+            {currentUrl && onReset && (
+              <button
+                type="button"
+                onClick={onReset}
+                disabled={disabled}
+                className="bg-red-50 hover:bg-red-100 border border-red-300 text-red-700 font-semibold py-2 px-3 rounded-lg text-sm disabled:opacity-50 shadow-sm"
+                title="Hapus gambar"
+              >
+                Hapus
+              </button>
+            )}
+          </div>
+          <input type="file" ref={fileInputRef} onChange={handleFileSelect} className="hidden" accept="image/png, image/jpeg" disabled={disabled} />
         </div>
       </div>
     </div>
@@ -158,7 +178,7 @@ const ImageUploader: React.FC<{
 
 
 const ConfigurationScreen: React.FC<ConfigurationScreenProps> = (props) => {
-  const { config, onUpdateConfig, user, onLogout, onAdminPasswordChange, onSyncAdminPasswordForQR, isProcessing } = props;
+  const { config, onUpdateConfig, user, onLogout, onAdminPasswordChange, onSyncAdminPasswordForQR, isProcessing, isDemoMode = false } = props;
   const [activeTab, setActiveTab] = useState<'tampilan' | 'keamanan' | 'akun' | 'login' | 'kartu'>('tampilan');
   const [formData, setFormData] = useState<AppConfig>(config);
   const [isSaved, setIsSaved] = useState(false);
@@ -169,6 +189,7 @@ const ConfigurationScreen: React.FC<ConfigurationScreenProps> = (props) => {
   const [isSavingAdminPass, setIsSavingAdminPass] = useState(false);
   const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
   const [useCustomExamEvent, setUseCustomExamEvent] = useState(false);
+
 
   useEffect(() => {
     const initialData = { ...config };
@@ -306,16 +327,17 @@ const ConfigurationScreen: React.FC<ConfigurationScreenProps> = (props) => {
                           <div>
                               <label htmlFor="schoolName" className="block text-sm font-medium text-gray-700">Nama Sekolah</label>
                               <div className="flex items-center gap-2">
-                                  <input 
-                                      type="text" 
-                                      name="schoolName" 
-                                      id="schoolName" 
-                                      value={formData.schoolName} 
-                                      onChange={handleChange} 
-                                      className={`mt-1 w-full p-2 border rounded-md ${props.isLicensed ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''}`}
-                                      disabled={props.isLicensed}
+                                  <input
+                                      type="text"
+                                      name="schoolName"
+                                      id="schoolName"
+                                      value={formData.schoolName}
+                                      onChange={handleChange}
+                                      className={`mt-1 w-full p-2 border rounded-md ${(props.isLicensed || isDemoMode) ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''}`}
+                                      disabled={props.isLicensed || isDemoMode}
                                   />
                                   {props.isLicensed && <span className="text-xs text-green-600 font-bold px-2 py-1 bg-green-100 rounded">TERKUNCI (LISENSI AKTIF)</span>}
+                                  {isDemoMode && !props.isLicensed && <span className="text-xs text-amber-600 font-bold px-2 py-1 bg-amber-100 rounded whitespace-nowrap">TERKUNCI (MODE DEMO)</span>}
                               </div>
                           </div>
                           
@@ -352,17 +374,23 @@ const ConfigurationScreen: React.FC<ConfigurationScreenProps> = (props) => {
                           </div>
 
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <ImageUploader 
+                            <ImageUploader
                                 label="Logo Kiri (Pemerintah)"
                                 currentUrl={formData.leftLogoUrl}
                                 onUploadSuccess={(url) => setFormData(prev => ({...prev, leftLogoUrl: url}))}
+                                onReset={() => setFormData(prev => ({...prev, leftLogoUrl: ''}))}
                                 helperText="Logo Kabupaten/Provinsi. PNG Transparan."
+                                disabled={isDemoMode}
+                                disabledBadge="TERKUNCI (MODE DEMO)"
                             />
-                            <ImageUploader 
+                            <ImageUploader
                                 label="Logo Kanan (Sekolah)"
                                 currentUrl={formData.logoUrl}
                                 onUploadSuccess={(url) => setFormData(prev => ({...prev, logoUrl: url}))}
+                                onReset={() => setFormData(prev => ({...prev, logoUrl: ''}))}
                                 helperText="Logo Sekolah Utama. PNG Transparan."
+                                disabled={isDemoMode}
+                                disabledBadge="TERKUNCI (MODE DEMO)"
                             />
                           </div>
 
@@ -474,16 +502,18 @@ const ConfigurationScreen: React.FC<ConfigurationScreenProps> = (props) => {
                                 <div><label htmlFor="headmasterNip" className="block text-sm font-medium text-gray-700">NIP Kepala Sekolah</label><input type="text" name="headmasterNip" id="headmasterNip" value={formData.headmasterNip || ''} onChange={handleChange} placeholder="Contoh: NIP. 123456789012345678" className="mt-1 w-full p-2 border rounded-md"/></div>
                             </div>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4 border-t border-gray-100">
-                                <ImageUploader 
+                                <ImageUploader
                                     label="Tanda Tangan Digital (PNG)"
                                     currentUrl={formData.signatureUrl}
                                     onUploadSuccess={(url) => setFormData(prev => ({ ...prev, signatureUrl: url }))}
+                                    onReset={() => setFormData(prev => ({ ...prev, signatureUrl: '' }))}
                                     helperText="Wajib format .PNG (Background Transparan). Ukuran maks 500KB. Rasio ideal 3:2 (Lebar:Tinggi)."
                                 />
-                                <ImageUploader 
+                                <ImageUploader
                                     label="Stempel Sekolah (PNG)"
                                     currentUrl={formData.stampUrl}
                                     onUploadSuccess={(url) => setFormData(prev => ({ ...prev, stampUrl: url }))}
+                                    onReset={() => setFormData(prev => ({ ...prev, stampUrl: '' }))}
                                     helperText="Wajib format .PNG (Background Transparan). Ukuran maks 500KB. Rasio ideal 1:1 (Kotak/Bulat)."
                                 />
                             </div>
@@ -492,8 +522,9 @@ const ConfigurationScreen: React.FC<ConfigurationScreenProps> = (props) => {
                     </div>
                     <div className="p-4 bg-gray-50 border-t flex items-center justify-end space-x-4 sticky bottom-0">
                       <span className={`text-sm font-semibold transition-opacity duration-300 ${isSaved ? 'opacity-100 text-green-600' : 'opacity-0'}`}>Perubahan disimpan!</span>
+                      {isDemoMode && <span className="text-xs text-amber-600 font-bold px-2 py-1 bg-amber-100 rounded">Mode Demo: perubahan tidak dapat disimpan</span>}
                       <button type="button" onClick={handleCancel} disabled={!hasChanges} className="bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-2 px-4 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed">Batal</button>
-                      <button type="submit" disabled={!hasChanges} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg shadow-md disabled:bg-gray-400 disabled:cursor-not-allowed">Simpan Perubahan</button>
+                      <button type="submit" disabled={!hasChanges || isDemoMode} className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg shadow-md disabled:bg-gray-400 disabled:cursor-not-allowed">Simpan Perubahan</button>
                     </div>
                   </div>
                   <div className="lg:col-span-1 hidden lg:block"></div>
@@ -508,7 +539,7 @@ const ConfigurationScreen: React.FC<ConfigurationScreenProps> = (props) => {
                                 <div><label className="block text-sm font-medium text-gray-700">Password Baru</label><input type="password" value={adminPassword} onChange={(e) => setAdminPassword(e.target.value)} className="mt-1 w-full p-2 border rounded-md" required /></div>
                                 <div><label className="block text-sm font-medium text-gray-700">Konfirmasi Password Baru</label><input type="password" value={adminPasswordConfirm} onChange={(e) => setAdminPasswordConfirm(e.target.value)} className="mt-1 w-full p-2 border rounded-md" required /></div>
                                 {adminPassError && <p className="text-sm text-red-600">{adminPassError}</p>}
-                                <div><button type="submit" disabled={isSavingAdminPass} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg disabled:bg-blue-400">{isSavingAdminPass ? 'Menyimpan...' : 'Simpan Password Admin'}</button></div>
+                                <div><button type="submit" disabled={isSavingAdminPass || isDemoMode} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg disabled:bg-gray-400 disabled:cursor-not-allowed">{isSavingAdminPass ? 'Menyimpan...' : isDemoMode ? 'Tidak Tersedia di Mode Demo' : 'Simpan Password Admin'}</button></div>
                             </form>
                         </div>
                         <div className="bg-gray-50 rounded-xl p-6 border border-dashed">
@@ -533,7 +564,7 @@ const ConfigurationScreen: React.FC<ConfigurationScreenProps> = (props) => {
             <button type="button" onClick={() => setActiveTab('kartu')} className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'kartu' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Pengaturan Kartu</button>
             <button type="button" onClick={() => setActiveTab('login')} className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'login' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Metode Login</button>
             <button type="button" onClick={() => setActiveTab('keamanan')} className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'keamanan' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Keamanan Ujian</button>
-            <button type="button" onClick={() => setActiveTab('akun')} className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'akun' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Akun & Password</button>
+<button type="button" onClick={() => setActiveTab('akun')} className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'akun' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Akun & Password</button>
           </nav>
         </div>
       </div>
@@ -541,6 +572,7 @@ const ConfigurationScreen: React.FC<ConfigurationScreenProps> = (props) => {
       {renderContent()}
       
       {isSyncModalOpen && <PasswordSyncModal onConfirm={handleSyncPassword} onClose={() => setIsSyncModalOpen(false)} isSyncing={isProcessing} />}
+
     </div>
   );
 };

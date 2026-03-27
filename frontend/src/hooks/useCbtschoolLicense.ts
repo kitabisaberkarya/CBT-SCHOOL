@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { useState, useEffect, useCallback } from 'react';
 import { supabase as localSupabase } from '../../supabaseClient';
+import { triggerDemoSeed, resetDemoSeedFlag } from '../utils/demoSeedData';
 
 // ==============================================================================
 //  LICENSE HOOK — CBT SCHOOL ENTERPRISE VHD EDITION
@@ -193,6 +194,13 @@ export const useCbtschoolLicense = () => {
     // Validasi saat pertama kali load
     validateLicense();
 
+    // Jika demo key sudah aktif tapi seed belum selesai (misal karena DB offline saat aktivasi)
+    // Coba seed ulang setiap kali app dimuat
+    const existingKey = localStorage.getItem('cbtschool_key');
+    if (existingKey === DEMO_LICENSE_KEY) {
+      triggerDemoSeed().catch(console.warn);
+    }
+
     const handleLicenseChange = () => {
       const key = localStorage.getItem('cbtschool_key');
       if (key === DEMO_LICENSE_KEY) {
@@ -311,6 +319,8 @@ export const useCbtschoolLicense = () => {
       setLicenseError(null);
       setLoading(false);
       window.dispatchEvent(new Event('cbtschool-license-changed'));
+      // Isi data demo ke DB secara async (non-blocking)
+      triggerDemoSeed().catch(console.warn);
       return { success: true };
     }
 
@@ -375,6 +385,7 @@ export const useCbtschoolLicense = () => {
   const resetLicense = async () => {
     localStorage.removeItem('cbtschool_key');
     localStorage.removeItem('cbtschool_profile');
+    resetDemoSeedFlag();
     setIsLocked(true);
     setIsDemoMode(false);
     setProfile(null);

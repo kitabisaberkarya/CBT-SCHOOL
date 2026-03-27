@@ -10,6 +10,7 @@ import QuestionAnalysis from '../components/QuestionAnalysis';
 import StudentAnswerAnalysis from '../components/StudentAnswerAnalysis';
 import ToastNotification from '../components/ToastNotification';
 import BulkImportProgress from '../components/BulkImportProgress';
+import TokenManagement from '../components/TokenManagement';
 
 interface TeacherDashboardProps {
   user: User;
@@ -41,7 +42,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = (props) => {
   const [isDataLoading, setIsDataLoading] = useState(true);
   const [users, setUsers] = useState<User[]>([]); // Masih perlu load users untuk laporan nilai
   const [tests, setTests] = useState<Map<string, Test>>(new Map());
-  const [masterData, setMasterData] = useState<MasterData>({ classes: [], majors: [] });
+  const [masterData, setMasterData] = useState<MasterData>({ classes: [], majors: [], examTypes: [] });
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [examSessions, setExamSessions] = useState<any[]>([]);
   
@@ -190,7 +191,11 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = (props) => {
       }));
 
       setUsers(mappedUsers);
-      setMasterData({ classes: classesData as any[], majors: majorsData as any[] });
+      setMasterData({ classes: classesData as any[], majors: majorsData as any[], examTypes: [] });
+      // Fetch exam types in background for TestModal dropdown
+      supabase.from('master_exam_types').select('*').order('name').then(({ data: etData }) => {
+        if (etData) setMasterData(prev => ({ ...prev, examTypes: etData as any[] }));
+      });
       setExamSessions(sessionsData);
 
       const testIdToTokenMap = new Map<string, string>();
@@ -202,6 +207,8 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = (props) => {
         startTime: s.start_time,
         endTime: s.end_time,
         assignedTo: s.assigned_to || [],
+        sessionName: s.session_name ?? undefined,
+        sessionNumber: s.session_number ?? undefined,
       })).filter(s => s.testToken);
       setSchedules(mappedSchedules);
 
@@ -426,6 +433,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = (props) => {
     { id: TeacherView.REKAPITULASI_NILAI, label: 'Laporan Nilai', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" /></svg> },
     { id: TeacherView.ANALISA_SOAL, label: 'Analisa Soal', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M2 10a8 8 0 018-8v8h8a8 8 0 11-16 0z" /><path d="M12 2.252A8.014 8.014 0 0117.748 8H12V2.252z" /></svg> },
     { id: TeacherView.ANALISA_JAWABAN, label: 'Analisa Jawaban', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M3 3a1 1 0 000 2v8a2 2 0 002 2h2.586l-1.293 1.293a1 1 0 101.414 1.414L10 15.414l2.293 2.293a1 1 0 001.414-1.414L12.414 15H15a2 2 0 002-2V5a1 1 0 100-2H3zm11 4a1 1 0 10-2 0v4a1 1 0 102 0V7zm-3 1a1 1 0 10-2 0v3a1 1 0 102 0V8zM8 9a1 1 0 00-2 0v2a1 1 0 102 0V9z" clipRule="evenodd" /></svg> },
+    { id: TeacherView.TOKEN, label: 'Token Ujian', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M18 8a6 6 0 01-7.743 5.743L10 14l-1 1-1 1H6v2H2v-4l4.257-4.257A6 6 0 1118 8zm-6-4a1 1 0 100 2 2 2 0 012 2 1 1 0 102 0 4 4 0 00-4-4z" clipRule="evenodd" /></svg> },
   ], []);
 
   const handleNavigate = (view: TeacherView, token?: string) => { setPreselectedTestToken(token); setActiveView(view); if(window.innerWidth < 1024) setSidebarOpen(false); };
@@ -460,11 +468,12 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = (props) => {
                 </div>
             </div>
         );
-      case TeacherView.QUESTION_BANK: return <QuestionBank tests={tests} onAddQuestion={handleAddQuestion} onUpdateQuestion={handleUpdateQuestion} onDeleteQuestion={handleDeleteQuestion} onAddTest={handleAddTest} onUpdateTest={handleUpdateTest} onDeleteTest={handleDeleteTest} onBulkAddQuestions={handleBulkAddQuestions} onImportError={(msg) => showToast(msg, 'error')} preselectedToken={preselectedTestToken} onRefresh={() => fetchTestsData()} onFetchQuestions={fetchQuestionsForTest} isFetchingQuestions={isFetchingQuestions} />;
+      case TeacherView.QUESTION_BANK: return <QuestionBank tests={tests} onAddQuestion={handleAddQuestion} onUpdateQuestion={handleUpdateQuestion} onDeleteQuestion={handleDeleteQuestion} onAddTest={handleAddTest} onUpdateTest={handleUpdateTest} onDeleteTest={handleDeleteTest} onBulkAddQuestions={handleBulkAddQuestions} onImportError={(msg) => showToast(msg, 'error')} preselectedToken={preselectedTestToken} onRefresh={() => fetchTestsData()} onFetchQuestions={fetchQuestionsForTest} isFetchingQuestions={isFetchingQuestions} examTypes={masterData.examTypes} />;
       case TeacherView.JADWAL_UJIAN: return <ExamSchedule schedules={schedules} tests={tests} masterData={masterData} onAddSchedule={handleAddSchedule} onUpdateSchedule={handleUpdateSchedule} onDeleteSchedule={handleDeleteSchedule} />;
       case TeacherView.REKAPITULASI_NILAI: return <GradeRecap tests={tests} users={studentUsers} examSessions={examSessions} schedules={schedules} preselectedToken={preselectedTestToken} config={config} onRefresh={() => fetchData(true)} />;
       case TeacherView.ANALISA_SOAL: return <QuestionAnalysis tests={tests} users={studentUsers} />;
       case TeacherView.ANALISA_JAWABAN: return <StudentAnswerAnalysis tests={tests} users={studentUsers} />;
+      case TeacherView.TOKEN: return <TokenManagement />;
       default: return <div>Not Implemented</div>;
     }
   };
@@ -483,9 +492,9 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = (props) => {
       {notification && <ToastNotification key={notification.key} message={notification.message} type={notification.type} onClose={() => setNotification(null)} />}
       
       {/* Sidebar Overlay for Mobile */}
-      {isSidebarOpen && <div onClick={() => setSidebarOpen(false)} className="fixed inset-0 bg-black/50 z-30 lg:hidden" aria-hidden="true"></div>}
+      {isSidebarOpen && <div onClick={() => setSidebarOpen(false)} className="fixed inset-0 bg-black/50 z-30 md:hidden" aria-hidden="true"></div>}
 
-      <aside className={`fixed inset-y-0 left-0 z-40 w-64 bg-teal-900 text-teal-100 flex-col flex-shrink-0 transform transition-transform duration-300 ease-in-out lg:relative lg:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+      <aside className={`fixed inset-y-0 left-0 z-40 w-64 bg-teal-900 text-teal-100 flex-col flex-shrink-0 transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
           <div className="h-20 flex items-center justify-center px-4 border-b border-teal-800 bg-teal-950">
              <div className="flex items-center space-x-3">
                  <img src={config.logoUrl} alt="Logo" className="h-8 w-8 object-contain bg-white rounded-full p-0.5" />
@@ -515,7 +524,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = (props) => {
       <div className="flex-grow flex flex-col w-full min-w-0 h-full">
           <header className="h-20 bg-white flex items-center justify-between px-4 sm:px-8 border-b border-gray-200 flex-shrink-0 shadow-sm z-10">
             <div className="flex items-center min-w-0">
-                <button onClick={() => setSidebarOpen(true)} className="lg:hidden text-gray-500 mr-4 p-2 hover:bg-gray-100 rounded-full"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg></button>
+                <button onClick={() => setSidebarOpen(true)} className="md:hidden text-gray-500 mr-3 p-2 hover:bg-gray-100 rounded-lg active:bg-gray-200 min-h-[44px] min-w-[44px] flex items-center justify-center"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg></button>
                 <div className="min-w-0">
                     <h1 className="text-lg font-bold text-gray-800 truncate">{config.schoolName}</h1>
                     <p className="text-xs text-teal-600 font-semibold uppercase tracking-wider">Teacher Panel</p>

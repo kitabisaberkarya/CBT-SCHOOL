@@ -71,10 +71,29 @@ const ConfirmationScreen: React.FC<ConfirmationScreenProps> = ({ onStartTest, us
                     <p className="text-sm text-gray-500">Waktu Tes</p>
                     <p className="text-lg font-bold text-gray-900">{testDetails.time}</p>
                 </div>
-                <div className="py-2">
+                <div className={testDetails.sessionName || testDetails.sessionNumber ? "py-2 border-b border-gray-200" : "py-2"}>
                     <p className="text-sm text-gray-500">Alokasi Waktu Tes</p>
                     <p className="text-lg font-bold text-gray-900">{testDetails.duration}</p>
                 </div>
+                {(testDetails.sessionName || testDetails.sessionNumber) && (
+                  <div className="py-2 border-b border-gray-200">
+                    <p className="text-sm text-gray-500">Sesi Ujian</p>
+                    <p className="text-lg font-bold text-blue-700">
+                      {testDetails.sessionNumber ? `Sesi ${testDetails.sessionNumber}` : ''}
+                      {testDetails.sessionName && testDetails.sessionNumber ? ` — ${testDetails.sessionName}` : testDetails.sessionName || ''}
+                    </p>
+                  </div>
+                )}
+                {testDetails.sessionStartTime && (
+                  <div className="py-2">
+                    <p className="text-sm text-gray-500">Waktu Sesi</p>
+                    <p className="text-base font-semibold text-gray-900">
+                      {new Date(testDetails.sessionStartTime).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
+                      {' — '}
+                      {new Date(testDetails.sessionEndTime!).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}
+                    </p>
+                  </div>
+                )}
             </div>
 
             <div className="mt-8">

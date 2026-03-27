@@ -12,9 +12,21 @@ interface QuestionModalProps {
   onClose: () => void;
 }
 
+// ─── Konstanta batas ukuran file ─────────────────────────────────────────────
+const MAX_IMAGE_MB  = 10;   // Input sebelum kompresi
+const MAX_AUDIO_MB  = 10;
+const MAX_VIDEO_MB  = 50;
+
+// Helper format ukuran
+const fmtBytes = (b: number) => b >= 1048576 ? `${(b/1048576).toFixed(1)} MB` : `${(b/1024).toFixed(0)} KB`;
+
 const QuestionModal: React.FC<QuestionModalProps> = ({ questionToEdit, onSave, onClose }) => {
-  const [activeType, setActiveType] = useState<QuestionType>(questionToEdit?.type || 'multiple_choice');
-  const [soalImageUrl, setSoalImageUrl] = useState<string | null>(questionToEdit?.image || null);
+  const [activeType,    setActiveType]    = useState<QuestionType>(questionToEdit?.type  || 'multiple_choice');
+  const [soalImageUrl,  setSoalImageUrl]  = useState<string | null>(questionToEdit?.image || null);
+  const [soalAudioUrl,  setSoalAudioUrl]  = useState<string | null>(questionToEdit?.audio || null);
+  const [soalVideoUrl,  setSoalVideoUrl]  = useState<string | null>(questionToEdit?.video || null);
+  const [uploadingAudio, setUploadingAudio] = useState(false);
+  const [uploadingVideo, setUploadingVideo] = useState(false);
   
   // Define initial state for reuse
   const initialFormData = {
@@ -51,25 +63,63 @@ const QuestionModal: React.FC<QuestionModalProps> = ({ questionToEdit, onSave, o
     trueFalseKey: questionToEdit.type === 'true_false' && questionToEdit.answerKey ? questionToEdit.answerKey : {},
   } : initialFormData);
 
-  // FUNGSI UPLOAD YANG DIPERBARUI DENGAN KOMPRESI
-  const uploadImageAndGetUrl = async (file: File): Promise<string | null> => {
-    try {
-        // STEP 1: Kompresi
-        const processedFile = await compressImage(file);
+  // ─── Upload ke Supabase Storage ───────────────────────────────────────────
 
-        // STEP 2: Upload
-        const fileName = `public/${uuidv4()}-${processedFile.name}`;
-        const { error } = await supabase.storage.from('question_assets').upload(fileName, processedFile);
-        if (error) throw error;
-        const { data: { publicUrl } } = supabase.storage.from('question_assets').getPublicUrl(fileName);
-        return publicUrl;
+  const uploadImageAndGetUrl = async (file: File): Promise<string | null> => {
+    if (file.size > MAX_IMAGE_MB * 1024 * 1024) {
+      alert(`Gambar terlalu besar (${fmtBytes(file.size)}). Maksimal ${MAX_IMAGE_MB} MB.`);
+      return null;
+    }
+    try {
+      const processedFile = await compressImage(file);
+      const fileName = `public/${uuidv4()}-${processedFile.name}`;
+      const { error } = await supabase.storage.from('question_assets').upload(fileName, processedFile);
+      if (error) throw error;
+      const { data: { publicUrl } } = supabase.storage.from('question_assets').getPublicUrl(fileName);
+      return publicUrl;
     } catch (error: any) {
-        if (error.message && error.message.includes("Entity Too Large")) {
-             alert("Ukuran gambar terlalu besar (Maks 500KB). Silakan gunakan gambar yang lebih kecil.");
-        } else {
-             alert('Gagal mengunggah gambar: ' + error.message);
-        }
-        return null;
+      alert('Gagal mengunggah gambar: ' + error.message);
+      return null;
+    }
+  };
+
+  const uploadAudioAndGetUrl = async (file: File): Promise<string | null> => {
+    if (file.size > MAX_AUDIO_MB * 1024 * 1024) {
+      alert(`File audio terlalu besar (${fmtBytes(file.size)}). Maksimal ${MAX_AUDIO_MB} MB.`);
+      return null;
+    }
+    setUploadingAudio(true);
+    try {
+      const fileName = `public/${uuidv4()}-${file.name.replace(/\s+/g, '_')}`;
+      const { error } = await supabase.storage.from('question_assets').upload(fileName, file, { contentType: file.type });
+      if (error) throw error;
+      const { data: { publicUrl } } = supabase.storage.from('question_assets').getPublicUrl(fileName);
+      return publicUrl;
+    } catch (error: any) {
+      alert('Gagal mengunggah audio: ' + error.message);
+      return null;
+    } finally {
+      setUploadingAudio(false);
+    }
+  };
+
+  const uploadVideoAndGetUrl = async (file: File): Promise<string | null> => {
+    if (file.size > MAX_VIDEO_MB * 1024 * 1024) {
+      alert(`File video terlalu besar (${fmtBytes(file.size)}). Maksimal ${MAX_VIDEO_MB} MB.`);
+      return null;
+    }
+    setUploadingVideo(true);
+    try {
+      const fileName = `public/${uuidv4()}-${file.name.replace(/\s+/g, '_')}`;
+      const { error } = await supabase.storage.from('question_assets').upload(fileName, file, { contentType: file.type });
+      if (error) throw error;
+      const { data: { publicUrl } } = supabase.storage.from('question_assets').getPublicUrl(fileName);
+      return publicUrl;
+    } catch (error: any) {
+      alert('Gagal mengunggah video: ' + error.message);
+      return null;
+    } finally {
+      setUploadingVideo(false);
     }
   };
 
@@ -172,6 +222,13 @@ const QuestionModal: React.FC<QuestionModalProps> = ({ questionToEdit, onSave, o
 
   // --- SUBMIT ---
   const handleSubmit = (closeAfterSave: boolean) => {
+    // ── Validasi: Soal tidak boleh kosong ──
+    const questionText = formData.question.replace(/<[^>]*>/g, '').trim(); // strip HTML tags
+    if (!questionText) {
+      alert('Teks soal tidak boleh kosong. Harap isi pertanyaan terlebih dahulu.');
+      return;
+    }
+
     let answerKey: any = {};
     let metadata: any = null;
     let options: string[] = [];
@@ -179,9 +236,27 @@ const QuestionModal: React.FC<QuestionModalProps> = ({ questionToEdit, onSave, o
 
     if (activeType === 'multiple_choice') {
       options = formData.options.filter(o => o.trim() !== '');
+      if (options.length < 2) {
+        alert('Minimal 2 opsi jawaban harus diisi.');
+        return;
+      }
+      // Pastikan kunci jawaban valid
+      const cleanKey = (formData.options.filter(o => o.trim() !== '')).findIndex((_, i) => i === formData.mcKey);
+      if (cleanKey < 0) {
+        alert('Harap pilih kunci jawaban yang valid.');
+        return;
+      }
       answerKey = { index: formData.mcKey };
     } else if (activeType === 'complex_multiple_choice') {
       options = formData.options.filter(o => o.trim() !== '');
+      if (options.length < 2) {
+        alert('Minimal 2 opsi jawaban harus diisi.');
+        return;
+      }
+      if (formData.complexMcKeys.length === 0) {
+        alert('Harap pilih minimal 1 kunci jawaban.');
+        return;
+      }
       answerKey = { indices: formData.complexMcKeys };
     } else if (activeType === 'matching') {
       answerKey = { pairs: formData.matchingPairs };
@@ -190,17 +265,30 @@ const QuestionModal: React.FC<QuestionModalProps> = ({ questionToEdit, onSave, o
       matchingRightOptions = formData.matchingRight.map(item => item.content);
       // For matching, 'options' usually stores the left items' content
       options = formData.matchingLeft.map(item => item.content);
+      if (options.length === 0 || matchingRightOptions.length === 0) {
+        alert('Harap isi minimal 1 pasangan opsi kiri dan kanan.');
+        return;
+      }
     } else if (activeType === 'essay') {
       answerKey = { text: formData.essayKey };
     } else if (activeType === 'true_false') {
         options = formData.trueFalseStatements.filter(s => s.trim() !== '');
-        answerKey = formData.trueFalseKey; 
+        if (options.length === 0) {
+          alert('Harap isi minimal 1 pernyataan Benar/Salah.');
+          return;
+        }
+        answerKey = formData.trueFalseKey;
     }
 
     const payload = {
       type: activeType,
       question: formData.question,
-      image: soalImageUrl || undefined,
+      // ── FIX MEDIA DELETE: pakai ?? null bukan || undefined
+      // undefined tidak terkirim ke Supabase → nilai lama tetap ada di DB
+      // null secara eksplisit menghapus nilai dari DB ──
+      image: soalImageUrl ?? null,
+      audio: soalAudioUrl ?? null,
+      video: soalVideoUrl ?? null,
       topic: formData.topic,
       difficulty: formData.difficulty as any,
       weight: formData.weight,
@@ -514,7 +602,6 @@ const QuestionModal: React.FC<QuestionModalProps> = ({ questionToEdit, onSave, o
                         <span className="bg-blue-600 text-white px-3 py-1 rounded text-[10px] font-bold">PERTANYAAN UTAMA</span>
                         <span className="text-gray-400 text-xs font-bold py-1">Isi Soal / Instruksi / Stimulus</span>
                     </div>
-                    {/* Media buttons (Audio/Video) would go here */}
                 </div>
                 <RichTextEditor
                   value={formData.question}
@@ -523,41 +610,126 @@ const QuestionModal: React.FC<QuestionModalProps> = ({ questionToEdit, onSave, o
                   placeholder="Ketik instruksi soal di sini..."
                   height="h-64"
                 />
-                {/* Gambar soal (dari import Word atau upload manual) */}
-                {soalImageUrl && (
-                  <div className="mt-3 relative inline-block">
-                    <img
-                      src={soalImageUrl}
-                      alt="Gambar soal"
-                      className="max-h-48 rounded-lg border border-gray-200 shadow-sm object-contain"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setSoalImageUrl(null)}
-                      className="absolute -top-2 -right-2 bg-red-500 hover:bg-red-600 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold shadow"
-                      title="Hapus gambar"
-                    >✕</button>
-                  </div>
-                )}
-                {!soalImageUrl && (
-                  <label className="mt-2 inline-flex items-center gap-2 cursor-pointer text-xs text-blue-600 hover:text-blue-800">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={async (e) => {
-                        const file = e.target.files?.[0];
-                        if (file) {
-                          const url = await uploadImageAndGetUrl(file);
-                          if (url) setSoalImageUrl(url);
-                        }
-                        e.target.value = '';
-                      }}
-                    />
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
-                    Tambah Gambar Soal
-                  </label>
-                )}
+            </section>
+
+            {/* 3b. Media Pendukung Soal — Gambar / Audio / Video */}
+            <section className="border border-gray-200 rounded-2xl overflow-hidden">
+                <div className="bg-gradient-to-r from-slate-700 to-slate-800 px-4 py-2.5 flex items-center gap-2">
+                    <svg className="w-4 h-4 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.069A1 1 0 0121 8.82v6.36a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"/></svg>
+                    <span className="text-white font-bold text-xs tracking-widest uppercase">Media Pendukung Soal</span>
+                    <span className="ml-auto text-slate-400 text-[10px]">Gambar · Audio · Video — opsional</span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-gray-100">
+
+                    {/* ── GAMBAR ── */}
+                    <div className="p-4 space-y-3">
+                        <div className="flex items-center gap-2">
+                            <span className="bg-blue-100 text-blue-700 p-1.5 rounded-lg">
+                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                            </span>
+                            <div>
+                                <p className="text-xs font-bold text-gray-700">Gambar Soal</p>
+                                <p className="text-[10px] text-gray-400">JPG/PNG/WebP · Maks {MAX_IMAGE_MB} MB (auto-compress)</p>
+                            </div>
+                        </div>
+                        {soalImageUrl ? (
+                            <div className="space-y-2">
+                                <img src={soalImageUrl} alt="Gambar soal" className="w-full max-h-36 object-contain rounded-lg border border-gray-200 bg-gray-50"/>
+                                <button type="button" onClick={() => setSoalImageUrl(null)}
+                                    className="w-full text-xs text-red-500 hover:text-red-700 font-semibold py-1 border border-red-200 hover:border-red-400 rounded-lg transition">
+                                    Hapus Gambar
+                                </button>
+                            </div>
+                        ) : (
+                            <label className="flex flex-col items-center justify-center w-full h-20 border-2 border-dashed border-blue-200 hover:border-blue-400 rounded-xl cursor-pointer bg-blue-50/40 hover:bg-blue-50 transition">
+                                <svg className="w-6 h-6 text-blue-300 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4v16m8-8H4"/></svg>
+                                <span className="text-[11px] text-blue-500 font-semibold">Klik untuk upload</span>
+                                <input type="file" accept="image/*" className="hidden" onChange={async (e) => {
+                                    const file = e.target.files?.[0];
+                                    if (file) { const url = await uploadImageAndGetUrl(file); if (url) setSoalImageUrl(url); }
+                                    e.target.value = '';
+                                }}/>
+                            </label>
+                        )}
+                    </div>
+
+                    {/* ── AUDIO ── */}
+                    <div className="p-4 space-y-3">
+                        <div className="flex items-center gap-2">
+                            <span className="bg-green-100 text-green-700 p-1.5 rounded-lg">
+                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"/></svg>
+                            </span>
+                            <div>
+                                <p className="text-xs font-bold text-gray-700">Audio Listening</p>
+                                <p className="text-[10px] text-gray-400">MP3/WAV/OGG · Maks {MAX_AUDIO_MB} MB</p>
+                            </div>
+                        </div>
+                        {soalAudioUrl ? (
+                            <div className="space-y-2">
+                                <audio controls className="w-full h-9 rounded-lg" style={{height:'36px'}}>
+                                    <source src={soalAudioUrl} type="audio/mpeg"/>
+                                    <source src={soalAudioUrl} type="audio/ogg"/>
+                                </audio>
+                                <button type="button" onClick={() => setSoalAudioUrl(null)}
+                                    className="w-full text-xs text-red-500 hover:text-red-700 font-semibold py-1 border border-red-200 hover:border-red-400 rounded-lg transition">
+                                    Hapus Audio
+                                </button>
+                            </div>
+                        ) : (
+                            <label className={`flex flex-col items-center justify-center w-full h-20 border-2 border-dashed rounded-xl cursor-pointer transition ${uploadingAudio ? 'border-green-400 bg-green-50 animate-pulse' : 'border-green-200 hover:border-green-400 bg-green-50/40 hover:bg-green-50'}`}>
+                                {uploadingAudio ? (
+                                    <><svg className="w-5 h-5 text-green-400 animate-spin mb-1" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg><span className="text-[11px] text-green-500 font-semibold">Mengunggah...</span></>
+                                ) : (
+                                    <><svg className="w-6 h-6 text-green-300 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4v16m8-8H4"/></svg><span className="text-[11px] text-green-500 font-semibold">Klik untuk upload</span></>
+                                )}
+                                <input type="file" accept="audio/*" className="hidden" disabled={uploadingAudio} onChange={async (e) => {
+                                    const file = e.target.files?.[0];
+                                    if (file) { const url = await uploadAudioAndGetUrl(file); if (url) setSoalAudioUrl(url); }
+                                    e.target.value = '';
+                                }}/>
+                            </label>
+                        )}
+                    </div>
+
+                    {/* ── VIDEO ── */}
+                    <div className="p-4 space-y-3">
+                        <div className="flex items-center gap-2">
+                            <span className="bg-purple-100 text-purple-700 p-1.5 rounded-lg">
+                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 10l4.553-2.069A1 1 0 0121 8.82v6.36a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"/></svg>
+                            </span>
+                            <div>
+                                <p className="text-xs font-bold text-gray-700">Video Soal</p>
+                                <p className="text-[10px] text-gray-400">MP4/WebM · Maks {MAX_VIDEO_MB} MB</p>
+                            </div>
+                        </div>
+                        {soalVideoUrl ? (
+                            <div className="space-y-2">
+                                <video controls className="w-full rounded-lg bg-black" style={{maxHeight:'96px'}}>
+                                    <source src={soalVideoUrl} type="video/mp4"/>
+                                    <source src={soalVideoUrl} type="video/webm"/>
+                                </video>
+                                <button type="button" onClick={() => setSoalVideoUrl(null)}
+                                    className="w-full text-xs text-red-500 hover:text-red-700 font-semibold py-1 border border-red-200 hover:border-red-400 rounded-lg transition">
+                                    Hapus Video
+                                </button>
+                            </div>
+                        ) : (
+                            <label className={`flex flex-col items-center justify-center w-full h-20 border-2 border-dashed rounded-xl cursor-pointer transition ${uploadingVideo ? 'border-purple-400 bg-purple-50 animate-pulse' : 'border-purple-200 hover:border-purple-400 bg-purple-50/40 hover:bg-purple-50'}`}>
+                                {uploadingVideo ? (
+                                    <><svg className="w-5 h-5 text-purple-400 animate-spin mb-1" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg><span className="text-[11px] text-purple-500 font-semibold">Mengunggah...</span></>
+                                ) : (
+                                    <><svg className="w-6 h-6 text-purple-300 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4v16m8-8H4"/></svg><span className="text-[11px] text-purple-500 font-semibold">Klik untuk upload</span></>
+                                )}
+                                <input type="file" accept="video/*" className="hidden" disabled={uploadingVideo} onChange={async (e) => {
+                                    const file = e.target.files?.[0];
+                                    if (file) { const url = await uploadVideoAndGetUrl(file); if (url) setSoalVideoUrl(url); }
+                                    e.target.value = '';
+                                }}/>
+                            </label>
+                        )}
+                    </div>
+                </div>
             </section>
 
             {/* 4. Type Specific Editor */}

@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { AppConfig, User, Test, Question } from './types';
+import { AppConfig, User, Test, Question, ExamTokenSettings, AvailableExam } from './types';
 
 // ==============================================================================
 //  SUPABASE CLIENT — CBT SCHOOL ENTERPRISE VHD EDITION
@@ -155,6 +155,7 @@ export const getConfig = async (defaultConfig: AppConfig): Promise<AppConfig> =>
       schoolDomain:            data.school_domain        || '',
       npsn:                    data.npsn                 || '',
       timezone:                data.timezone             || 'Asia/Jakarta',
+      serverIp:                data.server_ip            || '',
     };
   } catch (err) {
     console.warn('[getConfig] Gagal ambil config dari DB, pakai default.', err);
@@ -183,7 +184,9 @@ export const getTestByToken = async (token: string, user: User): Promise<Test | 
           id,
           start_time,
           end_time,
-          assigned_to
+          assigned_to,
+          session_name,
+          session_number
         )
       `)
       .eq('token', cleanToken)
@@ -205,13 +208,13 @@ export const getTestByToken = async (token: string, user: User): Promise<Test | 
     const userClassNorm = normalizeStr(user.class);
     const userMajorNorm = normalizeStr(user.major);
 
-    const isAuthorized = activeSchedules.some((s: any) => {
+    const authorizedSchedule = activeSchedules.find((s: any) => {
       if (!s.assigned_to) return false;
       const normalizedTargets = s.assigned_to.map(normalizeStr);
       return normalizedTargets.includes(userClassNorm) || normalizedTargets.includes(userMajorNorm);
     });
 
-    if (!isAuthorized) return null;
+    if (!authorizedSchedule) return null;
 
     const { data: questionsData, error: qError } = await supabase
       .from('questions')
@@ -234,6 +237,10 @@ export const getTestByToken = async (token: string, user: User): Promise<Test | 
         randomizeAnswers:   testData.randomize_answers,
         examType:           testData.exam_type || 'Umum',
         time:               new Date().toLocaleString('id-ID'),
+        sessionName:        authorizedSchedule.session_name ?? undefined,
+        sessionNumber:      authorizedSchedule.session_number ?? undefined,
+        sessionStartTime:   authorizedSchedule.start_time,
+        sessionEndTime:     authorizedSchedule.end_time,
       },
       questions: (questionsData || []).map((q: any) => ({
         id:                 q.id,
@@ -255,6 +262,198 @@ export const getTestByToken = async (token: string, user: User): Promise<Test | 
 
   } catch (error: any) {
     console.error('[CBT-AUTH-FATAL]', error.message);
+    return null;
+  }
+};
+
+// ==============================================================================
+//  GLOBAL EXAM TOKEN SETTINGS
+// ==============================================================================
+
+export const getExamTokenSettings = async (): Promise<ExamTokenSettings | null> => {
+  try {
+    const { data, error } = await supabase
+      .from('exam_token_settings')
+      .select('*')
+      .limit(1)
+      .maybeSingle();
+    if (error || !data) return null;
+    return {
+      id: data.id,
+      mode: data.mode as 'auto' | 'manual',
+      currentToken: data.current_token,
+      intervalMinutes: data.interval_minutes,
+      lastGeneratedAt: data.last_generated_at,
+      isActive: data.is_active,
+    };
+  } catch {
+    return null;
+  }
+};
+
+export const updateExamTokenSettings = async (
+  settings: Partial<{ mode: 'auto' | 'manual'; currentToken: string; intervalMinutes: number; isActive: boolean; lastGeneratedAt: string }>
+): Promise<boolean> => {
+  try {
+    const dbData: Record<string, any> = { updated_at: new Date().toISOString() };
+    if (settings.mode !== undefined) dbData.mode = settings.mode;
+    if (settings.currentToken !== undefined) dbData.current_token = settings.currentToken;
+    if (settings.intervalMinutes !== undefined) dbData.interval_minutes = settings.intervalMinutes;
+    if (settings.isActive !== undefined) dbData.is_active = settings.isActive;
+    if (settings.lastGeneratedAt !== undefined) dbData.last_generated_at = settings.lastGeneratedAt;
+
+    const { error } = await supabase
+      .from('exam_token_settings')
+      .update(dbData)
+      .not('id', 'is', null);
+    return !error;
+  } catch {
+    return false;
+  }
+};
+
+// ==============================================================================
+//  GET AVAILABLE EXAMS FOR STUDENT (replaces token-based lookup)
+// ==============================================================================
+
+export const getAvailableExamsForStudent = async (user: User): Promise<AvailableExam[]> => {
+  try {
+    const now = new Date().getTime();
+    const SKEW_MS = 5 * 60 * 1000; // 5-min tolerance
+
+    const { data: schedules, error } = await supabase
+      .from('schedules')
+      .select(`
+        id,
+        start_time,
+        end_time,
+        assigned_to,
+        session_name,
+        session_number,
+        tests (
+          id,
+          subject,
+          exam_type,
+          duration_minutes,
+          questions_to_display,
+          randomize_questions,
+          randomize_answers,
+          kkm
+        )
+      `)
+      .not('test_id', 'is', null);
+
+    if (error || !schedules) return [];
+
+    const userClassNorm  = normalizeStr(user.class);
+    const userMajorNorm  = normalizeStr(user.major);
+    const result: AvailableExam[] = [];
+
+    for (const s of schedules as any[]) {
+      if (!s.assigned_to || !s.tests) continue;
+      const normalizedTargets: string[] = s.assigned_to.map(normalizeStr);
+      const authorized = normalizedTargets.includes(userClassNorm) || normalizedTargets.includes(userMajorNorm);
+      if (!authorized) continue;
+
+      const t = s.tests;
+      const start = new Date(s.start_time).getTime();
+      const end   = new Date(s.end_time).getTime();
+      let status: 'upcoming' | 'active' | 'finished' = 'upcoming';
+      if      (now > end   + SKEW_MS)                      status = 'finished';
+      else if (now >= start - SKEW_MS && now <= end + SKEW_MS) status = 'active';
+
+      result.push({
+        testId:             t.id,
+        subject:            t.subject,
+        examType:           t.exam_type || 'Umum',
+        durationMinutes:    t.duration_minutes,
+        questionsToDisplay: t.questions_to_display,
+        randomizeQuestions: t.randomize_questions,
+        randomizeAnswers:   t.randomize_answers,
+        kkm:                t.kkm,
+        scheduleId:         s.id,
+        sessionName:        s.session_name ?? undefined,
+        sessionNumber:      s.session_number ?? undefined,
+        startTime:          s.start_time,
+        endTime:            s.end_time,
+        status,
+      });
+    }
+
+    result.sort((a, b) => {
+      const order = { active: 0, upcoming: 1, finished: 2 };
+      return order[a.status] - order[b.status];
+    });
+
+    return result;
+  } catch (err: any) {
+    console.error('[getAvailableExams]', err.message);
+    return [];
+  }
+};
+
+// ==============================================================================
+//  LOAD EXAM BY ID (used after student selects an exam)
+// ==============================================================================
+
+export const loadExamById = async (
+  testId: string,
+  scheduleInfo: { scheduleId: string; sessionName?: string; sessionNumber?: number; startTime: string; endTime: string }
+): Promise<Test | null> => {
+  try {
+    const { data: testData, error: testError } = await supabase
+      .from('tests')
+      .select('*')
+      .eq('id', testId)
+      .maybeSingle();
+
+    if (testError || !testData) return null;
+
+    const { data: questionsData, error: qError } = await supabase
+      .from('questions')
+      .select('*')
+      .eq('test_id', testId)
+      .order('id', { ascending: true });
+
+    if (qError) throw qError;
+
+    return {
+      details: {
+        id:                 testData.id,
+        token:              testData.token,
+        name:               testData.name,
+        subject:            testData.subject,
+        duration:           `${testData.duration_minutes} Menit`,
+        durationMinutes:    testData.duration_minutes,
+        questionsToDisplay: testData.questions_to_display,
+        randomizeQuestions: testData.randomize_questions,
+        randomizeAnswers:   testData.randomize_answers,
+        examType:           testData.exam_type || 'Umum',
+        time:               new Date().toLocaleString('id-ID'),
+        sessionName:        scheduleInfo.sessionName,
+        sessionNumber:      scheduleInfo.sessionNumber,
+        sessionStartTime:   scheduleInfo.startTime,
+        sessionEndTime:     scheduleInfo.endTime,
+      },
+      questions: (questionsData || []).map((q: any) => ({
+        id:                 q.id,
+        type:               q.type as any,
+        question:           q.question,
+        image:              q.image_url,
+        audio:              q.audio_url,
+        video:              q.video_url,
+        options:            q.options        || [],
+        optionImages:       q.option_images  || [],
+        correctAnswerIndex: q.correct_answer_index || 0,
+        answerKey:          q.answer_key,
+        metadata:           q.metadata,
+        difficulty:         q.difficulty     || 'Medium',
+        weight:             q.weight         || 1,
+        topic:              q.topic,
+      })),
+    };
+  } catch (err: any) {
+    console.error('[loadExamById]', err.message);
     return null;
   }
 };

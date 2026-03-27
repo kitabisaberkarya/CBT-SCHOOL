@@ -1,0 +1,25 @@
+[Unit]
+Description=CBT School Enterprise — Auto Network Configuration Robot
+Documentation=https://github.com/cbt-school-enterprise
+# Jalankan setelah networking up, sebelum layanan CBT lain
+After=networking.service network-online.target
+Wants=network-online.target
+Before=cbt-updater.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/python3 /usr/local/bin/cbt-autonet.py
+# Tampilkan di tty1 (konsol VirtualBox) agar teknisi/proktor bisa lihat
+StandardOutput=tty
+StandardError=tty
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=no
+
+# Jangan gagal jika ada error — CBT harus tetap jalan
+SuccessExitStatus=0 1
+TimeoutStartSec=90
+
+[Install]
+WantedBy=multi-user.target

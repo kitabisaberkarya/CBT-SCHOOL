@@ -3,7 +3,8 @@ export enum AppState {
   LOGIN,
   PROFILE_ERROR,
   BIODATA,
-  TOKEN_ENTRY,
+  EXAM_SELECTION, // Pilih ujian dari daftar (menggantikan TOKEN_ENTRY)
+  TOKEN_ENTRY,    // Kept for backward compatibility
   CONFIRMATION,
   TESTING,
   FINISHED,
@@ -28,6 +29,8 @@ export enum AdminView {
   CONFIG,
   CETAK_ADMIN_CARD,
   LICENSE, // New License Menu
+  AUDIT_LOG, // Log Aktivitas Admin
+  TOKEN, // Menu Token Ujian Global
 }
 
 // Menu khusus untuk Guru (Lebih sederhana dari Admin)
@@ -38,6 +41,7 @@ export enum TeacherView {
   REKAPITULASI_NILAI,
   ANALISA_SOAL,
   ANALISA_JAWABAN,
+  TOKEN, // Menu Token Ujian Global
 }
 
 export type QuestionType = 'multiple_choice' | 'complex_multiple_choice' | 'matching' | 'essay' | 'true_false';
@@ -76,6 +80,7 @@ export interface AppConfig {
   schoolDomain?: string; // Menambahkan schoolDomain agar konsisten
   npsn?: string; // Added for License System
   timezone?: string; // Zona waktu: Asia/Jakarta (WIB) | Asia/Makassar (WITA) | Asia/Jayapura (WIT)
+  serverIp?: string; // IP Address server LAN manual (agar siswa tahu URL akses)
 }
 
 export interface User {
@@ -145,6 +150,10 @@ export interface TestDetails {
   examType?: string;
   kkm?: number;
   questionCount?: number; // New field for optimized loading
+  sessionName?: string;       // Nama sesi, misal "Sesi 1" atau "Sesi Pagi"
+  sessionNumber?: number;     // Nomor urut sesi
+  sessionStartTime?: string;  // Waktu mulai sesi (ISO)
+  sessionEndTime?: string;    // Waktu selesai sesi (ISO)
 }
 
 export interface Test {
@@ -162,6 +171,7 @@ export interface MasterDataItem {
 export interface MasterData {
   classes: MasterDataItem[];
   majors: MasterDataItem[];
+  examTypes: MasterDataItem[];
 }
 
 export interface Announcement {
@@ -171,12 +181,42 @@ export interface Announcement {
   date: string;
 }
 
+// Global Token Settings (exam_token_settings table)
+export interface ExamTokenSettings {
+  id: string;
+  mode: 'auto' | 'manual';
+  currentToken: string;
+  intervalMinutes: number;
+  lastGeneratedAt: string;
+  isActive: boolean;
+}
+
+// Available exam entry for student exam selection screen
+export interface AvailableExam {
+  testId: string;
+  subject: string;
+  examType: string;
+  durationMinutes: number;
+  questionsToDisplay?: number;
+  randomizeQuestions?: boolean;
+  randomizeAnswers?: boolean;
+  kkm?: number;
+  scheduleId: string;
+  sessionName?: string;
+  sessionNumber?: number;
+  startTime: string;
+  endTime: string;
+  status: 'upcoming' | 'active' | 'finished';
+}
+
 export interface Schedule {
   id: string;
   testToken: string;
   startTime: string;
   endTime: string;
   assignedTo: string[];
+  sessionName?: string;
+  sessionNumber?: number;
 }
 
 export enum ImportStatus {

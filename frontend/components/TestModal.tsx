@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Test, TestDetails, Question } from '../types';
+import { Test, TestDetails, Question, MasterDataItem } from '../types';
 import { EXAM_EVENT_TYPES } from '../constants';
 
 type QuestionDataSource = 'manual' | 'import';
@@ -9,10 +9,17 @@ interface TestModalProps {
   testToEdit: { token: string; test: Test } | null;
   onSave: (details: Omit<TestDetails, 'id' | 'time'>, token: string, questions: Omit<Question, 'id'>[]) => void;
   onClose: () => void;
+  examTypes?: MasterDataItem[]; // Dynamic exam categories from DB
 }
 
-const TestModal: React.FC<TestModalProps> = ({ testToEdit, onSave, onClose }) => {
-  const [token, setToken] = useState(testToEdit?.token || '');
+/** Generate token acak 6 karakter (tanpa karakter ambigu) */
+const generateRandomToken = () => {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  return Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+};
+
+const TestModal: React.FC<TestModalProps> = ({ testToEdit, onSave, onClose, examTypes }) => {
+  const [token, setToken] = useState(() => testToEdit?.token || generateRandomToken());
   const [formData, setFormData] = useState<Omit<TestDetails, 'id' | 'time'>>({
     name: testToEdit?.test.details.name || '',
     subject: testToEdit?.test.details.subject || '',
@@ -159,11 +166,11 @@ KUNCI JAWABAN: A
     e.preventDefault();
 
     // Manual Validation
-    if (!token.trim()) { alert("Token Ujian wajib diisi!"); return; }
     if (!formData.name.trim()) { alert("Nama Paket Tes wajib diisi!"); return; }
     if (!formData.subject.trim()) { alert("Mata Pelajaran wajib diisi!"); return; }
     if (!formData.duration.trim()) { alert("Durasi Teks wajib diisi!"); return; }
     if (formData.durationMinutes <= 0) { alert("Durasi (Angka) harus lebih dari 0!"); return; }
+    if (formData.kkm == null || formData.kkm < 0 || formData.kkm > 100) { alert("KKM harus bernilai antara 0 sampai 100!"); return; }
 
     if (source === 'import' && parsedQuestions.length === 0) {
         alert("Tidak ada soal yang berhasil dibaca dari file.");
@@ -188,18 +195,14 @@ KUNCI JAWABAN: A
         <form onSubmit={handleSubmit} className="flex flex-col">
           <div className="p-6 space-y-4">
 
-          {/* Token */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700">Token Ujian</label>
-            <input type="text" name="token" value={token} onChange={(e) => setToken(e.target.value.toUpperCase())} className="mt-1 w-full p-2 border rounded-md font-mono font-bold tracking-wider" placeholder="CONTOH: MTK01" />
-          </div>
+          {/* Token di-generate otomatis (hidden dari UI, tetap dikirim ke DB sebagai identifier internal) */}
 
           {/* Kategori */}
           <div className="bg-blue-50 p-3 rounded-lg border border-blue-100">
             <label className="block text-sm font-bold text-blue-800 mb-1">Kategori Ujian (Event)</label>
             <select name="examType" value={formData.examType} onChange={handleChange} className="w-full p-2 border border-blue-300 rounded-md bg-white focus:ring-2 focus:ring-blue-500">
                 <option value="Umum">Umum</option>
-                {EXAM_EVENT_TYPES.map(type => (
+                {(examTypes && examTypes.length > 0 ? examTypes.map(et => et.name) : EXAM_EVENT_TYPES).map(type => (
                     <option key={type} value={type}>{type}</option>
                 ))}
             </select>

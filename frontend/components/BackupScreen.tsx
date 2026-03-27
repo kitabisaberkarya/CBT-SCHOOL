@@ -14,10 +14,11 @@ interface BackupScreenProps {
   onRestoreData: (data: any) => Promise<void>;
   onDeleteData: (modules: { [key: string]: boolean }) => Promise<void>;
   isProcessing: boolean;
+  isDemoMode?: boolean;
 }
 
 const BackupScreen: React.FC<BackupScreenProps> = (props) => {
-  const { isProcessing } = props;
+  const { isProcessing, isDemoMode = false } = props;
   const [selectedModules, setSelectedModules] = useState({
     config: true,
     users: true,
@@ -188,7 +189,7 @@ const BackupScreen: React.FC<BackupScreenProps> = (props) => {
     [modulesToDelete]
   );
   
-  const isDeleteButtonDisabled = Object.values(modulesToDelete).every(v => !v) || isProcessing;
+  const isDeleteButtonDisabled = Object.values(modulesToDelete).every(v => !v) || isProcessing || isDemoMode;
 
   return (
     <div className="animate-fade-in">
@@ -217,11 +218,12 @@ const BackupScreen: React.FC<BackupScreenProps> = (props) => {
               <p className="text-gray-600 mb-6 flex-grow">
                 Pilih file backup (.json) untuk memulihkan data. <strong className="text-orange-600">Perhatian:</strong> Tindakan ini akan menimpa data yang sesuai dengan isi file.
               </p>
+              {isDemoMode && <p className="text-amber-600 text-sm font-semibold mb-4 bg-amber-50 border border-amber-200 rounded-lg p-3">Restore data tidak tersedia di Mode Demo.</p>}
               {restoreError && <p className="text-red-600 text-sm mb-4">{restoreError}</p>}
-              <button onClick={() => restoreFileInputRef.current?.click()} disabled={isProcessing} className="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 px-4 rounded-lg shadow-md transition-all flex items-center justify-center disabled:bg-orange-300">
-                Pilih File Backup (.json)
+              <button onClick={() => restoreFileInputRef.current?.click()} disabled={isProcessing || isDemoMode} className="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 px-4 rounded-lg shadow-md transition-all flex items-center justify-center disabled:bg-orange-300 disabled:cursor-not-allowed">
+                {isDemoMode ? 'Tidak Tersedia di Mode Demo' : 'Pilih File Backup (.json)'}
               </button>
-              <input type="file" ref={restoreFileInputRef} onChange={handleFileSelect} className="hidden" accept=".json" />
+              <input type="file" ref={restoreFileInputRef} onChange={handleFileSelect} className="hidden" accept=".json" disabled={isDemoMode} />
             </div>
         </div>
 
@@ -257,12 +259,13 @@ const BackupScreen: React.FC<BackupScreenProps> = (props) => {
                     ))}
                 </div>
 
+                {isDemoMode && <p className="text-amber-400 text-xs font-semibold mt-4 bg-amber-900/30 border border-amber-700/40 rounded-lg p-3">Hapus data tidak tersedia di Mode Demo.</p>}
                 <button
                     onClick={() => setIsDeleteModalOpen(true)}
                     disabled={isDeleteButtonDisabled}
-                    className="w-full mt-6 bg-slate-700 hover:bg-slate-600 text-slate-300 font-bold py-3 px-4 rounded-lg shadow-lg transition-all flex items-center justify-center disabled:bg-slate-900 disabled:cursor-not-allowed disabled:text-slate-500"
+                    className="w-full mt-4 bg-slate-700 hover:bg-slate-600 text-slate-300 font-bold py-3 px-4 rounded-lg shadow-lg transition-all flex items-center justify-center disabled:bg-slate-900 disabled:cursor-not-allowed disabled:text-slate-500"
                 >
-                    Hapus Data Terpilih
+                    {isDemoMode ? 'Tidak Tersedia di Mode Demo' : 'Hapus Data Terpilih'}
                 </button>
             </div>
         </div>

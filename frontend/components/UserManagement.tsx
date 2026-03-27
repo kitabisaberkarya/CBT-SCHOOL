@@ -6,6 +6,7 @@ import UserModal from './UserModal';
 import ConfirmationModal from './ConfirmationModal';
 import PasswordResetModal from './PasswordResetModal';
 import UserSyncModal from './UserSyncModal';
+import TeacherImportModal from './TeacherImportModal';
 import { DEFAULT_PROFILE_IMAGES } from '../constants';
 
 interface UserManagementProps {
@@ -34,6 +35,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDemoMode = false, onR
   
   // Import
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [isTeacherImportOpen, setIsTeacherImportOpen] = useState(false);
   const [csvData, setCsvData] = useState<string[][]>([]);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
@@ -370,8 +372,21 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDemoMode = false, onR
                 <p className="text-gray-500">Kelola data Siswa, Guru, dan Administrator.</p>
             </div>
             <div className="flex gap-2 flex-wrap">
+                {activeTab === 'teacher' && !isDemoMode && (
+                    <button
+                        onClick={() => setIsTeacherImportOpen(true)}
+                        className="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded-lg flex items-center gap-2 shadow-sm transition-colors"
+                        title="Import data guru dari file Excel atau CSV"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                        <span className="hidden sm:inline">Import Excel Guru</span>
+                    </button>
+                )}
+
                 {activeTab === 'teacher' && (
-                    <button 
+                    <button
                         onClick={() => handleRepairTeachers(false)}
                         disabled={isSyncingTeacher}
                         className="bg-yellow-100 border border-yellow-300 text-yellow-800 font-bold py-2 px-4 rounded-lg hover:bg-yellow-200 flex items-center gap-2 shadow-sm transition-colors"
@@ -566,6 +581,14 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDemoMode = false, onR
                 onClose={() => setIsImportModalOpen(false)}
                 config={config}
                 activeTab={activeTab}
+            />
+        )}
+
+        {isTeacherImportOpen && (
+            <TeacherImportModal
+                existingUsers={users}
+                onSuccess={async () => { await fetchData(); if (onRefresh) await onRefresh(); }}
+                onClose={() => setIsTeacherImportOpen(false)}
             />
         )}
     </div>

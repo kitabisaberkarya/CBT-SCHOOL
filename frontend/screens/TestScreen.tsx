@@ -131,6 +131,10 @@ const TestScreen: React.FC<TestScreenProps> = ({ onFinishTest, user, onLogout, q
   const timeLeftRef = useRef<number>(durationMinutes * 60);
   // answers ref agar sync interval bisa baca count terkini tanpa re-subscribe
   const answersRef = useRef<Record<number, Answer>>({});
+  // handleFinishExam ref agar timer tidak menggunakan stale closure
+  const handleFinishExamRef = useRef<() => Promise<void>>(async () => {});
+  // Anti-cheat: cegah double-fire violation saat multiple events terjadi bersamaan
+  const isViolationProcessingRef = useRef(false);
 
   // Matching Interaction State
   const [activeLeftPoint, setActiveLeftPoint] = useState<string | null>(null);
@@ -215,12 +219,22 @@ const TestScreen: React.FC<TestScreenProps> = ({ onFinishTest, user, onLogout, q
 
             if (rpcId) {
                 const { data: session } = await supabase.from('student_exam_sessions').select('*').eq('id', rpcId).single();
+
+                // ── FIX BUG #4: Blokir siswa yang sudah selesai mengerjakan ──
+                // Jika ujian sudah Selesai, langsung redirect tanpa bisa mengerjakan lagi.
+                // Ini mencegah nilai yang sudah baik tertimpa oleh nilai baru yang lebih rendah.
+                if (session.status === 'Selesai') {
+                    setIsSessionLoading(false);
+                    onFinishTest();
+                    return;
+                }
+
                 setSessionId(session.id);
                 setTimeLeft(session.time_left_seconds);
-                
+
                 // Load Violation Count dari DB (Penting untuk persistence)
                 setViolationCount(session.violations || 0);
-                
+
                 // Cek jika status sudah Diskualifikasi
                 if (session.status === 'Diskualifikasi') {
                     setIsDisqualified(true);
@@ -313,8 +327,9 @@ const TestScreen: React.FC<TestScreenProps> = ({ onFinishTest, user, onLogout, q
           }
 
           // 2. CRITICAL: Batch flush SEMUA jawaban dari state ke DB
-          //    Ini memastikan tidak ada jawaban yang hilang meski save individual gagal
-          const answersSnapshot = { ...answers }; // snapshot sebelum async
+          //    ── FIX BUG #5: Gunakan answersRef.current (selalu terkini) bukan answers
+          //    dari closure yang bisa stale saat dipanggil oleh timer auto-submit ──
+          const answersSnapshot = { ...answersRef.current }; // snapshot dari ref terkini
           const batchPayloads = Object.entries(answersSnapshot)
               .filter(([, ans]) => ans.value !== null && ans.value !== undefined)
               .map(([qId, ans]) => buildAnswerPayload(Number(qId), ans.value, ans.unsure ?? false));
@@ -352,6 +367,9 @@ const TestScreen: React.FC<TestScreenProps> = ({ onFinishTest, user, onLogout, q
       }
   };
 
+  // Selalu perbarui ref handleFinishExam agar timer tidak pakai versi stale
+  useEffect(() => { handleFinishExamRef.current = handleFinishExam; });
+
   // --- Timer + Sync ke DB setiap 60 detik ---
   useEffect(() => {
     if (isSessionLoading || !sessionId || isDisqualified) return;
@@ -363,7 +381,8 @@ const TestScreen: React.FC<TestScreenProps> = ({ onFinishTest, user, onLogout, q
         if (next <= 0) {
           clearInterval(timer);
           if (timeSyncIntervalRef.current) clearInterval(timeSyncIntervalRef.current);
-          handleFinishExam();
+          // ── FIX BUG #5: Panggil via ref agar selalu menggunakan handleFinishExam terkini ──
+          handleFinishExamRef.current();
           return 0;
         }
         return next;
@@ -412,7 +431,7 @@ const TestScreen: React.FC<TestScreenProps> = ({ onFinishTest, user, onLogout, q
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentQuestionIndex, sessionId, isSessionLoading]);
 
-  // Sync waktu terakhir saat siswa menutup/refresh tab (gunakan sendBeacon agar terkirim)
+  // Sync waktu terakhir saat siswa menutup/refresh tab (gunakan fetch+keepalive agar header auth terkirim)
   useEffect(() => {
     if (!sessionId) return;
     const handleBeforeUnload = () => {
@@ -422,10 +441,23 @@ const TestScreen: React.FC<TestScreenProps> = ({ onFinishTest, user, onLogout, q
         p_session_id:        Number(sessionId),
         p_time_left_seconds: timeLeftRef.current,
       });
-      navigator.sendBeacon(
-        `${supabaseUrl}/rest/v1/rpc/sync_time_left`,
-        new Blob([payload], { type: 'application/json' })
-      );
+      // fetch+keepalive: mendukung custom headers (tidak seperti sendBeacon)
+      fetch(`${supabaseUrl}/rest/v1/rpc/sync_time_left`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': supabaseKey,
+          'Authorization': `Bearer ${supabaseKey}`,
+        },
+        body: payload,
+        keepalive: true,
+      }).catch(() => {
+        // fallback ke sendBeacon jika fetch+keepalive tidak didukung
+        navigator.sendBeacon(
+          `${supabaseUrl}/rest/v1/rpc/sync_time_left`,
+          new Blob([payload], { type: 'application/json' })
+        );
+      });
     };
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
@@ -438,32 +470,41 @@ const TestScreen: React.FC<TestScreenProps> = ({ onFinishTest, user, onLogout, q
     
     if (!config.enableAntiCheat || isDisqualified || !sessionId || isSessionLoading) return;
 
-    // Fungsi pencatat pelanggaran
+    // Fungsi pencatat pelanggaran — dilindungi dari double-fire
     const handleViolation = async () => {
-        if (isDisqualified) return; // Jangan catat jika sudah didiskualifikasi
+        if (isDisqualified || isViolationProcessingRef.current) return;
+        isViolationProcessingRef.current = true;
 
-        // Update Local State optimistically
-        const newCount = violationCount + 1;
-        setViolationCount(newCount);
-
-        // Update DB
         try {
-            const updates: any = { violations: newCount };
-            
-            // Check threshold
-            if (newCount >= config.antiCheatViolationLimit) {
+            // Gunakan functional updater agar tidak bergantung pada closure violationCount
+            let newCount = 0;
+            setViolationCount(prev => {
+                newCount = prev + 1;
+                return newCount;
+            });
+
+            // Beri waktu React memproses state baru sebelum lanjut
+            await new Promise(r => setTimeout(r, 50));
+
+            // Ambil nilai terkini via ref setelah setState
+            const latestCount = violationCount + 1;
+            const updates: any = { violations: latestCount };
+
+            if (latestCount >= config.antiCheatViolationLimit) {
                 updates.status = 'Diskualifikasi';
                 setIsDisqualified(true);
             }
-            
+
             await supabase.from('student_exam_sessions').update(updates).eq('id', sessionId);
+
+            if (latestCount < config.antiCheatViolationLimit) {
+                setIsWarningOpen(true);
+            }
         } catch (e) {
             console.error("Failed to update violation", e);
-        }
-
-        // Show warning modal if not disqualified yet
-        if (newCount < config.antiCheatViolationLimit) {
-            setIsWarningOpen(true);
+        } finally {
+            // Beri cooldown 1 detik agar tidak double-fire dari events bersamaan
+            setTimeout(() => { isViolationProcessingRef.current = false; }, 1000);
         }
     };
 
@@ -729,7 +770,7 @@ const TestScreen: React.FC<TestScreenProps> = ({ onFinishTest, user, onLogout, q
                             );
                         })}
                     </svg>
-                    <div className="grid grid-cols-2 gap-x-8 sm:gap-x-20 md:gap-x-48 relative z-10">
+                    <div className="grid grid-cols-2 gap-x-3 sm:gap-x-8 md:gap-x-12 lg:gap-x-16 relative z-10">
                         <div className="space-y-4">
                             {leftItems.map((item, idx) => {
                                 const isConnected = !!pairs[item.id];
@@ -782,8 +823,8 @@ const TestScreen: React.FC<TestScreenProps> = ({ onFinishTest, user, onLogout, q
                     {/* Header Table */}
                     <div className="flex bg-gray-100 border-b border-gray-200 text-xs sm:text-sm font-bold text-gray-700">
                         <div className="flex-1 p-3 sm:p-4">Pernyataan</div>
-                        <div className="w-16 sm:w-24 p-3 sm:p-4 text-center border-l border-gray-200">Benar</div>
-                        <div className="w-16 sm:w-24 p-3 sm:p-4 text-center border-l border-gray-200">Salah</div>
+                        <div className="w-20 sm:w-28 p-3 sm:p-4 text-center border-l border-gray-200">Benar</div>
+                        <div className="w-20 sm:w-28 p-3 sm:p-4 text-center border-l border-gray-200">Salah</div>
                     </div>
                     {/* Rows */}
                     <div className="divide-y divide-gray-100">
@@ -796,8 +837,8 @@ const TestScreen: React.FC<TestScreenProps> = ({ onFinishTest, user, onLogout, q
                                     <div className={`flex-1 p-3 sm:p-4 text-xs sm:text-sm font-medium ${currentTheme.textMain}`}>{stmt}</div>
                                     
                                     {/* Benar Radio */}
-                                    <div className="w-16 sm:w-24 p-3 sm:p-4 flex justify-center border-l border-gray-100">
-                                        <label className={`w-5 h-5 sm:w-6 sm:h-6 rounded-full border-2 cursor-pointer flex items-center justify-center transition-all ${isTrue ? 'border-green-500 bg-green-500' : 'border-gray-300 hover:border-green-400'}`}>
+                                    <div className="w-20 sm:w-28 p-2 sm:p-4 flex justify-center border-l border-gray-100">
+                                        <label className={`w-8 h-8 sm:w-9 sm:h-9 rounded-full border-2 cursor-pointer flex items-center justify-center transition-all min-h-[44px] min-w-[44px] ${isTrue ? 'border-green-500 bg-green-500' : 'border-gray-300 hover:border-green-400'}`}>
                                             <input 
                                                 type="radio" 
                                                 name={`tf_row_${idx}`} 
@@ -813,8 +854,8 @@ const TestScreen: React.FC<TestScreenProps> = ({ onFinishTest, user, onLogout, q
                                     </div>
 
                                     {/* Salah Radio */}
-                                    <div className="w-16 sm:w-24 p-3 sm:p-4 flex justify-center border-l border-gray-100">
-                                        <label className={`w-5 h-5 sm:w-6 sm:h-6 rounded-full border-2 cursor-pointer flex items-center justify-center transition-all ${isFalse ? 'border-red-500 bg-red-500' : 'border-gray-300 hover:border-green-400'}`}>
+                                    <div className="w-20 sm:w-28 p-2 sm:p-4 flex justify-center border-l border-gray-100">
+                                        <label className={`w-8 h-8 sm:w-9 sm:h-9 rounded-full border-2 cursor-pointer flex items-center justify-center transition-all min-h-[44px] min-w-[44px] ${isFalse ? 'border-red-500 bg-red-500' : 'border-gray-300 hover:border-green-400'}`}>
                                             <input 
                                                 type="radio" 
                                                 name={`tf_row_${idx}`} 
@@ -841,7 +882,7 @@ const TestScreen: React.FC<TestScreenProps> = ({ onFinishTest, user, onLogout, q
                     <textarea 
                       value={currentAnswer.value || ''} 
                       onChange={(e) => handleUpdateAnswer(currentQuestion.id, e.target.value)} 
-                      className={`w-full p-4 sm:p-8 border-2 rounded-2xl sm:rounded-[3rem] h-60 sm:h-80 focus:ring-4 focus:ring-blue-100 focus:border-blue-400 outline-none text-base sm:text-xl leading-relaxed shadow-inner font-medium ${currentTheme.bgApp} ${currentTheme.textMain} ${currentTheme.border}`}
+                      className={`w-full p-3 sm:p-6 md:p-8 border-2 rounded-2xl sm:rounded-[2rem] md:rounded-[3rem] h-48 sm:h-64 md:h-80 focus:ring-4 focus:ring-blue-100 focus:border-blue-400 outline-none text-sm sm:text-base md:text-xl leading-relaxed shadow-inner font-medium ${currentTheme.bgApp} ${currentTheme.textMain} ${currentTheme.border}`}
                       placeholder="Ketik jawaban Anda di sini..." 
                     />
                 </div>
@@ -1019,35 +1060,55 @@ const TestScreen: React.FC<TestScreenProps> = ({ onFinishTest, user, onLogout, q
           </div>
       </div>
 
-      <main className="flex-grow overflow-y-auto p-3 sm:p-10 pb-36">
+      <main className="flex-grow overflow-y-auto p-2 sm:p-6 md:p-10 pb-28 sm:pb-32 md:pb-36">
         <div className="max-w-6xl mx-auto w-full">
-            <div className={`${currentTheme.bgCard} p-5 sm:p-16 rounded-[2rem] sm:rounded-[4rem] ${currentTheme.shadow} ${currentTheme.border} border transition-all duration-300 relative overflow-hidden`}>
+            <div className={`${currentTheme.bgCard} p-4 sm:p-10 md:p-16 rounded-[1.5rem] sm:rounded-[2.5rem] md:rounded-[4rem] ${currentTheme.shadow} ${currentTheme.border} border transition-all duration-300 relative overflow-hidden`}>
                 
                 {/* Visualizer for Question Type */}
-                <div className="mb-6 sm:mb-12 flex items-center justify-between">
+                <div className="mb-4 sm:mb-8 md:mb-12 flex items-center justify-between">
                     <div className="flex gap-2 sm:gap-3">
-                        <span className="bg-blue-600 text-white text-[9px] sm:text-[10px] font-black px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl sm:rounded-2xl uppercase tracking-widest shadow-lg shadow-blue-100">{currentQuestion.type.replace(/_/g, ' ')}</span>
-                        <span className={`${currentTheme.bgApp} ${currentTheme.textSub} text-[9px] sm:text-[10px] font-black px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl sm:rounded-2xl uppercase tracking-widest`}>BOBOT: {currentQuestion.weight}</span>
+                        <span className="bg-blue-600 text-white text-[10px] sm:text-xs font-black px-2.5 sm:px-4 py-1.5 rounded-lg sm:rounded-2xl uppercase tracking-wider shadow-lg shadow-blue-100">{currentQuestion.type.replace(/_/g, ' ')}</span>
+                        <span className={`${currentTheme.bgApp} ${currentTheme.textSub} text-[10px] sm:text-xs font-black px-2.5 sm:px-4 py-1.5 rounded-lg sm:rounded-2xl uppercase tracking-wider`}>BOBOT: {currentQuestion.weight}</span>
                     </div>
                 </div>
 
-                <div className={`prose max-w-none mb-6 sm:mb-8 text-lg sm:text-3xl leading-relaxed font-medium sm:font-bold tracking-tight ${currentTheme.textMain}`} dangerouslySetInnerHTML={{ __html: currentQuestion.question }} />
+                <div className={`prose max-w-none mb-6 sm:mb-8 text-base sm:text-xl md:text-3xl leading-relaxed font-medium sm:font-bold tracking-tight ${currentTheme.textMain}`} dangerouslySetInnerHTML={{ __html: currentQuestion.question }} />
                 
                 {/* Media Support */}
                 {(currentQuestion.image || currentQuestion.audio || currentQuestion.video) && (
                     <div className="mb-6 sm:mb-8 space-y-4 sm:space-y-6">
-                        {currentQuestion.image && <img src={currentQuestion.image} alt="Soal" className={`max-w-full h-auto rounded-2xl sm:rounded-3xl ${currentTheme.border} border shadow-sm mx-auto`} />}
+                        {currentQuestion.image && (
+                            <img src={currentQuestion.image} alt="Soal"
+                                className={`max-w-full h-auto rounded-2xl sm:rounded-3xl ${currentTheme.border} border shadow-sm mx-auto block`}
+                                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                            />
+                        )}
                         {currentQuestion.audio && (
-                            <audio controls className="w-full">
-                                <source src={currentQuestion.audio} type="audio/mpeg" />
-                                Browser Anda tidak mendukung pemutar audio.
-                            </audio>
+                            <div className={`rounded-2xl sm:rounded-3xl p-3 sm:p-4 border ${currentTheme.border} ${currentTheme.bgCard}`}>
+                                <div className="flex items-center gap-2 mb-2">
+                                    <span className="bg-green-100 text-green-700 text-[10px] font-black px-2 py-1 rounded-lg tracking-widest uppercase">🎵 Audio Listening</span>
+                                    <span className={`text-xs ${currentTheme.textSub}`}>Dengarkan dengan seksama sebelum menjawab</span>
+                                </div>
+                                <audio controls className="w-full" controlsList="nodownload">
+                                    <source src={currentQuestion.audio} type="audio/mpeg"/>
+                                    <source src={currentQuestion.audio} type="audio/ogg"/>
+                                    <source src={currentQuestion.audio} type="audio/wav"/>
+                                    Browser Anda tidak mendukung pemutar audio.
+                                </audio>
+                            </div>
                         )}
                         {currentQuestion.video && (
-                            <video controls className="w-full rounded-2xl sm:rounded-3xl shadow-lg">
-                                <source src={currentQuestion.video} type="video/mp4" />
-                                Browser Anda tidak mendukung pemutar video.
-                            </video>
+                            <div className={`rounded-2xl sm:rounded-3xl overflow-hidden border ${currentTheme.border} shadow-lg`}>
+                                <div className={`flex items-center gap-2 px-3 py-2 ${currentTheme.bgCard} border-b ${currentTheme.border}`}>
+                                    <span className="bg-purple-100 text-purple-700 text-[10px] font-black px-2 py-1 rounded-lg tracking-widest uppercase">🎬 Video Soal</span>
+                                    <span className={`text-xs ${currentTheme.textSub}`}>Tonton video sebelum menjawab</span>
+                                </div>
+                                <video controls className="w-full" controlsList="nodownload" style={{maxHeight:'400px'}}>
+                                    <source src={currentQuestion.video} type="video/mp4"/>
+                                    <source src={currentQuestion.video} type="video/webm"/>
+                                    Browser Anda tidak mendukung pemutar video.
+                                </video>
+                            </div>
                         )}
                     </div>
                 )}

@@ -1,15 +1,20 @@
 
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Test, Question, QuestionDifficulty, TestDetails } from '../types';
+import { Test, Question, QuestionDifficulty, TestDetails, MasterDataItem } from '../types';
 import QuestionModal from './QuestionModal';
 import ConfirmationModal from './ConfirmationModal';
 import TestModal from './TestModal';
-import TestPreviewModal from './TestPreviewModal'; 
+import TestPreviewModal from './TestPreviewModal';
 import { SoalRow } from './Soal';
-import BulkQuestionImportModal from './BulkQuestionImportModal'; 
-import TxtQuestionImportModal from './TxtQuestionImportModal'; 
-import WordQuestionImportModal from './WordQuestionImportModal'; 
+import BulkQuestionImportModal from './BulkQuestionImportModal';
+import TxtQuestionImportModal from './TxtQuestionImportModal';
+import WordQuestionImportModal from './WordQuestionImportModal';
 import { EXAM_EVENT_TYPES } from '../constants';
+
+const generateRandomToken = () => {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  return Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+};
 
 interface QuestionBankProps {
   tests: Map<string, Test>;
@@ -26,6 +31,7 @@ interface QuestionBankProps {
   onFetchQuestions?: (token: string) => Promise<void>; // New prop
   isFetchingQuestions?: boolean; // New prop
   isDemoMode?: boolean; // Mode Demo: sembunyikan tombol tambah/edit/hapus
+  examTypes?: MasterDataItem[]; // Kategori ujian dinamis dari DB
 }
 
 const DifficultyBadge: React.FC<{ difficulty: QuestionDifficulty }> = ({ difficulty }) => {
@@ -55,7 +61,7 @@ const ActionCard: React.FC<{title: string, description: string, icon: React.Reac
 );
 
 
-const QuestionBank: React.FC<QuestionBankProps> = ({ tests, onAddQuestion, onUpdateQuestion, onDeleteQuestion, onAddTest, onUpdateTest, onDeleteTest, onBulkAddQuestions, onImportError, preselectedToken, onRefresh, onFetchQuestions, isFetchingQuestions, isDemoMode = false }) => {
+const QuestionBank: React.FC<QuestionBankProps> = ({ tests, onAddQuestion, onUpdateQuestion, onDeleteQuestion, onAddTest, onUpdateTest, onDeleteTest, onBulkAddQuestions, onImportError, preselectedToken, onRefresh, onFetchQuestions, isFetchingQuestions, isDemoMode = false, examTypes }) => {
   const [view, setView] = useState<'main' | 'detail'>('main');
   const [selectedToken, setSelectedToken] = useState<string>(preselectedToken || '');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -85,6 +91,7 @@ const QuestionBank: React.FC<QuestionBankProps> = ({ tests, onAddQuestion, onUpd
       setView('detail');
     }
   }, [preselectedToken]);
+
 
   const testsArray = Array.from(tests.entries());
   const selectedTest = selectedToken ? tests.get(selectedToken) : null;
@@ -293,14 +300,14 @@ const QuestionBank: React.FC<QuestionBankProps> = ({ tests, onAddQuestion, onUpd
       )}
 
       {isModalOpen && selectedToken && <QuestionModal questionToEdit={editingQuestion} onSave={handleSaveQuestion} onClose={() => setIsModalOpen(false)} />}
-      {isTestModalOpen && <TestModal testToEdit={testToEdit} onSave={handleSaveTest} onClose={() => { setIsTestModalOpen(false); setTestToEdit(null); }} />}
-      {isImportModalOpen && selectedToken && <BulkQuestionImportModal testToken={selectedToken} onClose={() => setIsImportModalOpen(false)} onSuccess={onRefresh} />}
-      
+      {isTestModalOpen && <TestModal testToEdit={testToEdit} onSave={handleSaveTest} onClose={() => { setIsTestModalOpen(false); setTestToEdit(null); }} examTypes={examTypes} />}
+      {isImportModalOpen && selectedToken && <BulkQuestionImportModal testToken={selectedToken} onClose={() => setIsImportModalOpen(false)} onSuccess={() => { onRefresh(); if (onFetchQuestions && selectedToken) onFetchQuestions(selectedToken); }} />}
+
       {/* Modal Import TXT */}
-      {isTxtImportModalOpen && selectedToken && <TxtQuestionImportModal testToken={selectedToken} onClose={() => setIsTxtImportModalOpen(false)} onSuccess={onRefresh} />}
-      
+      {isTxtImportModalOpen && selectedToken && <TxtQuestionImportModal testToken={selectedToken} onClose={() => setIsTxtImportModalOpen(false)} onSuccess={() => { onRefresh(); if (onFetchQuestions && selectedToken) onFetchQuestions(selectedToken); }} />}
+
       {/* Modal Import Word */}
-      {isWordImportModalOpen && selectedToken && <WordQuestionImportModal testToken={selectedToken} onClose={() => setIsWordImportModalOpen(false)} onSuccess={onRefresh} />}
+      {isWordImportModalOpen && selectedToken && <WordQuestionImportModal testToken={selectedToken} onClose={() => setIsWordImportModalOpen(false)} onSuccess={() => { onRefresh(); if (onFetchQuestions && selectedToken) onFetchQuestions(selectedToken); }} />}
       
       {previewTest && (
         <TestPreviewModal 

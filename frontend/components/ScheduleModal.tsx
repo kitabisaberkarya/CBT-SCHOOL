@@ -16,9 +16,12 @@ const ScheduleModal: React.FC<ScheduleModalProps> = ({ scheduleToEdit, tests, ma
     startTime: scheduleToEdit?.startTime ? new Date(scheduleToEdit.startTime) : new Date(),
     endTime: scheduleToEdit?.endTime ? new Date(scheduleToEdit.endTime) : new Date(new Date().getTime() + 60 * 60 * 1000), // Default to 1 hour later
     assignedTo: new Set<string>(scheduleToEdit?.assignedTo || []),
+    sessionName: scheduleToEdit?.sessionName || '',
+    sessionNumber: scheduleToEdit?.sessionNumber ?? '',
   });
   
   const allAssignable = [...masterData.classes, ...masterData.majors].map(i => i.name);
+  const [pesertaSearch, setPesertaSearch] = useState('');
 
   const handleDateChange = (name: 'startTime' | 'endTime', date: Date) => {
     setFormData(prev => ({ ...prev, [name]: date }));
@@ -60,6 +63,8 @@ const ScheduleModal: React.FC<ScheduleModalProps> = ({ scheduleToEdit, tests, ma
         startTime: formData.startTime.toISOString(),
         endTime: formData.endTime.toISOString(),
         assignedTo: Array.from(formData.assignedTo),
+        sessionName: formData.sessionName.trim() || undefined,
+        sessionNumber: formData.sessionNumber !== '' ? Number(formData.sessionNumber) : undefined,
     };
 
     if (scheduleToEdit) {
@@ -83,6 +88,35 @@ const ScheduleModal: React.FC<ScheduleModalProps> = ({ scheduleToEdit, tests, ma
 
         <form onSubmit={handleSubmit} className="flex flex-col min-h-0">
           <div className="p-6 space-y-4 overflow-y-auto">
+          {/* Sesi Ujian */}
+          <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+            <p className="text-xs font-semibold text-blue-700 mb-2 uppercase tracking-wide">Pengaturan Sesi (Opsional)</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-600">Nomor Sesi</label>
+                <input
+                  type="number"
+                  min={1}
+                  placeholder="cth: 1"
+                  value={formData.sessionNumber}
+                  onChange={(e) => setFormData(p => ({ ...p, sessionNumber: e.target.value === '' ? '' : Number(e.target.value) }))}
+                  className="mt-1 w-full p-2 border rounded-md bg-white text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600">Nama Sesi</label>
+                <input
+                  type="text"
+                  placeholder="cth: Sesi Pagi"
+                  value={formData.sessionName}
+                  onChange={(e) => setFormData(p => ({ ...p, sessionName: e.target.value }))}
+                  className="mt-1 w-full p-2 border rounded-md bg-white text-sm"
+                />
+              </div>
+            </div>
+            <p className="mt-2 text-xs text-blue-600">Isi sesi jika ujian ini dibagi menjadi beberapa kelompok waktu berbeda.</p>
+          </div>
+
           <div>
             <label className="block text-sm font-medium text-gray-700">Pilih Ujian</label>
             <select name="testToken" value={formData.testToken} onChange={(e) => setFormData(p => ({...p, testToken: e.target.value}))} className="mt-1 w-full p-2 border rounded-md bg-white" required>
@@ -103,21 +137,56 @@ const ScheduleModal: React.FC<ScheduleModalProps> = ({ scheduleToEdit, tests, ma
             </div>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Tetapkan untuk Peserta</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Tetapkan untuk Peserta
+              <span className="ml-2 text-xs font-normal text-gray-400">({formData.assignedTo.size} dipilih dari {allAssignable.length})</span>
+            </label>
             <div className="border rounded-md">
-              <div className="p-2 border-b">
-                <label className="flex items-center space-x-2 p-1 cursor-pointer">
-                  <input type="checkbox" onChange={handleSelectAll} checked={allAssignable.length > 0 && formData.assignedTo.size === allAssignable.length} className="h-4 w-4 rounded text-blue-600 focus:ring-blue-500" />
-                  <span className="text-sm font-semibold text-gray-800">Centang Semua</span>
+              {/* Baris Search + Centang Semua */}
+              <div className="p-2 border-b flex items-center gap-2">
+                <label className="flex items-center space-x-2 cursor-pointer flex-shrink-0">
+                  <input
+                    type="checkbox"
+                    onChange={handleSelectAll}
+                    checked={allAssignable.length > 0 && formData.assignedTo.size === allAssignable.length}
+                    className="h-4 w-4 rounded text-blue-600 focus:ring-blue-500"
+                  />
+                  <span className="text-sm font-semibold text-gray-800 whitespace-nowrap">Semua</span>
                 </label>
+                <div className="relative flex-grow">
+                  <svg className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                  </svg>
+                  <input
+                    type="text"
+                    value={pesertaSearch}
+                    onChange={e => setPesertaSearch(e.target.value)}
+                    placeholder="Cari kelas... (cth: XII)"
+                    className="w-full pl-7 pr-3 py-1.5 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-400"
+                  />
+                  {pesertaSearch && (
+                    <button type="button" onClick={() => setPesertaSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs">✕</button>
+                  )}
+                </div>
               </div>
-              <div className="max-h-40 overflow-y-auto p-2 space-y-1">
-                {allAssignable.map(name => (
-                  <label key={name} className="flex items-center space-x-2 p-1 hover:bg-gray-50 rounded cursor-pointer">
-                    <input type="checkbox" checked={formData.assignedTo.has(name)} onChange={() => handleAssignToChange(name)} className="h-4 w-4 rounded text-blue-600 focus:ring-blue-500" />
-                    <span className="text-sm text-gray-800">{name}</span>
-                  </label>
-                ))}
+              {/* Daftar peserta yang bisa difilter */}
+              <div className="max-h-44 overflow-y-auto p-2 space-y-0.5">
+                {allAssignable
+                  .filter(name => name.toLowerCase().includes(pesertaSearch.toLowerCase()))
+                  .map(name => (
+                    <label key={name} className="flex items-center space-x-2 px-2 py-1.5 hover:bg-blue-50 rounded cursor-pointer transition-colors">
+                      <input
+                        type="checkbox"
+                        checked={formData.assignedTo.has(name)}
+                        onChange={() => handleAssignToChange(name)}
+                        className="h-4 w-4 rounded text-blue-600 focus:ring-blue-500"
+                      />
+                      <span className="text-sm text-gray-800">{name}</span>
+                    </label>
+                  ))}
+                {allAssignable.filter(name => name.toLowerCase().includes(pesertaSearch.toLowerCase())).length === 0 && (
+                  <p className="text-center text-xs text-gray-400 py-3">Tidak ada kelas yang cocok dengan "<strong>{pesertaSearch}</strong>"</p>
+                )}
               </div>
             </div>
           </div>

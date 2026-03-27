@@ -148,10 +148,10 @@ const PrintableDocument: React.FC<PrintableProps> = (props) => {
             </thead>
             <tbody>
               {filteredStudents.length === 0 && Array.from({ length: 15 }).map((_, i) => (
-                <tr key={i} className="h-9"><td className="border border-black text-center">{i + 1}</td><td className="border border-black"></td><td className="border border-black"></td><td className="border border-black w-24 text-left align-top text-[9px] pl-1 pt-1">{i % 2 === 0 ? `${i + 1}.` : ''}</td><td className="border border-black w-24 text-left align-top text-[9px] pl-1 pt-1">{i % 2 !== 0 ? `${i + 1}.` : ''}</td><td className="border border-black"></td></tr>
+                <tr key={i} className="h-9" style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}><td className="border border-black text-center">{i + 1}</td><td className="border border-black"></td><td className="border border-black"></td><td className="border border-black w-24 text-left align-top text-[9px] pl-1 pt-1">{i % 2 === 0 ? `${i + 1}.` : ''}</td><td className="border border-black w-24 text-left align-top text-[9px] pl-1 pt-1">{i % 2 !== 0 ? `${i + 1}.` : ''}</td><td className="border border-black"></td></tr>
               ))}
               {filteredStudents.map((student: any, index: number) => (
-                <tr key={student.id} className="h-9"><td className="border border-black text-center font-bold">{index + 1}</td><td className="border border-black text-center font-mono font-bold tracking-wider">{student.nisn}</td><td className="border border-black px-2 uppercase font-semibold text-[10px] leading-tight">{student.fullName}</td><td className="border border-black align-top w-24 pl-1 pt-1 text-[10px]">{index % 2 === 0 && (<span>{index + 1}.</span>)}</td><td className="border border-black align-top w-24 pl-1 pt-1 text-[10px]">{index % 2 !== 0 && (<span>{index + 1}.</span>)}</td><td className="border border-black text-center text-[10px] font-bold">{presentStudentIds.has(student.id) ? 'HADIR' : '-'}</td></tr>
+                <tr key={student.id} className="h-9" style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}><td className="border border-black text-center font-bold">{index + 1}</td><td className="border border-black text-center font-mono font-bold tracking-wider">{student.nisn}</td><td className="border border-black px-2 uppercase font-semibold text-[10px] leading-tight">{student.fullName}</td><td className="border border-black align-top w-24 pl-1 pt-1 text-[10px]">{index % 2 === 0 && (<span>{index + 1}.</span>)}</td><td className="border border-black align-top w-24 pl-1 pt-1 text-[10px]">{index % 2 !== 0 && (<span>{index + 1}.</span>)}</td><td className="border border-black text-center text-[10px] font-bold">{presentStudentIds.has(student.id) ? 'HADIR' : '-'}</td></tr>
               ))}
             </tbody>
           </table>
@@ -195,7 +195,7 @@ const PrintableDocument: React.FC<PrintableProps> = (props) => {
             <p className="mb-4">Demikian Berita Acara ini dibuat dengan sesungguhnya.</p>
 
             <table className="w-full text-[12px] break-inside-avoid mb-8"><tbody><tr><td className="w-[40%] text-center align-top"><p className="mb-1">Yang Membuat Berita Acara,</p><p className="mb-1">Pengawas Ruang,</p><br /><br /><br /><br /><p className="font-bold uppercase underline underline-offset-2">{supervisorInfo.name || '....................................'}</p><p>NIP. {supervisorInfo.nip || ' - '}</p></td><td className="w-[20%]"></td><td className="w-[40%] text-center align-top"><p className="mb-1">{config.schoolDistrict || '....................'}, {formattedDate.dateStr}</p><p className="mb-1">Proktor,</p><br /><br /><br /><br /><p className="font-bold uppercase underline underline-offset-2">{proctorInfo.name || '....................................'}</p><p>NIP. {proctorInfo.nip || ' - '}</p></td></tr></tbody></table>
-            <table className="w-full text-[12px] break-inside-avoid"><tbody><tr><td className="text-center align-top"><p className="mb-1">Mengetahui,</p><p className="mb-1">Kepala Sekolah,</p><br /><br /><br /><br /><p className="font-bold uppercase underline underline-offset-2">{config.headmasterName || '....................................'}</p><p>NIP. {config.headmasterNip || '...................'}</p></td></tr></tbody></table>
+            <table className="w-full text-[12px] break-inside-avoid"><tbody><tr><td className="text-center align-top"><p className="mb-1">Mengetahui,</p><p className="mb-1">Kepala Sekolah,</p>{config.signatureUrl ? (<img src={config.signatureUrl} alt="TTD Kepala Sekolah" style={{ height: '64px', margin: '4px auto 0', display: 'block', objectFit: 'contain' }} />) : (<><br /><br /><br /><br /></>)}{config.stampUrl && (<img src={config.stampUrl} alt="Stempel" style={{ height: '56px', position: 'absolute', opacity: 0.7, margin: '-70px auto', display: 'block' }} />)}<p className="font-bold uppercase underline underline-offset-2">{config.headmasterName || '....................................'}</p><p>NIP. {config.headmasterNip || '...................'}</p></td></tr></tbody></table>
           </div>
         </>
       )}
@@ -327,6 +327,48 @@ const PrintDocuments: React.FC<PrintDocumentsProps> = ({ users, tests, examSessi
     return { dayName, dateStr, dateFull: `${dayName}, ${dateStr}` };
   }, [printDate]);
 
+  const handleDirectPrint = () => {
+    const originalElement = document.getElementById('document-preview-area');
+    if (!originalElement) return;
+    const printContents = originalElement.outerHTML;
+
+    const printStyle = document.createElement('style');
+    printStyle.id = 'doc-print-style';
+    printStyle.innerHTML = `
+      @media print {
+        body > *:not(#doc-print-container) { display: none !important; }
+        #doc-print-container {
+          display: block !important;
+          width: 100%;
+          margin: 0;
+          padding: 0;
+        }
+        .print-content-area {
+          box-shadow: none !important;
+          transform: none !important;
+          margin: 0 auto !important;
+        }
+        .print-content-area tr { page-break-inside: avoid; break-inside: avoid; }
+        .print-content-area thead { display: table-header-group; }
+        .print-content-area .break-inside-avoid { page-break-inside: avoid; break-inside: avoid; }
+      }
+    `;
+    document.head.appendChild(printStyle);
+
+    const printContainer = document.createElement('div');
+    printContainer.id = 'doc-print-container';
+    printContainer.innerHTML = printContents;
+    document.body.appendChild(printContainer);
+
+    const cleanup = () => {
+      document.getElementById('doc-print-container')?.remove();
+      document.getElementById('doc-print-style')?.remove();
+      window.removeEventListener('afterprint', cleanup);
+    };
+    window.addEventListener('afterprint', cleanup);
+    window.print();
+  };
+
   const handleDownloadPDF = async () => {
     if (!selectedTest) return;
     setIsProcessing(true);
@@ -428,7 +470,7 @@ const PrintDocuments: React.FC<PrintDocumentsProps> = ({ users, tests, examSessi
         </div>
         <div className="p-5 border-t border-slate-200 bg-white sticky bottom-0 z-10">
              <div className="flex gap-2 mb-3"><div className="flex-1"><label className="block text-[10px] font-bold text-slate-500 mb-1 uppercase">Ukuran Kertas</label><select value={paperSize} onChange={e => setPaperSize(e.target.value as any)} className="w-full p-1.5 border rounded text-sm bg-slate-50"><option value="A4">A4 (21 x 29.7 cm)</option><option value="F4">F4 (21.5 x 33 cm)</option></select></div><div className="flex-1"><label className="block text-[10px] font-bold text-slate-500 mb-1 uppercase">Tanggal Cetak</label><input type="date" value={printDate} onChange={e => setPrintDate(e.target.value)} className="w-full p-1 border rounded text-sm bg-slate-50" /></div></div>
-             <div className="grid grid-cols-2 gap-3"><button onClick={handleDownloadPDF} disabled={!selectedTest || isProcessing} className="flex flex-col items-center justify-center p-2 bg-red-600 hover:bg-red-700 text-white rounded-lg shadow-md transition-all group disabled:bg-gray-300 disabled:cursor-not-allowed"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mb-1 group-hover:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg><span className="text-xs font-bold">Download PDF</span></button><button onClick={handleDownloadExcel} disabled={!selectedTest || isProcessing} className="flex flex-col items-center justify-center p-2 bg-green-600 hover:bg-green-700 text-white rounded-lg shadow-md transition-all group disabled:bg-gray-300 disabled:cursor-not-allowed"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mb-1 group-hover:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V7a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg><span className="text-xs font-bold">Download Excel</span></button></div>{isProcessing && <p className="text-center text-xs text-blue-500 mt-2 font-semibold animate-pulse">Sedang memproses dokumen...</p>}
+             <div className="grid grid-cols-3 gap-2"><button onClick={handleDirectPrint} disabled={!selectedTest || isProcessing} className="flex flex-col items-center justify-center p-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg shadow-md transition-all group disabled:bg-gray-300 disabled:cursor-not-allowed"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mb-1 group-hover:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg><span className="text-xs font-bold">Print Langsung</span></button><button onClick={handleDownloadPDF} disabled={!selectedTest || isProcessing} className="flex flex-col items-center justify-center p-2 bg-red-600 hover:bg-red-700 text-white rounded-lg shadow-md transition-all group disabled:bg-gray-300 disabled:cursor-not-allowed"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mb-1 group-hover:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" /></svg><span className="text-xs font-bold">Download PDF</span></button><button onClick={handleDownloadExcel} disabled={!selectedTest || isProcessing} className="flex flex-col items-center justify-center p-2 bg-green-600 hover:bg-green-700 text-white rounded-lg shadow-md transition-all group disabled:bg-gray-300 disabled:cursor-not-allowed"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mb-1 group-hover:scale-110 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V7a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg><span className="text-xs font-bold">Download Excel</span></button></div>{isProcessing && <p className="text-center text-xs text-blue-500 mt-2 font-semibold animate-pulse">Sedang memproses dokumen...</p>}
         </div>
       </div>
       <div className={`${activeMobileTab === 'preview' ? 'flex' : 'hidden'} lg:flex flex-grow bg-slate-200 p-4 sm:p-8 overflow-auto justify-center items-start no-print`}>

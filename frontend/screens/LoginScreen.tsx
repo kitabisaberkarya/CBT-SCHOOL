@@ -11,11 +11,12 @@ interface LoginScreenProps {
   config: AppConfig;
   onStudentLogin: (nisn: string, password: string) => Promise<string>;
   onAdminLogin: (email: string, password: string) => Promise<string>;
+  isDemoMode?: boolean;
 }
 
 type TabType = 'student' | 'teacher';
 
-const LoginScreen: React.FC<LoginScreenProps> = ({ config, onStudentLogin, onAdminLogin }) => {
+const LoginScreen: React.FC<LoginScreenProps> = ({ config, onStudentLogin, onAdminLogin, isDemoMode }) => {
   const [activeTab, setActiveTab] = useState<TabType>('student');
   const [isLoading, setIsLoading] = useState(false);
   
@@ -43,6 +44,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ config, onStudentLogin, onAdm
   const handleQRScanSuccess = async (scannedData: string) => {
     setIsScannerOpen(false);
     setIsLoading(true);
+    setError('');
 
     try {
         const data = scannedData.trim().replace(/^"|"$/g, '');
@@ -79,8 +81,23 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ config, onStudentLogin, onAdm
     <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 relative overflow-hidden font-sans">
       <Header pageType="login" onTriggerAdminLogin={() => setIsAdminModalOpen(true)} config={config} />
       
-      <main className="relative z-10 w-full max-w-md px-4 mt-48 sm:mt-64 mb-10">
-        
+      <main className="relative z-10 w-full max-w-sm sm:max-w-md px-4 mt-40 sm:mt-48 md:mt-56 mb-8 sm:mb-10">
+
+        {/* Demo Mode Banner */}
+        {isDemoMode && (
+          <div className="mb-4 bg-amber-50 border border-amber-300 rounded-xl p-4 text-sm">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-amber-600 font-bold text-base">MODE DEMO AKTIF</span>
+              <span className="bg-amber-200 text-amber-800 text-xs font-bold px-2 py-0.5 rounded-full">CBT-SCHOOL-DEMO</span>
+            </div>
+            <div className="space-y-1 text-amber-700">
+              <p><span className="font-semibold">Siswa:</span> NISN: <span className="font-mono font-bold">0000000001</span> &ndash; <span className="font-mono font-bold">0000000032</span> &nbsp;| Password = NISN</p>
+              <p><span className="font-semibold">Guru:</span> Email: <span className="font-mono font-bold">budi.santoso@cbtschool.local</span> &nbsp;| Password: <span className="font-mono font-bold">demo1234</span></p>
+              <p className="text-xs text-amber-600 mt-1">Token ujian demo: <span className="font-mono font-bold">DEMO-MTK-001</span>, <span className="font-mono font-bold">DEMO-BIN-001</span>, <span className="font-mono font-bold">DEMO-IPA-001</span></p>
+            </div>
+          </div>
+        )}
+
         {/* Error Toast */}
         {error && (
             <div className="mb-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative animate-fade-in" role="alert">
@@ -115,7 +132,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ config, onStudentLogin, onAdm
             </div>
 
             {/* CONTENT */}
-            <div className="p-8">
+            <div className="p-5 sm:p-8">
                 {activeTab === 'student' ? (
                     <LoginScreenSiswa 
                         onLogin={handleStudentSubmit} 

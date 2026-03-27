@@ -1,5 +1,6 @@
 import React from 'react';
 import { User, AppConfig } from '../types';
+import { DEFAULT_PROFILE_IMAGES } from '../constants';
 
 interface BiodataScreenProps {
   student: User;
@@ -10,26 +11,27 @@ interface BiodataScreenProps {
 
 const BiodataScreen: React.FC<BiodataScreenProps> = ({ student, onConfirm, onLogout, config }) => {
   return (
-    <div className="w-full flex-grow flex flex-col items-center justify-center relative py-16 px-4 overflow-y-auto">
+    <div className="w-full flex-grow flex flex-col items-center justify-center relative py-8 sm:py-12 md:py-16 px-4 overflow-y-auto">
         {/* Background Container - Absolute to fill parent */}
         <div className="absolute inset-0 overflow-hidden" style={{ backgroundColor: config.primaryColor }}>
             <div className="absolute -top-1/4 -left-1/4 w-1/2 h-full bg-white/10 rounded-full blur-3xl"></div>
             <div className="absolute -bottom-1/4 -right-1/4 w-1/2 h-full bg-white/10 rounded-full blur-3xl"></div>
         </div>
       
-      <main className="relative z-10 w-full max-w-md my-auto">
-        <div className="bg-white rounded-3xl shadow-2xl p-8 transform transition-all animate-scale-up border border-white/20">
+      <main className="relative z-10 w-full max-w-sm sm:max-w-md my-auto">
+        <div className="bg-white rounded-3xl shadow-2xl p-5 sm:p-8 transform transition-all animate-scale-up border border-white/20">
             <div className="flex flex-col items-center text-center">
-                <div className="relative -mt-24 mb-4 group">
+                <div className="relative -mt-16 sm:-mt-20 md:-mt-24 mb-4 group">
                     <div className="absolute inset-0 rounded-full bg-black/20 blur-md transform translate-y-4 group-hover:translate-y-5 transition-transform"></div>
-                    <img 
-                        src={student.photoUrl} 
-                        alt="Foto Profil Siswa" 
-                        className="relative w-32 h-32 rounded-full object-cover border-4 border-white shadow-xl bg-gray-100"
+                    <img
+                        src={student.photoUrl}
+                        alt="Foto Profil Siswa"
+                        className="relative w-24 h-24 sm:w-28 sm:h-28 md:w-32 md:h-32 rounded-full object-cover border-4 border-white shadow-xl bg-gray-100"
+                        onError={(e) => { (e.currentTarget as HTMLImageElement).src = DEFAULT_PROFILE_IMAGES.STUDENT_NEUTRAL; }}
                     />
                 </div>
-                
-                <h2 className="text-2xl font-extrabold text-gray-800 tracking-tight">{student.fullName}</h2>
+
+                <h2 className="text-xl sm:text-2xl font-extrabold text-gray-800 tracking-tight">{student.fullName}</h2>
                 <p className="text-gray-500 text-sm font-medium mt-1">Selamat datang di Ujian CBT!</p>
             </div>
             

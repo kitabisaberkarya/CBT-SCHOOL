@@ -116,8 +116,10 @@ const ListView: React.FC<{schedules: Schedule[], tests: Map<string, Test>, onEdi
                     <thead className="bg-gray-50">
                     <tr>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Mata Pelajaran</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Sesi</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Waktu Mulai</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Waktu Selesai</th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Peserta</th>
                         <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Aksi</th>
                     </tr>
@@ -130,11 +132,21 @@ const ListView: React.FC<{schedules: Schedule[], tests: Map<string, Test>, onEdi
                             <tr key={s.id} className="hover:bg-gray-50 transition-colors">
                                 <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{test?.details.subject}</td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm">
+                                    {s.sessionNumber || s.sessionName ? (
+                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 text-xs font-semibold">
+                                            {s.sessionNumber ? `Sesi ${s.sessionNumber}` : ''}{s.sessionName && s.sessionNumber ? ` · ${s.sessionName}` : s.sessionName || ''}
+                                        </span>
+                                    ) : (
+                                        <span className="text-gray-400 text-xs">—</span>
+                                    )}
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm">
                                     <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${statusColors[status].bg} ${statusColors[status].text}`}>
                                         {status}
                                     </span>
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{new Date(s.startTime).toLocaleString('id-ID')}</td>
+                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{new Date(s.endTime).toLocaleString('id-ID')}</td>
                                 <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{(s.assignedTo || []).join(', ')}</td>
                                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
                                     {!isDemoMode && <button onClick={() => onEdit(s)} className="text-blue-600 hover:text-blue-900">Edit</button>}

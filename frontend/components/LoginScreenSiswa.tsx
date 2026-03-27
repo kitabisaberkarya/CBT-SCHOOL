@@ -10,7 +10,7 @@ interface LoginScreenSiswaProps {
 }
 
 const LoginScreenSiswa: React.FC<LoginScreenSiswaProps> = ({ onLogin, isLoading, config, onOpenQR }) => {
-  const [nisn, setNisn] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [localError, setLocalError] = useState('');
@@ -19,24 +19,20 @@ const LoginScreenSiswa: React.FC<LoginScreenSiswaProps> = ({ onLogin, isLoading,
     e.preventDefault();
     setLocalError('');
 
-    const cleanNisn = nisn.trim();
+    const cleanUsername = username.trim();
     const cleanPass = password.trim();
 
-    if (!cleanNisn) {
-      setLocalError('NISN wajib diisi.');
+    if (!cleanUsername) {
+      setLocalError('Username wajib diisi.');
       return;
-    }
-    // Validasi sederhana: NISN biasanya hanya angka
-    if (!/^\d+$/.test(cleanNisn)) {
-        setLocalError('NISN harus berupa angka.');
-        return;
     }
     if (!cleanPass) {
         setLocalError('Password wajib diisi.');
         return;
     }
 
-    const errorMsg = await onLogin(cleanNisn, cleanPass);
+    // Kirim username ke login handler — backend sudah mendukung lookup via username ATAU NISN
+    const errorMsg = await onLogin(cleanUsername, cleanPass);
     if (errorMsg) {
       setLocalError(errorMsg);
     }
@@ -58,24 +54,19 @@ const LoginScreenSiswa: React.FC<LoginScreenSiswaProps> = ({ onLogin, isLoading,
 
       <form onSubmit={handleSubmit} className="space-y-5">
         <div className="space-y-1">
-          <label className="block text-sm font-medium text-gray-700 ml-1">NISN</label>
+          <label className="block text-sm font-medium text-gray-700 ml-1">Username</label>
           <div className="relative">
             <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-gray-400">
               <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd" /></svg>
             </span>
             <input
               type="text"
-              value={nisn}
-              onChange={(e) => {
-                  // Hanya izinkan input angka
-                  const val = e.target.value.replace(/\D/g, '');
-                  setNisn(val);
-              }}
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
               className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-              placeholder="Nomor Induk Siswa Nasional"
+              placeholder="Masukkan username / NISN"
               required
               autoComplete="username"
-              inputMode="numeric"
             />
           </div>
         </div>
@@ -91,7 +82,7 @@ const LoginScreenSiswa: React.FC<LoginScreenSiswaProps> = ({ onLogin, isLoading,
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="w-full pl-10 pr-10 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-              placeholder="Password (Default: NISN)"
+              placeholder="Password"
               required
               autoComplete="current-password"
             />

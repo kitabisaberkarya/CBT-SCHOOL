@@ -607,18 +607,37 @@ const WordQuestionImportModal: React.FC<WordQuestionImportModalProps> = ({ testT
           qObj.options = left;
           qObj.matching_right_options = right;
           qObj.answer_key = { pairs };
+          // Metadata diperlukan agar soal menjodohkan dapat dirender
+          const matchingLeft = left.map((content, mi) => ({ id: `L${mi + 1}`, content }));
+          const matchingRight = right.map((content, mi) => ({ id: `R${mi + 1}`, content }));
+          qObj.metadata = { matchingLeft, matchingRight };
         } else if (jenis === 4) {
           // Benar/Salah: JAWABAN=pernyataan, KUNCI=B/S/Benar/Salah
           const stmts: string[] = [];
           const tfKey: Record<string, boolean> = {};
-          rowIndices.forEach((r, i) => {
+          const isTrueMark = (k: string) => k === 'B' || k === 'BENAR' || k === 'TRUE' || k === 'T' || k === '1';
+          let stmtIdx = 0;
+          rowIndices.forEach((r) => {
             const jawaban = (textGrid[r][COL_JAWABAN] ?? '').trim();
             const kunci = (textGrid[r][COL_KUNCI] ?? '').trim().toUpperCase();
             if (jawaban) {
               stmts.push(jawaban);
-              tfKey[String(i)] = kunci === 'B' || kunci === 'BENAR' || kunci === 'TRUE' || kunci === 'T' || kunci === '1';
+              tfKey[String(stmtIdx++)] = isTrueMark(kunci);
             }
           });
+          // Fallback: jika JAWABAN kosong, gunakan SOAL sebagai satu pernyataan
+          // (format pengguna: tiap baris = 1 pernyataan, SOAL = teks pernyataan, KUNCI = B/S)
+          if (stmts.length === 0 && soalText) {
+            const firstKunci = rowIndices
+              .map(r => (textGrid[r][COL_KUNCI] ?? '').trim().toUpperCase())
+              .find(k => k === 'B' || k === 'S' || k === 'BENAR' || k === 'SALAH' ||
+                         k === 'TRUE' || k === 'FALSE' || k === 'T' || k === 'F' || k === '1' || k === '0');
+            if (firstKunci !== undefined) {
+              stmts.push(soalText);
+              tfKey['0'] = isTrueMark(firstKunci);
+              qObj._isSingleStatement = true; // tandai untuk penggabungan post-process
+            }
+          }
           qObj.options = stmts;
           qObj.answer_key = tfKey;
         } else if (jenis === 5) {
@@ -632,9 +651,53 @@ const WordQuestionImportModal: React.FC<WordQuestionImportModalProps> = ({ testT
       }); // end groups.forEach
     } // end for questionTables
 
+    // ── Post-process: gabungkan soal benar/salah berurutan yang masing-masing hanya 1 pernyataan ──
+    // Terjadi saat pengguna membuat tiap pernyataan B/S sebagai baris terpisah (tanpa rowspan)
+    const mergedQuestions: any[] = [];
+    let qi = 0;
+    while (qi < questions.length) {
+      const q = questions[qi];
+      if (q.type === 'true_false' && q.options.length === 1 && q._isSingleStatement) {
+        // Kumpulkan semua soal B/S berurutan dengan format single-statement
+        const tfGroup: any[] = [q];
+        let qj = qi + 1;
+        while (qj < questions.length &&
+               questions[qj].type === 'true_false' &&
+               questions[qj].options.length === 1 &&
+               questions[qj]._isSingleStatement) {
+          tfGroup.push(questions[qj]);
+          qj++;
+        }
+        if (tfGroup.length > 1) {
+          const mergedOptions: string[] = [];
+          const mergedKey: Record<string, boolean> = {};
+          tfGroup.forEach((tq: any, mIdx: number) => {
+            mergedOptions.push(tq.options[0]);
+            mergedKey[String(mIdx)] = (tq.answer_key as Record<string, boolean>)['0'] ?? false;
+          });
+          // Jika semua punya teks instruksi sama → gunakan, jika beda → teks default
+          const uniqueInstructions = [...new Set(tfGroup.map((tq: any) => tq.question))];
+          const instruction = uniqueInstructions.length === 1 && uniqueInstructions[0]
+            ? uniqueInstructions[0]
+            : 'Tentukan apakah pernyataan berikut benar atau salah!';
+          const { _isSingleStatement: _removed, ...baseQ } = tfGroup[0];
+          mergedQuestions.push({ ...baseQ, question: instruction, options: mergedOptions, answer_key: mergedKey });
+          qi = qj;
+        } else {
+          const { _isSingleStatement: _removed, ...cleanQ } = q;
+          mergedQuestions.push(cleanQ);
+          qi++;
+        }
+      } else {
+        const { _isSingleStatement: _removed, ...cleanQ } = q;
+        mergedQuestions.push(cleanQ);
+        qi++;
+      }
+    }
+
     if (errors.length > 0) { setErrorLog(errors); }
-    else if (questions.length === 0) { setErrorLog(['Tidak ada soal yang berhasil diparse dari tabel.']); }
-    else { setPreviewData(questions); }
+    else if (mergedQuestions.length === 0) { setErrorLog(['Tidak ada soal yang berhasil diparse dari tabel.']); }
+    else { setPreviewData(mergedQuestions); }
   };
 
   // ── PARSE LEGACY TEXT FORMAT (===== separator) — fallback ────────────────

@@ -8,6 +8,7 @@ services:
     # ports:
     #   - "3000:3000"
     environment:
+      HOSTNAME: "::"
       STUDIO_PG_META_URL: http://meta:8080
       POSTGRES_PASSWORD: root_cbt_vhd_secure_2026
       SUPABASE_URL: http://kong:8000

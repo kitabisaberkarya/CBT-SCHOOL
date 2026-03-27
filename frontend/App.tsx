@@ -1,18 +1,19 @@
 
 import React, { useState, useEffect } from 'react';
-import { supabase, getConfig, getTestByToken } from './supabaseClient';
+import { supabase, getConfig, getTestByToken, getAvailableExamsForStudent, loadExamById } from './supabaseClient';
 import LoginScreen from './screens/LoginScreen';
 import ConfirmationScreen from './screens/ConfirmationScreen';
 import TestScreen from './screens/TestScreen';
 import FinishScreen from './screens/FinishScreen';
 import TokenScreen from './screens/TokenScreen';
+import ExamSelectionScreen from './screens/ExamSelectionScreen';
 import BiodataScreen from './screens/BiodataScreen';
 import AdminDashboard from './screens/AdminDashboard';
 import TeacherDashboard from './screens/TeacherDashboard'; // Import Dashboard Guru
 import ProfileErrorScreen from './screens/ProfileErrorScreen';
 import DeviceMismatchModal from './components/DeviceMismatchModal'; 
 import CopyrightModal from './components/CopyrightModal';
-import { AppState, Test, User, AppConfig } from './types';
+import { AppState, Test, User, AppConfig, AvailableExam } from './types';
 import { DEFAULT_PROFILE_IMAGES } from './constants';
 import { getDeviceId, getDeviceInfo } from './utils/device'; 
 import { useCbtschoolLicense } from './src/hooks/useCbtschoolLicense';
@@ -112,8 +113,8 @@ const App: React.FC = () => {
 
   // Sync Config with License Profile
   useEffect(() => {
-    if (!isLicenseLocked && licenseProfile && config) {
-        const shouldUpdate = config.schoolName !== licenseProfile.school_name || 
+    if (!isLicenseLocked && licenseProfile && config && config.schoolName !== undefined) {
+        const shouldUpdate = config.schoolName !== licenseProfile.school_name ||
                              (licenseProfile.npsn && config.npsn !== licenseProfile.npsn);
 
         if (shouldUpdate) {
@@ -130,9 +131,31 @@ const App: React.FC = () => {
   useEffect(() => {
     if (!config) return;
     const { schoolName, logoUrl } = config;
-    document.title = `${schoolName} | CBT Online`;
+
+    // Update title
+    const title = `${schoolName} | CBT Online`;
+    document.title = title;
+
+    // Update favicon
     const favicon = document.getElementById('dynamic-favicon') as HTMLLinkElement | null;
     if (favicon && logoUrl) favicon.href = logoUrl;
+
+    // Update Open Graph & Twitter meta tags untuk WhatsApp/sosmed preview
+    const setMeta = (id: string, value: string) => {
+      const el = document.getElementById(id) as HTMLMetaElement | null;
+      if (el && value) el.setAttribute(el.hasAttribute('content') ? 'content' : 'href', value);
+    };
+    const currentUrl = window.location.origin;
+    setMeta('og-url', currentUrl);
+    setMeta('og-title', title);
+    setMeta('og-site-name', schoolName);
+    setMeta('tw-title', title);
+    if (logoUrl) {
+      // Konversi URL logo ke URL absolut jika relatif
+      const absoluteLogo = logoUrl.startsWith('http') ? logoUrl : `${currentUrl}${logoUrl}`;
+      setMeta('og-image', absoluteLogo);
+      setMeta('tw-image', absoluteLogo);
+    }
   }, [config?.schoolName, config?.logoUrl]);
 
   useEffect(() => {
@@ -376,6 +399,7 @@ const App: React.FC = () => {
       academic_year: newConfig.academicYear,
       school_domain: newConfig.schoolDomain,
       timezone: newConfig.timezone || 'Asia/Jakarta',
+      server_ip: newConfig.serverIp || null,
     };
 
     try {
@@ -544,49 +568,44 @@ const App: React.FC = () => {
       }
 
       // GURU: Manual auth via public.users (bypass GoTrue bcrypt incompatibility)
-      // GoTrue uses $2b$ bcrypt but pgcrypto generates $2a$ — they are incompatible at runtime
-      if (email.includes('@teacher.') || email.includes('@guru.')) {
-          try {
-              const { data: dbUser, error: dbError } = await supabase
-                  .from('users')
-                  .select('*')
-                  .eq('username', email.toLowerCase().trim())
-                  .eq('role', 'teacher')
-                  .maybeSingle();
+      // GoTrue uses $2b$ bcrypt but pgcrypto generates $2a$ — incompatible at runtime.
+      // Cek DB terlebih dahulu — jika email ditemukan sebagai teacher, gunakan manual auth.
+      try {
+          const { data: dbTeacher } = await supabase
+              .from('users')
+              .select('*')
+              .eq('username', email.toLowerCase().trim())
+              .eq('role', 'teacher')
+              .maybeSingle();
 
-              if (dbError || !dbUser) {
-                  setIsAuthLoading(false);
-                  return "Akun guru tidak ditemukan. Pastikan username/NIP sudah benar.";
-              }
-
-              const storedPass = dbUser.password_text || dbUser.qr_login_password;
+          if (dbTeacher) {
+              const storedPass = dbTeacher.password_text || dbTeacher.qr_login_password;
               if (!storedPass || password.trim() !== storedPass) {
                   setIsAuthLoading(false);
-                  return "invalid_grant: Invalid login credentials";
+                  return "Password salah. Coba lagi atau hubungi administrator.";
               }
 
               // Sukses — buat manual session guru
               const teacherUser: User = {
-                  id: dbUser.id,
-                  username: dbUser.username,
-                  fullName: dbUser.full_name || 'Guru',
-                  nisn: dbUser.nisn || 'N/A',
-                  class: dbUser.class || 'STAFF',
-                  major: dbUser.major || 'Guru Mapel',
-                  gender: dbUser.gender || 'Laki-laki',
-                  religion: dbUser.religion || 'Islam',
+                  id: dbTeacher.id,
+                  username: dbTeacher.username,
+                  fullName: dbTeacher.full_name || 'Guru',
+                  nisn: dbTeacher.nisn || 'N/A',
+                  class: dbTeacher.class || 'STAFF',
+                  major: dbTeacher.major || 'Guru Mapel',
+                  gender: dbTeacher.gender || 'Laki-laki',
+                  religion: dbTeacher.religion || 'Islam',
                   role: 'teacher',
-                  photoUrl: dbUser.photo_url || DEFAULT_PROFILE_IMAGES.ADMIN
+                  photoUrl: dbTeacher.photo_url || DEFAULT_PROFILE_IMAGES.ADMIN
               };
               sessionStorage.setItem('cbt_teacher_session', JSON.stringify(teacherUser));
               setCurrentUser(teacherUser);
               setAppState(AppState.TEACHER_DASHBOARD);
               setIsAuthLoading(false);
               return "";
-          } catch(e: any) {
-              setIsAuthLoading(false);
-              return "Gagal menghubungi database: " + (e.message || '');
           }
+      } catch(e: any) {
+          // DB tidak tersedia — lanjut ke Supabase Auth
       }
 
       // ADMIN: Direct Supabase Auth
@@ -596,10 +615,26 @@ const App: React.FC = () => {
       return "";
   };
 
-  const handleConfirmBiodata = () => setAppState(AppState.TOKEN_ENTRY);
+  const handleConfirmBiodata = () => setAppState(AppState.EXAM_SELECTION);
   const handleStartTest = () => setAppState(AppState.TESTING);
   const handleFinishTest = () => setAppState(AppState.FINISHED);
-  
+
+  const handleSelectExam = async (exam: AvailableExam): Promise<void> => {
+    if (!currentUser) return;
+    const test = await loadExamById(exam.testId, {
+      scheduleId:    exam.scheduleId,
+      sessionName:   exam.sessionName,
+      sessionNumber: exam.sessionNumber,
+      startTime:     exam.startTime,
+      endTime:       exam.endTime,
+    });
+    if (test) {
+      setSelectedTest(test);
+      setAppState(AppState.CONFIRMATION);
+    }
+  };
+
+  // Kept for backward compatibility (TokenScreen is no longer in main flow)
   const handleTokenSubmit = async (token: string): Promise<boolean> => {
     if (!currentUser) return false;
     const cleanedToken = token.replace(/\s/g, '').toUpperCase();
@@ -653,8 +688,8 @@ const App: React.FC = () => {
 
           switch (appState) {
             case AppState.LOGIN:
-              return <LoginScreen config={safeConfig} onStudentLogin={handleStudentLogin} onAdminLogin={handleAdminLogin} />;
-            
+              return <LoginScreen config={safeConfig} onStudentLogin={handleStudentLogin} onAdminLogin={handleAdminLogin} isDemoMode={isDemoMode} />;
+
             case AppState.PROFILE_ERROR:
               return <ProfileErrorScreen onLogout={handleLogout} config={safeConfig} />;
             
@@ -666,16 +701,24 @@ const App: React.FC = () => {
               }
               return <BiodataScreen student={currentUser} onConfirm={handleConfirmBiodata} onLogout={handleLogout} config={safeConfig} />;
             
-            case AppState.TOKEN_ENTRY:
+            case AppState.EXAM_SELECTION:
               if (!currentUser) {
                   setTimeout(() => setAppState(AppState.LOGIN), 0);
                   return null;
               }
-              return <TokenScreen onTokenSubmit={handleTokenSubmit} user={currentUser} onLogout={handleLogout} config={safeConfig} />;
-            
+              return <ExamSelectionScreen user={currentUser} onSelectExam={handleSelectExam} onLogout={handleLogout} config={safeConfig} />;
+
+            case AppState.TOKEN_ENTRY:
+              // Legacy fallback — redirect to new exam selection flow
+              if (!currentUser) {
+                  setTimeout(() => setAppState(AppState.LOGIN), 0);
+                  return null;
+              }
+              return <ExamSelectionScreen user={currentUser} onSelectExam={handleSelectExam} onLogout={handleLogout} config={safeConfig} />;
+
             case AppState.CONFIRMATION:
               if (!selectedTest || !currentUser) {
-                  setTimeout(() => setAppState(AppState.TOKEN_ENTRY), 0);
+                  setTimeout(() => setAppState(AppState.EXAM_SELECTION), 0);
                   return null;
               }
               return <ConfirmationScreen onStartTest={handleStartTest} user={currentUser} onLogout={handleLogout} testDetails={selectedTest.details} config={safeConfig} />;
@@ -734,7 +777,7 @@ const App: React.FC = () => {
               />;
             
             default:
-              return <LoginScreen config={safeConfig} onStudentLogin={handleStudentLogin} onAdminLogin={handleAdminLogin} />;
+              return <LoginScreen config={safeConfig} onStudentLogin={handleStudentLogin} onAdminLogin={handleAdminLogin} isDemoMode={isDemoMode} />;
           }
         })()}
       </main>

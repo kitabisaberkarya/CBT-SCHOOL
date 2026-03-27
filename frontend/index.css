@@ -133,3 +133,33 @@ aside::-webkit-scrollbar-thumb {
 .animate-progress {
   animation: progress 2s ease-in-out infinite;
 }
+
+/* ── Print Styles (daftar hadir & berita acara) ─────────────────── */
+@media print {
+  /* Sembunyikan UI non-cetak */
+  .no-print { display: none !important; }
+
+  /* Pastikan area cetak memenuhi halaman */
+  .print-content-area {
+    box-shadow: none !important;
+    margin: 0 !important;
+    padding: 10mm 15mm !important;
+  }
+
+  /* Cegah baris tabel terpotong di tengah halaman */
+  .print-content-area tr {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  /* Header tabel (thead) tidak terpotong */
+  .print-content-area thead {
+    display: table-header-group;
+  }
+
+  /* Elemen dengan break-inside-avoid tidak terpotong */
+  .print-content-area .break-inside-avoid {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+}

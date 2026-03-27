@@ -44,15 +44,15 @@ const Header: React.FC<HeaderProps> = ({ user, onLogout, pageType = 'default', o
 
   if (pageType === 'login') {
     return (
-        <div className="absolute top-0 left-0 w-full h-[200px] sm:h-[280px] overflow-hidden transition-all duration-500" style={{ backgroundColor: config.primaryColor }}>
+        <div className="absolute top-0 left-0 w-full h-[170px] sm:h-[220px] md:h-[270px] overflow-hidden transition-all duration-500" style={{ backgroundColor: config.primaryColor }}>
             <div className="absolute -top-1/4 -left-1/4 w-1/2 h-full bg-white/5 rounded-full"></div>
             <div className="absolute -bottom-1/4 -right-1/4 w-1/2 h-full bg-white/5 rounded-full"></div>
-            <div className="relative z-10 pt-8 sm:pt-10 flex flex-col items-center text-white text-center px-4">
-                <div onClick={handleLogoClick} className="w-20 h-20 sm:w-24 sm:h-24 cursor-pointer transition-transform hover:scale-105 active:scale-95" title="Secret Admin Login">
+            <div className="relative z-10 pt-5 sm:pt-7 md:pt-10 flex flex-col items-center text-white text-center px-4">
+                <div onClick={handleLogoClick} className="w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 cursor-pointer transition-transform hover:scale-105 active:scale-95" title="Secret Admin Login">
                   <img src={config.logoUrl} alt={`Logo ${config.schoolName}`} className="w-full h-full object-contain drop-shadow-md" />
                 </div>
-                <h1 className="text-lg sm:text-xl font-bold mt-2 tracking-wider drop-shadow-sm">{config.schoolName.toUpperCase()}</h1>
-                <p className="text-xs sm:text-sm opacity-90 mt-1 font-medium">CBT Application</p>
+                <h1 className="text-base sm:text-lg md:text-xl font-bold mt-2 tracking-wider drop-shadow-sm">{config.schoolName.toUpperCase()}</h1>
+                <p className="text-xs opacity-90 mt-0.5 font-medium">CBT Application</p>
             </div>
         </div>
     );

@@ -177,7 +177,35 @@ async function applyUpdate(res, { download_url, version, release_notes, sql_migr
     send('applying', 85, 'Menerapkan update ke server...');
     let srcDir = extractDir;
     if (fs.existsSync(path.join(extractDir, 'dist'))) srcDir = path.join(extractDir, 'dist');
+
+    // Validasi: srcDir harus mengandung index.html (agar tidak deploy file yang salah)
+    if (!fs.existsSync(path.join(srcDir, 'index.html'))) {
+      throw new Error(
+        `Paket update tidak valid: index.html tidak ditemukan di "${srcDir}". ` +
+        `Pastikan download_url mengarah ke file release (bukan vendor-package).`
+      );
+    }
+
     await runCmd(`rm -rf "${DIST_DIR}" && cp -r "${srcDir}" "${DIST_DIR}"`);
+    await runCmd(`chmod -R a+rX "${DIST_DIR}"`);
+
+    // Verifikasi final: pastikan index.html ada setelah copy
+    if (!fs.existsSync(path.join(DIST_DIR, 'index.html'))) {
+      // Auto-restore dari backup terbaru
+      const latestBackup = await runCmd(
+        `ls -dt "${BACKUP_DIR}"/dist_v* 2>/dev/null | head -1`
+      ).catch(() => '');
+      if (latestBackup) {
+        await runCmd(`rm -rf "${DIST_DIR}" && cp -r "${latestBackup}" "${DIST_DIR}"`);
+        await runCmd(`chmod -R a+rX "${DIST_DIR}"`);
+        throw new Error(
+          'Deploy gagal: index.html tidak ada setelah copy. ' +
+          `Auto-restore dari backup berhasil (${latestBackup.split('/').pop()}).`
+        );
+      }
+      throw new Error('Deploy gagal: index.html tidak ada dan tidak ada backup untuk restore.');
+    }
+
     send('applied', 92, 'File berhasil diterapkan.');
 
     // ── 6. SQL MIGRATION ───────────────────────────────────────────────
@@ -227,6 +255,21 @@ async function applyUpdate(res, { download_url, version, release_notes, sql_migr
   } catch (err) {
     // Cleanup temp
     try { await runCmd(`rm -rf "${tempDir}"`); } catch {}
+
+    // Auto-restore jika dist tidak ada/rusak setelah error
+    if (!fs.existsSync(DIST_DIR) || !fs.existsSync(path.join(DIST_DIR, 'index.html'))) {
+      try {
+        const latestBackup = await runCmd(
+          `ls -dt "${BACKUP_DIR}"/dist_v* 2>/dev/null | head -1`
+        );
+        if (latestBackup) {
+          await runCmd(`rm -rf "${DIST_DIR}" && cp -r "${latestBackup}" "${DIST_DIR}"`);
+          await runCmd(`chmod -R a+rX "${DIST_DIR}"`);
+          await runCmd('systemctl reload nginx 2>/dev/null || nginx -s reload 2>/dev/null || true');
+        }
+      } catch {}
+    }
+
     sendSSE(res, 'error', { success: false, message: err.message || 'Update gagal.' });
   }
 
@@ -281,6 +324,99 @@ const server = http.createServer((req, res) => {
 
       applyUpdate(res, payload);
     });
+    return;
+  }
+
+  // ── POST /api/updater/network-restart ──────────────────────────────────
+  // Terapkan IP statis ke interface jaringan enp0s3, lalu restart nginx
+  if (req.method === 'POST' && pathname === '/api/updater/network-restart') {
+    let body = '';
+    req.on('data', (c) => { body += c; });
+    req.on('end', async () => {
+      let payload;
+      try { payload = JSON.parse(body); } catch {
+        sendJSON(res, 400, { error: 'Request body harus JSON.' });
+        return;
+      }
+
+      const ip      = (payload.ip      || '').trim();
+      const netmask = (payload.netmask  || '255.255.255.0').trim();
+      const gateway = (payload.gateway  || '').trim();
+
+      // Validasi format IP sederhana
+      const ipRegex = /^(\d{1,3}\.){3}\d{1,3}$/;
+      if (!ipRegex.test(ip)) {
+        sendJSON(res, 400, { error: 'Format IP address tidak valid.' });
+        return;
+      }
+
+      // Kirim response dulu sebelum jaringan diubah
+      sendJSON(res, 200, {
+        ok: true,
+        message: `Jaringan akan dikonfigurasi ulang ke ${ip}. Koneksi akan terputus. Buka http://${ip} setelah 10 detik.`,
+        newIp: ip,
+      });
+
+      // Terapkan perubahan setelah 1.5 detik (response sudah diterima client)
+      setTimeout(async () => {
+        try {
+          // 1. Deteksi gateway otomatis jika tidak diberikan
+          let gw = gateway;
+          if (!gw) {
+            try {
+              gw = await runCmd("ip route | grep default | awk '{print $3}' | head -1");
+            } catch { gw = '192.168.1.1'; }
+          }
+
+          // 2. Tulis ulang /etc/network/interfaces dengan konfigurasi statis
+          const ifacesContent = `# This file describes the network interfaces available on your system
+# and how to activate them. For more information, see interfaces(5).
+
+source /etc/network/interfaces.d/*
+
+# The loopback network interface
+auto lo
+iface lo inet loopback
+
+# LAN interface — Static IP dikonfigurasi oleh CBT Enterprise Admin
+auto enp0s3
+iface enp0s3 inet static
+  address ${ip}
+  netmask ${netmask}
+  gateway ${gw}
+`;
+          fs.writeFileSync('/etc/network/interfaces', ifacesContent, 'utf8');
+
+          // 3. Terapkan IP baru langsung tanpa reboot (non-blocking)
+          await runCmd(`ip addr flush dev enp0s3`).catch(() => {});
+          await runCmd(`ip addr add ${ip}/${netmask === '255.255.255.0' ? '24' : '24'} dev enp0s3`).catch(() => {});
+          await runCmd(`ip link set enp0s3 up`).catch(() => {});
+          await runCmd(`ip route add default via ${gw} dev enp0s3`).catch(() => {});
+
+          // 4. Restart nginx agar merespons di IP baru
+          await runCmd('systemctl restart nginx').catch(() => {});
+
+          console.log(`[CBT-Network] IP berhasil diubah ke ${ip}, gateway ${gw}`);
+        } catch (err) {
+          console.error('[CBT-Network] Gagal apply network:', err.message);
+        }
+      }, 1500);
+    });
+    return;
+  }
+
+  // ── GET /api/updater/network-info ────────────────────────────────────────
+  // Kembalikan info jaringan saat ini (IP aktif + gateway)
+  if (req.method === 'GET' && pathname === '/api/updater/network-info') {
+    (async () => {
+      try {
+        const ip  = await runCmd("ip -4 addr show enp0s3 | grep inet | awk '{print $2}' | cut -d/ -f1 | head -1").catch(() => '');
+        const gw  = await runCmd("ip route | grep default | awk '{print $3}' | head -1").catch(() => '');
+        sendJSON(res, 200, { ip: ip || '', gateway: gw || '' });
+      } catch (e) {
+        sendJSON(res, 500, { error: e.message });
+      }
+    })();
     return;
   }
 

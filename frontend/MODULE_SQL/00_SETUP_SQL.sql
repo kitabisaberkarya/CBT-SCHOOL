@@ -2406,6 +2406,7 @@ BEGIN
       test_id,
       type,
       question,
+      image_url,
       options,
       matching_right_options, -- Pastikan kolom ini ada di tabel (jika belum, script migrasi sebelumnya harus dijalankan)
       answer_key,
@@ -2419,16 +2420,17 @@ BEGIN
       v_test_id,
       x.type,
       x.question,
+      x.image_url,
       x.options,
       x.matching_right_options,
       x.answer_key,
       -- FIX: Hitung correct_answer_index untuk memenuhi constraint NOT NULL
       -- Ambil dari answer_key jika tipe SINGLE, selain itu isi 0
       COALESCE(
-        CASE 
+        CASE
           WHEN x.type = 'multiple_choice' THEN (x.answer_key #>> '{}')::integer
-          ELSE 0 
-        END, 
+          ELSE 0
+        END,
       0),
       x.cognitive_level,
       COALESCE(x.weight, 1),
@@ -2437,6 +2439,7 @@ BEGIN
     FROM json_to_recordset(p_questions_data) AS x(
       type text,
       question text,
+      image_url text,
       options text[],
       matching_right_options text[],
       answer_key jsonb,
