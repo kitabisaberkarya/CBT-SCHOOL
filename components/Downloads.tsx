@@ -6,7 +6,7 @@ import NetworkGuide from './NetworkGuide';
 const Downloads: React.FC = () => {
   const { language } = useLanguage();
 
-  const downloadUrl = "https://drive.google.com/uc?export=download&id=1idyLm1bRVUWFAYgBDWUzKYSNFcotOdrs";
+  const downloadUrl = "https://drive.google.com/file/d/1gLG4g_LSGI8ZxOyAgB4qJGgdWLEQQJ0d/view?usp=sharing";
   const templateSheetUrl = "https://docs.google.com/spreadsheets/d/1TX4pu1sehACBj696DTTtrrZ7owC1o_w99PQl1rfESUY/edit?usp=sharing";
   const templateCsvUrl = "https://docs.google.com/spreadsheets/d/1TX4pu1sehACBj696DTTtrrZ7owC1o_w99PQl1rfESUY/export?format=csv";
 
