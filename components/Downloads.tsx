@@ -6,14 +6,14 @@ import NetworkGuide from './NetworkGuide';
 const Downloads: React.FC = () => {
   const { language } = useLanguage();
 
-  const downloadUrl = "https://drive.google.com/file/d/1gLG4g_LSGI8ZxOyAgB4qJGgdWLEQQJ0d/view?usp=sharing";
+  const downloadUrl = "https://drive.google.com/uc?export=download&id=1gLG4g_LSGI8ZxOyAgB4qJGgdWLEQQJ0d";
   const templateSheetUrl = "https://docs.google.com/spreadsheets/d/1TX4pu1sehACBj696DTTtrrZ7owC1o_w99PQl1rfESUY/edit?usp=sharing";
   const templateCsvUrl = "https://docs.google.com/spreadsheets/d/1TX4pu1sehACBj696DTTtrrZ7owC1o_w99PQl1rfESUY/export?format=csv";
 
   const content = {
     id: {
       title: "Download Resource",
-      subtitle: "CBT SCHOOL V411_280326.rar",
+      subtitle: "CBT SCHOOL V411_020426.rar",
       desc: "Unduh file Virtual Machine (VHD/VDI) untuk simulasi mandiri atau instalasi server lokal. File ini sudah terkonfigurasi dengan sistem CBT School terbaru.",
       btn: "Download Sekarang",
       size: "Ukuran File: 7,7 GB",
@@ -35,7 +35,7 @@ const Downloads: React.FC = () => {
     },
     en: {
       title: "Download Resource",
-      subtitle: "CBT SCHOOL V411_280326.rar",
+      subtitle: "CBT SCHOOL V411_020426.rar",
       desc: "Download the Virtual Machine (VHD/VDI) file for standalone simulation or local server installation. This file is pre-configured with the latest CBT School system.",
       btn: "Download Now",
       size: "File Size: 7.7 GB",
@@ -97,15 +97,13 @@ const Downloads: React.FC = () => {
 
               <div className="space-y-4">
                 <div className="flex flex-wrap items-center gap-6">
-                  <a 
-                    href={downloadUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="group bg-secondary hover:bg-blue-600 text-white px-8 py-4 rounded-2xl font-bold transition-all shadow-lg shadow-blue-500/25 flex items-center justify-center gap-2"
+                  <button 
+                    onClick={() => window.open(downloadUrl, '_blank')}
+                    className="group bg-secondary hover:bg-blue-600 text-white px-8 py-4 rounded-2xl font-bold transition-all shadow-lg shadow-blue-500/25 flex items-center justify-center gap-2 w-full sm:w-auto"
                   >
                     <Download className="w-5 h-5 group-hover:bounce" />
                     {c.btn}
-                  </a>
+                  </button>
                   <div className="text-slate-400 text-sm italic">
                     {c.size}
                   </div>
