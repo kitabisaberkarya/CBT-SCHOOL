@@ -84,7 +84,7 @@ const NetworkGuide: React.FC = () => {
       instructions: [
         "Pilih opsi 'Gunakan Berkas Disk Hard Disk Virtual yang Sudah Ada'.",
         "Klik ikon folder di sebelah kanan dropdown.",
-        "Cari dan pilih file 'CBT SCHOOL V409_250326.VDI' (atau .VHD) yang sudah Anda unduh.",
+        "Cari dan pilih file 'CBT SCHOOL V411_050426.VDI' (atau .VHD) yang sudah Anda unduh.",
         "Pastikan ukuran disk terdeteksi sekitar 30.76 GB."
       ]
     },
@@ -122,10 +122,9 @@ const NetworkGuide: React.FC = () => {
       instructions: [
         "Masuk ke menu 'Jaringan' (Network) -> Tab 'Adaptor 1'.",
         "Centang 'Fungsikan Adaptor Jaringan'.",
-        "Tercantol pada: Pilih 'Adaptor Ter-bridge' (Bridged Adapter).",
-        "Nama: Pilih adapter Wi-Fi Anda (Contoh: Broadcom BCM43142).",
-        "Tingkat Lanjut: Mode Promiscuous pilih 'Izinkan Semua' (Allow All).",
-        "Pastikan 'Kabel Tersambung' dicentang."
+        "Tercantol pada: Pilih 'NAT'.",
+        "NAT akan otomatis memberikan akses internet ke dalam VM tanpa perlu memilih adapter fisik.",
+        "Tingkat Lanjut: Pastikan 'Kabel Tersambung' dicentang."
       ]
     },
     {
@@ -199,7 +198,7 @@ const NetworkGuide: React.FC = () => {
         {/* Header Section */}
         <header className="text-center mb-16" data-aos="fade-down">
           <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-600 dark:text-blue-400 text-xs font-bold uppercase tracking-wider mb-6">
-            <Zap size={14} /> Versi Terbaru v4.0.9
+            <Zap size={14} /> Versi Terbaru v4.1.1
           </div>
           <h1 className="text-4xl md:text-5xl font-extrabold text-slate-900 dark:text-white mb-6 leading-tight">
             Panduan Setting & Konfigurasi <br />
@@ -256,7 +255,7 @@ const NetworkGuide: React.FC = () => {
               </h3>
               <ul className="space-y-3 text-sm text-slate-600 dark:text-slate-400">
                 <li className="flex items-start gap-2"><CheckCircle2 size={16} className="text-green-500 mt-0.5 shrink-0" /> Oracle VirtualBox (Terbaru)</li>
-                <li className="flex items-start gap-2"><CheckCircle2 size={16} className="text-green-500 mt-0.5 shrink-0" /> File VHD: CBT_SERVER_VHD_180226</li>
+                <li className="flex items-start gap-2"><CheckCircle2 size={16} className="text-green-500 mt-0.5 shrink-0" /> File VHD: CBT SCHOOL V411_050426</li>
               </ul>
             </div>
 
@@ -383,14 +382,14 @@ const NetworkGuide: React.FC = () => {
 |                                                                |
 |  [NIC 1: Broadcom BCM43142 Wi-Fi] ←— Internet               |
 |       |                                                       |
-|       | (VirtualBox Bridged Adapter 1)                        |
+|       | (VirtualBox NAT)                                      |
 |       V                                                       |
 |  +----------------------------------------------------------+  |
 |  | VIRTUAL MACHINE — SERVER CBT SCHOOL                      |  |
 |  | OS: Debian GNU/Linux 13 (Trixie)                        |  |
 |  | RAM: 8 GB - 128 GB+ | vCPU: 2 - 16 Core+                |  |
 |  |                                                          |  |
-|  | eth0/enp0s3 → Bridge ke Wi-Fi → Internet                |  |
+|  | eth0/enp0s3 → NAT → Internet                            |  |
 |  | eth1/enp0s8 → Bridge ke LAN  → 192.168.0.200            |  |
 |  |                                                          |  |
 |  | STATUS: SYSTEM ONLINE | MODE: SERVER UJIAN AKTIF        |  |
