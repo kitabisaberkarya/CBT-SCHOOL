@@ -6,14 +6,14 @@ import NetworkGuide from './NetworkGuide';
 const Downloads: React.FC = () => {
   const { language } = useLanguage();
 
-  const downloadUrl = "https://drive.google.com/uc?export=download&id=1iNgq3eKcg-VWij4Ghg_xEVhVHfBpO1lW";
+  const downloadUrl = "https://drive.google.com/uc?export=download&id=17DvXjeYu72H03NwG_NJBRhQd2Zregezb";
   const templateSheetUrl = "https://docs.google.com/spreadsheets/d/1TX4pu1sehACBj696DTTtrrZ7owC1o_w99PQl1rfESUY/edit?usp=sharing";
   const templateCsvUrl = "https://docs.google.com/spreadsheets/d/1TX4pu1sehACBj696DTTtrrZ7owC1o_w99PQl1rfESUY/export?format=csv";
 
   const content = {
     id: {
       title: "Download Resource",
-      subtitle: "CBT SCHOOL VHD CBT SCHOOL V412_050426_1202.rar",
+      subtitle: "VHD CBT SCHOOL V412_100426_0654.rar",
       desc: "Unduh file Virtual Machine (VHD/VDI) untuk simulasi mandiri atau instalasi server lokal. File ini sudah terkonfigurasi dengan sistem CBT School terbaru.",
       btn: "Download Sekarang",
       size: "Ukuran File: 7,7 GB",
@@ -35,7 +35,7 @@ const Downloads: React.FC = () => {
     },
     en: {
       title: "Download Resource",
-      subtitle: "CBT SCHOOL VHD CBT SCHOOL V412_050426_1202.rar",
+      subtitle: "VHD CBT SCHOOL V412_100426_0654.rar",
       desc: "Download the Virtual Machine (VHD/VDI) file for standalone simulation or local server installation. This file is pre-configured with the latest CBT School system.",
       btn: "Download Now",
       size: "File Size: 7.7 GB",
