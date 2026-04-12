@@ -84,7 +84,7 @@ const NetworkGuide: React.FC = () => {
       instructions: [
         "Pilih opsi 'Gunakan Berkas Disk Hard Disk Virtual yang Sudah Ada'.",
         "Klik ikon folder di sebelah kanan dropdown.",
-        "Cari dan pilih file 'VHD CBT SCHOOL V412_100426_0654.VDI' (atau .VHD) yang sudah Anda unduh.",
+        "Cari dan pilih file 'VHD CBT SCHOOL V412_120426_1348.VDI' (atau .VHD) yang sudah Anda unduh.",
         "Pastikan ukuran disk terdeteksi sekitar 30.76 GB."
       ]
     },
@@ -255,7 +255,7 @@ const NetworkGuide: React.FC = () => {
               </h3>
               <ul className="space-y-3 text-sm text-slate-600 dark:text-slate-400">
                 <li className="flex items-start gap-2"><CheckCircle2 size={16} className="text-green-500 mt-0.5 shrink-0" /> Oracle VirtualBox (Terbaru)</li>
-                <li className="flex items-start gap-2"><CheckCircle2 size={16} className="text-green-500 mt-0.5 shrink-0" /> File VHD: VHD CBT SCHOOL V412_100426_0654</li>
+                <li className="flex items-start gap-2"><CheckCircle2 size={16} className="text-green-500 mt-0.5 shrink-0" /> File VHD: VHD CBT SCHOOL V412_120426_1348</li>
               </ul>
             </div>
 
