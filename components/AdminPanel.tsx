@@ -158,13 +158,17 @@ const AdminPanel: React.FC = () => {
     setUploadingState({ isUploading: true, id: loadingId });
 
     try {
+      console.log(`Starting upload to folder: ${folder}`);
       const publicUrl = await uploadImage(file, folder);
       if (publicUrl) {
+        console.log(`Upload successful: ${publicUrl}`);
         callback(publicUrl);
+      } else {
+        throw new Error("Upload returned null URL");
       }
     } catch (err) {
-      console.error(err);
-      alert("Terjadi kesalahan saat upload.");
+      console.error("Upload error:", err);
+      alert(`Terjadi kesalahan saat upload: ${err instanceof Error ? err.message : 'Unknown error'}`);
     } finally {
       setUploadingState({ isUploading: false, id: null });
     }
@@ -1322,13 +1326,14 @@ const AdminPanel: React.FC = () => {
                                        )}
                                        <input 
                                           type="file"
+                                          accept="image/*"
                                           title="Upload Foto"
                                           onChange={(e) => handleFileUpload(e, 'clients', setNewClientLogo, 'new_client_logo')}
                                           className="absolute inset-0 opacity-0 cursor-pointer z-30"
                                           onClick={(e) => (e.target as HTMLInputElement).value = ''}
                                        />
                                        {uploadingState.isUploading && uploadingState.id === 'new_client_logo' && (
-                                            <div className="absolute inset-0 bg-black/80 flex items-center justify-center z-40">
+                                            <div className="absolute inset-0 bg-black/80 flex items-center justify-center z-50">
                                                 <Loader2 className="animate-spin text-white w-6 h-6" />
                                             </div>
                                        )}

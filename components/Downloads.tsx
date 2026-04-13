@@ -6,18 +6,18 @@ import NetworkGuide from './NetworkGuide';
 const Downloads: React.FC = () => {
   const { language } = useLanguage();
 
-  const downloadUrl = "https://drive.google.com/uc?export=download&id=1-3ExAIW37L70PyahRiXtYeQp-XVcJOpS";
+  const downloadUrl = "https://drive.google.com/uc?export=download&id=1S7Fv1eGaYXqQoj-A7UhJYZbRKzDpu4oJ";
   const templateSheetUrl = "https://docs.google.com/spreadsheets/d/1TX4pu1sehACBj696DTTtrrZ7owC1o_w99PQl1rfESUY/edit?usp=sharing";
   const templateCsvUrl = "https://docs.google.com/spreadsheets/d/1TX4pu1sehACBj696DTTtrrZ7owC1o_w99PQl1rfESUY/export?format=csv";
 
   const content = {
     id: {
       title: "Download Resource",
-      subtitle: "VHD CBT SCHOOL V412_120426_1348.rar",
+      subtitle: "VHD CBT SCHOOL V413_130426_0939.rar",
       desc: "Unduh file Virtual Machine (VHD/VDI) untuk simulasi mandiri atau instalasi server lokal. File ini sudah terkonfigurasi dengan sistem CBT School terbaru.",
       btn: "Download Sekarang",
       size: "Ukuran File: 7,7 GB",
-      version: "Versi: 4.1.2 (Stable)",
+      version: "Versi: 4.1.3 (Stable)",
       note: "Catatan: Karena ukuran file besar, klik 'Tetap download' pada halaman Google Drive.",
       demoNote: "Bagi sekolah, instansi, dan lembaga yang ingin mencoba semua fitur, silakan masukkan lisensi demo: CBT-SCHOOL-DEMO",
       features: [
@@ -35,11 +35,11 @@ const Downloads: React.FC = () => {
     },
     en: {
       title: "Download Resource",
-      subtitle: "VHD CBT SCHOOL V412_120426_1348.rar",
+      subtitle: "VHD CBT SCHOOL V413_130426_0939.rar",
       desc: "Download the Virtual Machine (VHD/VDI) file for standalone simulation or local server installation. This file is pre-configured with the latest CBT School system.",
       btn: "Download Now",
       size: "File Size: 7.7 GB",
-      version: "Version: 4.1.2 (Stable)",
+      version: "Version: 4.1.3 (Stable)",
       note: "Note: Due to large size, click 'Download anyway' on the Google Drive page.",
       demoNote: "For schools, institutions, and agencies that want to try all features, please use the demo license: CBT-SCHOOL-DEMO",
       features: [
