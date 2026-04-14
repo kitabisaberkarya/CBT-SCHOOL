@@ -7,7 +7,7 @@ import ThemeToggle from './ThemeToggle';
 
 const Navbar: React.FC = () => {
   const { setIsAdminOpen } = useContent();
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const [isOpen, setIsOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [activeSection, setActiveSection] = useState('');
@@ -20,6 +20,7 @@ const Navbar: React.FC = () => {
     { name: t('nav.features'), href: '#features' },
     { name: t('nav.docs'), href: '#docs' },
     { name: t('nav.download'), href: '#downloads' },
+    { name: language === 'id' ? 'AKTIVASI ONLINE' : 'GO ONLINE', href: '#online-guide' },
     { name: t('nav.details'), href: '#details' },
     { name: t('nav.pricing'), href: '#pricing' },
     { name: t('nav.contact'), href: '#contact' },

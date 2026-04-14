@@ -20,6 +20,7 @@ import Footer from './components/Footer';
 import FloatingWA from './components/FloatingWA';
 import AdminPanel from './components/AdminPanel';
 import Downloads from './components/Downloads';
+import OnlineGuide from './components/OnlineGuide';
 import WhatsAppChannel from './components/WhatsAppChannel';
 
 function App() {
@@ -48,6 +49,8 @@ function App() {
               <FeatureDocs />
               {/* Menu: Download Resource */}
               <Downloads />
+              {/* Menu: Cara Mengonlinekan VHD */}
+              <OnlineGuide />
               {/* WhatsApp Channel Invitation */}
               <WhatsAppChannel />
               {/* Menu: Keunggulan (Why Choose Us) */}
