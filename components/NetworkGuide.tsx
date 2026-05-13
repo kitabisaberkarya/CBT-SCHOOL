@@ -84,7 +84,7 @@ const NetworkGuide: React.FC = () => {
       instructions: [
         "Pilih opsi 'Gunakan Berkas Disk Hard Disk Virtual yang Sudah Ada'.",
         "Klik ikon folder di sebelah kanan dropdown.",
-        "Cari dan pilih file 'VHD CBT SCHOOL V414_070526_1327.VDI' (atau .VHD) yang sudah Anda unduh.",
+        "Cari dan pilih file 'VHD CBT SCHOOL V417a.VDI' (atau .VHD) yang sudah Anda unduh.",
         "Pastikan ukuran disk terdeteksi sekitar 30.76 GB."
       ]
     },
@@ -198,7 +198,7 @@ const NetworkGuide: React.FC = () => {
         {/* Header Section */}
         <header className="text-center mb-16" data-aos="fade-down">
           <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-600 dark:text-blue-400 text-xs font-bold uppercase tracking-wider mb-6">
-            <Zap size={14} /> Versi Terbaru v4.1.4
+            <Zap size={14} /> Versi Terbaru v4.1.7a
           </div>
           <h1 className="text-4xl md:text-5xl font-extrabold text-slate-900 dark:text-white mb-6 leading-tight">
             Panduan Setting & Konfigurasi <br />
@@ -255,7 +255,7 @@ const NetworkGuide: React.FC = () => {
               </h3>
               <ul className="space-y-3 text-sm text-slate-600 dark:text-slate-400">
                 <li className="flex items-start gap-2"><CheckCircle2 size={16} className="text-green-500 mt-0.5 shrink-0" /> Oracle VirtualBox (Terbaru)</li>
-                <li className="flex items-start gap-2"><CheckCircle2 size={16} className="text-green-500 mt-0.5 shrink-0" /> File VHD: VHD CBT SCHOOL V414_070526_1327</li>
+                <li className="flex items-start gap-2"><CheckCircle2 size={16} className="text-green-500 mt-0.5 shrink-0" /> File VHD: VHD CBT SCHOOL V417a</li>
               </ul>
             </div>
 
