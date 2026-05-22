@@ -44,7 +44,7 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDemoMode = false, onR
       setIsLoading(true);
       try {
           const [usersRes, classesRes, majorsRes, configRes] = await Promise.all([
-              supabase.from('users').select('*'),
+              supabase.from('users').select('*').range(0, 9999),
               supabase.from('master_classes').select('*'),
               supabase.from('master_majors').select('*'),
               supabase.from('app_config').select('*').single()
@@ -52,8 +52,8 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDemoMode = false, onR
 
           if (usersRes.data) {
               const mappedUsers = usersRes.data.map((u: any) => {
-                  // Validasi URL: harus diawali http/https/data: — nilai lain (angka, string acak) dianggap kosong
-                  const isValidUrl = (url: string) => url && (url.startsWith('http') || url.startsWith('data:'));
+                  // Validasi URL: terima http/https, data:, dan path lokal /assets/
+                  const isValidUrl = (url: string) => url && (url.startsWith('http') || url.startsWith('data:') || url.startsWith('/assets/') || url.startsWith('/'));
                   let photoUrl = isValidUrl(u.photo_url) ? u.photo_url : null;
                   if (!photoUrl) {
                       const g = u.gender;
@@ -133,10 +133,13 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDemoMode = false, onR
   };
 
   const handleSaveUser = async (userData: User | Omit<User, 'id'>) => {
+      // Sanitasi: pastikan username tidak mengandung double @@ (defense-in-depth)
+      const safeUsername = (userData.username || '').replace('@@', '@');
+
       // Panggil RPC admin_upsert_user
       const { data, error } = await supabase.rpc('admin_upsert_user', {
           p_id: 'id' in userData ? userData.id : null,
-          p_username: userData.username,
+          p_username: safeUsername,
           p_password: userData.password,
           p_full_name: userData.fullName,
           p_nisn: userData.nisn,
@@ -347,18 +350,34 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDemoMode = false, onR
           };
       });
 
-      const { error } = await supabase.rpc('admin_import_users', { users_data: payload });
-      
-      if (error) {
-          alert('Gagal import: ' + error.message);
-      } else {
+      const CHUNK_SIZE = 50;
+      const MAX_RETRY = 3;
+      const chunks: typeof payload[] = [];
+      for (let i = 0; i < payload.length; i += CHUNK_SIZE) {
+          chunks.push(payload.slice(i, i + CHUNK_SIZE));
+      }
+
+      let failed = false;
+      for (let i = 0; i < chunks.length; i++) {
+          let lastErr = '';
+          for (let attempt = 1; attempt <= MAX_RETRY; attempt++) {
+              const { error } = await supabase.rpc('admin_import_users', { users_data: chunks[i] });
+              if (!error) { lastErr = ''; break; }
+              lastErr = error.message;
+              if (attempt < MAX_RETRY) await new Promise(r => setTimeout(r, 1500 * attempt));
+          }
+          if (lastErr) {
+              alert(`Gagal import batch ${i + 1}/${chunks.length}: ${lastErr}`);
+              failed = true;
+              break;
+          }
+      }
+
+      if (!failed) {
           setIsImportModalOpen(false);
           fetchData();
           alert(`Berhasil mengimpor ${payload.length} pengguna!`);
-          
-          // Auto sync teachers if importing to teacher tab
           if (activeTab === 'teacher') {
-              // Trigger repair untuk memastikan auth terbuat sempurna
               handleRepairTeachers(true);
           }
       }
@@ -490,7 +509,17 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDemoMode = false, onR
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
                         {isLoading ? (
-                            <tr><td colSpan={5} className="px-6 py-10 text-center text-gray-500">Memuat data...</td></tr>
+                            <tr><td colSpan={5} className="px-6 py-10 text-center">
+                              <div className="flex flex-col items-center gap-2">
+                                <div className="relative">
+                                  <div className="w-8 h-8 rounded-full border-2 border-blue-100 border-t-blue-500 animate-spin" />
+                                  <div className="absolute inset-0 flex items-center justify-center">
+                                    <div className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
+                                  </div>
+                                </div>
+                                <span className="text-sm text-blue-500 font-medium animate-pulse">Memuat data pengguna...</span>
+                              </div>
+                            </td></tr>
                         ) : filteredUsers.length === 0 ? (
                             <tr><td colSpan={5} className="px-6 py-10 text-center text-gray-500">Tidak ada data ditemukan.</td></tr>
                         ) : (

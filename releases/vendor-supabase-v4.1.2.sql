@@ -1,0 +1,247 @@
+-- =============================================================================
+-- VENDOR SUPABASE — Aktivasi Update v4.1.2
+-- Jalankan di: Vendor Supabase Studio → SQL Editor → New Query → Run
+--
+-- PENTING: Ganti download_url di bawah dengan URL GitHub Release yang sebenarnya
+--          setelah Anda upload file ZIP ke GitHub Releases.
+-- =============================================================================
+
+-- ── LANGKAH 1: Nonaktifkan semua versi lama ──────────────────────────────────
+UPDATE app_versions
+SET is_active = false
+WHERE application_id = 'cbtschool';
+
+-- ── LANGKAH 2: Insert versi 4.1.2 ────────────────────────────────────────────
+-- GANTI URL di bawah setelah upload ZIP ke GitHub Releases!
+INSERT INTO app_versions (
+  application_id,
+  version,
+  download_url,
+  release_notes,
+  sql_migration,
+  is_active,
+  created_at
+) VALUES (
+  'cbtschool',
+  '4.1.2',
+
+  -- ↓↓↓ GANTI URL INI setelah upload ke GitHub Releases ↓↓↓
+  'https://github.com/awmediadigitaldeveloper/cbt-school-enterprise/releases/download/v4.1.2/cbt-school-enterprise-v4.1.2.zip',
+
+  -- Release notes (tampil di notifikasi update di dashboard sekolah)
+  'v4.1.2: (1) Fix data dashboard kosong saat refresh berkali-kali — semua data kini di-cache lokal. (2) Fix menu Data Master & Cetak Kartu kosong setelah refresh. (3) Fix deteksi internet ujian tidak berjalan — kini cek paralel 4 URL timeout 8 detik. (4) BARU: Monitor internet otomatis setiap 45 detik selama ujian berlangsung, siswa langsung diblokir jika kuota aktif. (5) Fix countdown pindah layar 7 detik → 3 detik. (6) Fix bug jumlah pelanggaran anti-cheat tidak konsisten dengan setting admin. (7) Fix restore backup gagal duplicate key users_pkey. (8) Fix supabase-realtime crash loop (SECRET_KEY_BASE missing). (9) Tambah watchdog otomatis monitor & restart container Supabase tiap 2 menit.',
+
+  -- SQL Migration: dijalankan otomatis di setiap VHD sekolah setelah update berhasil
+  -- Fix: restore backup gagal "duplicate key value violates unique constraint users_pkey"
+  -- Penyebab: trigger handle_new_user() pada auth.users otomatis insert ke public.users,
+  --           lalu kode restore juga insert manual → conflict primary key.
+  -- Fix: ON CONFLICT (id) DO UPDATE pada public.users insert.
+  $sql$
+CREATE OR REPLACE FUNCTION public.admin_restore_data(backup_data jsonb)
+RETURNS text
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET statement_timeout = '0'
+AS $$
+DECLARE
+  cfg jsonb; user_rec jsonb; test_entry jsonb; test_id_raw text;
+  test_id_val uuid; test_details jsonb; q_rec jsonb; sched_rec jsonb;
+  ann_rec jsonb; cls_rec jsonb; maj_rec jsonb;
+  v_test_id uuid; v_user_id uuid; v_cls_id uuid; v_maj_id uuid;
+  v_ann_id uuid; v_sched_id uuid; v_raw_id text;
+  restored_users int := 0; restored_tests int := 0;
+  restored_q int := 0; restored_sched int := 0; restored_ann int := 0;
+BEGIN
+  IF backup_data ? 'config' THEN
+    cfg := backup_data->'config';
+    UPDATE public.app_config SET
+      school_name = COALESCE(NULLIF(cfg->>'schoolName',''), school_name),
+      logo_url    = COALESCE(NULLIF(cfg->>'logoUrl',''), logo_url),
+      left_logo_url = COALESCE(NULLIF(cfg->>'leftLogoUrl',''), left_logo_url),
+      enable_anti_cheat = COALESCE((cfg->>'enableAntiCheat')::boolean, enable_anti_cheat),
+      allow_student_manual_login = COALESCE((cfg->>'allowStudentManualLogin')::boolean, allow_student_manual_login),
+      allow_student_qr_login = COALESCE((cfg->>'allowStudentQrLogin')::boolean, allow_student_qr_login),
+      allow_admin_manual_login = COALESCE((cfg->>'allowAdminManualLogin')::boolean, allow_admin_manual_login),
+      allow_admin_qr_login = COALESCE((cfg->>'allowAdminQrLogin')::boolean, allow_admin_qr_login),
+      headmaster_name = COALESCE(NULLIF(cfg->>'headmasterName',''), headmaster_name),
+      headmaster_nip = COALESCE(NULLIF(cfg->>'headmasterNip',''), headmaster_nip),
+      card_issue_date = COALESCE(NULLIF(cfg->>'cardIssueDate',''), card_issue_date),
+      email_domain = COALESCE(NULLIF(cfg->>'emailDomain',''), email_domain),
+      school_address = COALESCE(NULLIF(cfg->>'schoolAddress',''), school_address),
+      school_phone = COALESCE(NULLIF(cfg->>'schoolPhone',''), school_phone),
+      school_email = COALESCE(NULLIF(cfg->>'schoolEmail',''), school_email),
+      default_paper_size = COALESCE(NULLIF(cfg->>'defaultPaperSize',''), default_paper_size),
+      current_exam_event = COALESCE(NULLIF(cfg->>'currentExamEvent',''), current_exam_event),
+      academic_year = COALESCE(NULLIF(cfg->>'academicYear',''), academic_year),
+      npsn = COALESCE(NULLIF(cfg->>'npsn',''), npsn),
+      timezone = COALESCE(NULLIF(cfg->>'timezone',''), timezone),
+      updated_at = NOW()
+    WHERE id = 1;
+  END IF;
+
+  IF backup_data ? 'masterData' THEN
+    FOR cls_rec IN SELECT * FROM jsonb_array_elements(backup_data->'masterData'->'classes') LOOP
+      v_raw_id := cls_rec->>'id';
+      BEGIN v_cls_id := v_raw_id::uuid;
+      EXCEPTION WHEN OTHERS THEN
+        SELECT id INTO v_cls_id FROM public.master_classes WHERE name = TRIM(cls_rec->>'name') LIMIT 1;
+        IF v_cls_id IS NULL THEN v_cls_id := gen_random_uuid(); END IF;
+      END;
+      INSERT INTO public.master_classes (id, name) VALUES (v_cls_id, TRIM(cls_rec->>'name'))
+      ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name
+      WHERE master_classes.name IS DISTINCT FROM EXCLUDED.name;
+    END LOOP;
+
+    FOR maj_rec IN SELECT * FROM jsonb_array_elements(backup_data->'masterData'->'majors') LOOP
+      v_raw_id := maj_rec->>'id';
+      BEGIN v_maj_id := v_raw_id::uuid;
+      EXCEPTION WHEN OTHERS THEN
+        SELECT id INTO v_maj_id FROM public.master_majors WHERE name = TRIM(maj_rec->>'name') LIMIT 1;
+        IF v_maj_id IS NULL THEN v_maj_id := gen_random_uuid(); END IF;
+      END;
+      INSERT INTO public.master_majors (id, name, kkm)
+      VALUES (v_maj_id, TRIM(maj_rec->>'name'), COALESCE((maj_rec->>'kkm')::numeric, 75))
+      ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, kkm = EXCLUDED.kkm;
+    END LOOP;
+  END IF;
+
+  IF backup_data ? 'users' THEN
+    FOR user_rec IN SELECT * FROM jsonb_array_elements(backup_data->'users') LOOP
+      SELECT id INTO v_user_id FROM public.users WHERE username = user_rec->>'username';
+      IF v_user_id IS NULL THEN
+        v_user_id := gen_random_uuid();
+        BEGIN
+          INSERT INTO auth.users (id, email, encrypted_password, email_confirmed_at, raw_user_meta_data, aud, role)
+          VALUES (v_user_id, user_rec->>'username',
+            extensions.crypt(COALESCE(NULLIF(user_rec->>'password',''), NULLIF(user_rec->>'password_text',''), user_rec->>'nisn', 'password123'), extensions.gen_salt('bf')),
+            NOW(),
+            jsonb_build_object('full_name', user_rec->>'fullName', 'nisn', user_rec->>'nisn', 'class', user_rec->>'class', 'major', user_rec->>'major', 'gender', user_rec->>'gender', 'religion', user_rec->>'religion', 'photo_url', user_rec->>'photoUrl', 'role', COALESCE(user_rec->>'role', 'student')),
+            'authenticated', 'authenticated');
+        EXCEPTION WHEN OTHERS THEN
+          SELECT id INTO v_user_id FROM auth.users WHERE email = user_rec->>'username' LIMIT 1;
+          IF v_user_id IS NULL THEN v_user_id := gen_random_uuid(); END IF;
+        END;
+        -- ON CONFLICT (id) DO UPDATE: aman jika trigger sudah insert baris lebih dulu
+        INSERT INTO public.users (id, username, password_text, full_name, nisn, class, major, gender, religion, photo_url, role, qr_login_password)
+        VALUES (v_user_id, user_rec->>'username',
+          COALESCE(NULLIF(user_rec->>'password',''), NULLIF(user_rec->>'password_text',''), user_rec->>'nisn'),
+          user_rec->>'fullName', user_rec->>'nisn', user_rec->>'class', user_rec->>'major',
+          user_rec->>'gender', user_rec->>'religion', user_rec->>'photoUrl',
+          COALESCE(user_rec->>'role', 'student'),
+          COALESCE(NULLIF(user_rec->>'qr_login_password',''), NULLIF(user_rec->>'password',''), user_rec->>'nisn'))
+        ON CONFLICT (id) DO UPDATE SET
+          username=EXCLUDED.username, password_text=EXCLUDED.password_text,
+          full_name=EXCLUDED.full_name, nisn=EXCLUDED.nisn,
+          class=EXCLUDED.class, major=EXCLUDED.major, gender=EXCLUDED.gender,
+          religion=EXCLUDED.religion, photo_url=EXCLUDED.photo_url,
+          role=EXCLUDED.role, qr_login_password=EXCLUDED.qr_login_password;
+      ELSE
+        UPDATE public.users SET
+          full_name=COALESCE(NULLIF(user_rec->>'fullName',''), full_name),
+          nisn=COALESCE(NULLIF(user_rec->>'nisn',''), nisn),
+          class=COALESCE(user_rec->>'class', class),
+          major=COALESCE(user_rec->>'major', major),
+          gender=COALESCE(NULLIF(user_rec->>'gender',''), gender),
+          religion=COALESCE(user_rec->>'religion', religion),
+          photo_url=COALESCE(NULLIF(user_rec->>'photoUrl',''), photo_url),
+          role=COALESCE(NULLIF(user_rec->>'role',''), role)
+        WHERE id = v_user_id;
+      END IF;
+      restored_users := restored_users + 1;
+    END LOOP;
+  END IF;
+
+  IF backup_data ? 'tests' THEN
+    FOR test_entry IN SELECT * FROM jsonb_array_elements(backup_data->'tests') LOOP
+      test_id_raw  := test_entry->0 #>> '{}';
+      test_details := test_entry->1->'details';
+      BEGIN test_id_val := test_id_raw::uuid;
+      EXCEPTION WHEN OTHERS THEN
+        SELECT id INTO test_id_val FROM public.tests WHERE token = test_details->>'token' LIMIT 1;
+        IF test_id_val IS NULL THEN test_id_val := gen_random_uuid(); END IF;
+      END;
+      INSERT INTO public.tests (id, token, name, subject, duration_minutes, questions_to_display, randomize_questions, randomize_answers, exam_type, kkm)
+      VALUES (test_id_val, test_details->>'token', test_details->>'name', test_details->>'subject',
+        COALESCE((test_details->>'durationMinutes')::integer, 60), (test_details->>'questionsToDisplay')::integer,
+        COALESCE((test_details->>'randomizeQuestions')::boolean, false), COALESCE((test_details->>'randomizeAnswers')::boolean, false),
+        test_details->>'examType', (test_details->>'kkm')::numeric)
+      ON CONFLICT (id) DO UPDATE SET
+        token=EXCLUDED.token, name=EXCLUDED.name, subject=EXCLUDED.subject,
+        duration_minutes=EXCLUDED.duration_minutes, questions_to_display=EXCLUDED.questions_to_display,
+        randomize_questions=EXCLUDED.randomize_questions, randomize_answers=EXCLUDED.randomize_answers,
+        exam_type=EXCLUDED.exam_type, kkm=EXCLUDED.kkm, updated_at=NOW();
+      restored_tests := restored_tests + 1;
+      DELETE FROM public.questions WHERE test_id = test_id_val;
+      FOR q_rec IN SELECT * FROM jsonb_array_elements(test_entry->1->'questions') LOOP
+        INSERT INTO public.questions (test_id, question, image_url, audio_url, video_url, options, option_images, matching_right_options, correct_answer_index, type, answer_key, metadata, difficulty, weight, topic)
+        VALUES (test_id_val, q_rec->>'question', NULLIF(q_rec->>'image',''), NULLIF(q_rec->>'audio',''), NULLIF(q_rec->>'video',''),
+          CASE WHEN q_rec->'options' IS NOT NULL AND jsonb_array_length(q_rec->'options') > 0 THEN ARRAY(SELECT jsonb_array_elements_text(q_rec->'options')) ELSE '{}'::text[] END,
+          CASE WHEN q_rec->'optionImages' IS NOT NULL AND q_rec->>'optionImages' != 'null' THEN ARRAY(SELECT jsonb_array_elements_text(q_rec->'optionImages')) ELSE NULL END,
+          CASE WHEN q_rec->'matchingRightOptions' IS NOT NULL AND q_rec->>'matchingRightOptions' != 'null' THEN ARRAY(SELECT jsonb_array_elements_text(q_rec->'matchingRightOptions')) ELSE NULL END,
+          COALESCE((q_rec->>'correctAnswerIndex')::smallint, 0),
+          COALESCE(NULLIF(q_rec->>'type',''), 'multiple_choice'),
+          q_rec->'answerKey', q_rec->'metadata',
+          COALESCE(NULLIF(q_rec->>'difficulty',''), 'Medium'),
+          COALESCE((q_rec->>'weight')::numeric, 1), q_rec->>'topic');
+        restored_q := restored_q + 1;
+      END LOOP;
+    END LOOP;
+  END IF;
+
+  IF backup_data ? 'announcements' THEN
+    FOR ann_rec IN SELECT * FROM jsonb_array_elements(backup_data->'announcements') LOOP
+      v_raw_id := ann_rec->>'id';
+      BEGIN v_ann_id := v_raw_id::uuid;
+      EXCEPTION WHEN OTHERS THEN
+        SELECT id INTO v_ann_id FROM public.announcements WHERE title = ann_rec->>'title' LIMIT 1;
+        IF v_ann_id IS NULL THEN v_ann_id := gen_random_uuid(); END IF;
+      END;
+      INSERT INTO public.announcements (id, title, content, created_at)
+      VALUES (v_ann_id, ann_rec->>'title', ann_rec->>'content',
+        COALESCE(CASE WHEN ann_rec->>'date' ~ '^\d' THEN (ann_rec->>'date')::timestamptz ELSE NOW() END, NOW()))
+      ON CONFLICT (id) DO UPDATE SET title=EXCLUDED.title, content=EXCLUDED.content;
+      restored_ann := restored_ann + 1;
+    END LOOP;
+  END IF;
+
+  IF backup_data ? 'schedules' THEN
+    FOR sched_rec IN SELECT * FROM jsonb_array_elements(backup_data->'schedules') LOOP
+      SELECT id INTO v_test_id FROM public.tests WHERE token = sched_rec->>'testToken' LIMIT 1;
+      IF v_test_id IS NOT NULL THEN
+        v_raw_id := sched_rec->>'id';
+        BEGIN v_sched_id := v_raw_id::uuid;
+        EXCEPTION WHEN OTHERS THEN v_sched_id := gen_random_uuid(); END;
+        INSERT INTO public.schedules (id, test_id, start_time, end_time, assigned_to)
+        VALUES (v_sched_id, v_test_id,
+          (sched_rec->>'startTime')::timestamptz, (sched_rec->>'endTime')::timestamptz,
+          COALESCE(ARRAY(SELECT jsonb_array_elements_text(sched_rec->'assignedTo')), '{}'::text[]))
+        ON CONFLICT (id) DO UPDATE SET
+          test_id=EXCLUDED.test_id, start_time=EXCLUDED.start_time,
+          end_time=EXCLUDED.end_time, assigned_to=EXCLUDED.assigned_to;
+        restored_sched := restored_sched + 1;
+      END IF;
+    END LOOP;
+  END IF;
+
+  RETURN format('Restore selesai: %s pengguna, %s ujian, %s soal, %s jadwal, %s pengumuman dipulihkan.',
+    restored_users, restored_tests, restored_q, restored_sched, restored_ann);
+END;
+$$;
+GRANT EXECUTE ON FUNCTION public.admin_restore_data(jsonb) TO authenticated;
+  $sql$,
+
+  true,
+  NOW()
+);
+
+-- ── LANGKAH 3: Verifikasi ─────────────────────────────────────────────────────
+SELECT
+  version,
+  is_active,
+  created_at,
+  LEFT(download_url, 80)  AS download_url,
+  LEFT(release_notes, 120) AS release_notes_preview
+FROM app_versions
+WHERE application_id = 'cbtschool'
+ORDER BY created_at DESC
+LIMIT 5;

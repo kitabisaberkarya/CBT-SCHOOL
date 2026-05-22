@@ -57,6 +57,13 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ config, onStudentLogin, onAdm
             const err = await onStudentLogin(nisn, password);
             if(err) throw new Error(err);
 
+        } else if (data.startsWith('cbtauth::admin_pw::')) {
+            if (!config.allowAdminQrLogin) throw new Error("Login QR admin dinonaktifkan.");
+            const parts = data.split('::');
+            if (parts.length < 4) throw new Error("Format QR admin tidak valid.");
+            const [, , username, qrPassword] = parts;
+            const err = await onAdminLogin(username, qrPassword);
+            if (err) throw new Error(err);
         } else if (data.includes('cbtauth::admin')) {
              setIsAdminModalOpen(true);
         } else {

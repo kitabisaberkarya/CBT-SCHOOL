@@ -7,7 +7,7 @@ import PerformanceDonutChart from './PerformanceDonutChart';
 import OverallCompletionChart from './OverallCompletionChart';
 
 // StatCard Component
-const StatCard: React.FC<{ title: string; value: string | number; icon: React.ReactNode; gradient: string }> = ({ title, value, icon, gradient }) => (
+const StatCard: React.FC<{ title: string; value: string | number; icon: React.ReactNode; gradient: string; isLoading?: boolean }> = ({ title, value, icon, gradient, isLoading }) => (
     <div className={`relative ${gradient} rounded-2xl shadow-lg p-6 text-white overflow-hidden transform hover:-translate-y-1.5 transition-transform duration-300 ease-in-out`}>
         <div className="absolute -top-4 -right-4 w-24 h-24 bg-white/10 rounded-full opacity-50"></div>
         <div className="absolute -bottom-8 -left-2 w-32 h-32 bg-white/10 rounded-full opacity-50"></div>
@@ -15,7 +15,11 @@ const StatCard: React.FC<{ title: string; value: string | number; icon: React.Re
             <div className="bg-white/20 rounded-full w-14 h-14 flex items-center justify-center mb-4 backdrop-blur-sm border border-white/20">
                 {icon}
             </div>
-            <p className="text-3xl font-bold">{value}</p>
+            {isLoading ? (
+                <div className="h-9 w-16 bg-white/30 rounded-lg animate-pulse mb-1"></div>
+            ) : (
+                <p className="text-3xl font-bold">{value}</p>
+            )}
             <p className="text-sm font-medium opacity-90">{title}</p>
         </div>
     </div>
@@ -62,8 +66,15 @@ const TestSubjectCard: React.FC<{ test: Test, token: string, index: number, onNa
                     </div>
                     
                     <div className="relative z-10">
-                        <div className="bg-white/20 w-fit px-3 py-1 rounded-full mb-4 backdrop-blur-md">
-                            <p className="text-xs font-mono font-bold tracking-widest uppercase">{token}</p>
+                        <div className="flex items-center gap-2 flex-wrap mb-4">
+                            <div className="bg-white/20 w-fit px-3 py-1 rounded-full backdrop-blur-md">
+                                <p className="text-xs font-mono font-bold tracking-widest uppercase">{token}</p>
+                            </div>
+                            {test.details.examType && test.details.examType !== 'Umum' && (
+                                <div className="bg-black/25 w-fit px-2 py-1 rounded-full backdrop-blur-md">
+                                    <p className="text-xs font-bold truncate max-w-[140px]">{test.details.examType}</p>
+                                </div>
+                            )}
                         </div>
                         <h3 className="text-2xl font-extrabold leading-tight mb-1 line-clamp-2">{test.details.subject}</h3>
                         <p className="text-white/80 text-sm">{test.details.name}</p>
@@ -139,20 +150,22 @@ interface DashboardHomeProps {
     adminUser: User;
     config: AppConfig;
     studentUsers: User[];
-    studentCount?: number; // New Prop
+    studentCount?: number;
     teacherCount: number;
     adminCount: number;
     tests: Map<string, Test>;
     questionCount: number;
+    scheduleCount?: number;
     onNavigate: (view: AdminView, token?: string) => void;
     activeSessionCount: number;
     examSessions: any[];
     onSyncUsers?: () => Promise<void>;
     isSyncing?: boolean;
-    totalDatabaseRecords: number; // New Prop for Raw Count
+    totalDatabaseRecords: number;
+    isLoading?: boolean;
 }
 
-const DashboardHome: React.FC<DashboardHomeProps> = ({ adminUser, config, studentUsers, studentCount, teacherCount, adminCount, tests, questionCount, onNavigate, activeSessionCount, examSessions, onSyncUsers, isSyncing, totalDatabaseRecords }) => {
+const DashboardHome: React.FC<DashboardHomeProps> = ({ adminUser, config, studentUsers, studentCount, teacherCount, adminCount, tests, questionCount, scheduleCount, onNavigate, activeSessionCount, examSessions, onSyncUsers, isSyncing, totalDatabaseRecords, isLoading }) => {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const [isRepairing, setIsRepairing] = useState(false);
     
@@ -240,14 +253,14 @@ const DashboardHome: React.FC<DashboardHomeProps> = ({ adminUser, config, studen
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6">
-                {/* Updated to use totalDatabaseRecords (raw users + admin) */}
-                <StatCard title="Total Data Siswa" value={studentCount ?? studentUsers.length} gradient="bg-gradient-to-br from-blue-500 to-cyan-400" icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M15 21a6 6 0 00-9-5.197M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>} />
-                <StatCard title="Total Data Guru" value={teacherCount} gradient="bg-gradient-to-br from-indigo-500 to-purple-400" icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>} />
-                <StatCard title="Total Data Admin" value={adminCount} gradient="bg-gradient-to-br from-slate-600 to-gray-500" icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>} />
-                <StatCard title="Total Ujian" value={tests.size} gradient="bg-gradient-to-br from-green-500 to-emerald-400" icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>} />
-                <StatCard title="Total Soal" value={questionCount} gradient="bg-gradient-to-br from-orange-500 to-amber-400" icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7l8 5 8-5M12 22V12" /></svg>} />
-                <StatCard title="Sesi Aktif" value={activeSessionCount} gradient="bg-gradient-to-br from-pink-500 to-rose-400" icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.636 18.364a9 9 0 010-12.728m12.728 0a9 9 0 010 12.728m-9.9-2.829a1.5 1.5 0 100-2.122 1.5 1.5 0 000 2.122z" /></svg>} />
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-8 gap-4">
+                <StatCard isLoading={isLoading} title="Total Siswa" value={studentCount ?? studentUsers.length} gradient="bg-gradient-to-br from-blue-500 to-cyan-400" icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M15 21a6 6 0 00-9-5.197M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>} />
+                <StatCard isLoading={isLoading} title="Total Guru" value={teacherCount} gradient="bg-gradient-to-br from-indigo-500 to-purple-400" icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>} />
+                <StatCard isLoading={isLoading} title="Total Admin" value={adminCount} gradient="bg-gradient-to-br from-slate-600 to-gray-500" icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>} />
+                <StatCard isLoading={isLoading} title="Mata Pelajaran" value={tests.size} gradient="bg-gradient-to-br from-green-500 to-emerald-400" icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>} />
+                <StatCard isLoading={isLoading} title="Jadwal Ujian" value={scheduleCount ?? 0} gradient="bg-gradient-to-br from-teal-500 to-cyan-600" icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>} />
+                <StatCard isLoading={isLoading} title="Total Soal" value={questionCount} gradient="bg-gradient-to-br from-orange-500 to-amber-400" icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7l8 5 8-5M12 22V12" /></svg>} />
+                <StatCard isLoading={isLoading} title="Sesi Aktif" value={activeSessionCount} gradient="bg-gradient-to-br from-pink-500 to-rose-400" icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.636 18.364a9 9 0 010-12.728m12.728 0a9 9 0 010 12.728m-9.9-2.829a1.5 1.5 0 100-2.122 1.5 1.5 0 000 2.122z" /></svg>} />
             </div>
 
             {/* Test Subjects Section with Pagination */}

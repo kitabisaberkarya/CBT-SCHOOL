@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Schedule, Test, MasterData, ScheduleStatus } from '../types';
+import { Schedule, Test, MasterData, ScheduleStatus, User } from '../types';
 import ScheduleModal from './ScheduleModal';
 import ConfirmationModal from './ConfirmationModal';
 
@@ -7,6 +7,7 @@ interface ExamScheduleProps {
   schedules: Schedule[];
   tests: Map<string, Test>;
   masterData: MasterData;
+  students: User[];
   onAddSchedule: (schedule: Omit<Schedule, 'id'>) => void;
   onUpdateSchedule: (schedule: Schedule) => void;
   onDeleteSchedule: (scheduleId: string) => void;
@@ -222,12 +223,13 @@ const ExamSchedule: React.FC<ExamScheduleProps> = (props) => {
       )}
 
       {isModalOpen && (
-          <ScheduleModal 
-            scheduleToEdit={editingSchedule} 
-            onSave={handleSaveSchedule} 
-            onClose={() => setIsModalOpen(false)} 
+          <ScheduleModal
+            scheduleToEdit={editingSchedule}
+            onSave={handleSaveSchedule}
+            onClose={() => setIsModalOpen(false)}
             tests={props.tests}
             masterData={props.masterData}
+            students={props.students}
         />
       )}
       

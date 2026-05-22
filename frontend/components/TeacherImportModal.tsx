@@ -30,6 +30,8 @@ const TeacherImportModal: React.FC<TeacherImportModalProps> = ({ existingUsers, 
   const [rows, setRows] = useState<TeacherRow[]>([]);
   const [parseError, setParseError] = useState('');
   const [importLog, setImportLog] = useState('');
+  const [sheetUrl, setSheetUrl] = useState('');
+  const [isFetchingSheet, setIsFetchingSheet] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // ──────────────────────────────────────────────────────
@@ -120,18 +122,31 @@ const TeacherImportModal: React.FC<TeacherImportModalProps> = ({ existingUsers, 
         row.height = 20;
       });
 
-      // ── Keterangan Kolom (baris 10 ke bawah) ──
-      ws.addRow([]);
-      const noteRow = ws.addRow(['KETERANGAN KOLOM:']);
-      noteRow.getCell(1).font = { bold: true, size: 11, color: { argb: 'FF1D4ED8' } };
-      ws.mergeCells(`A${noteRow.number}:H${noteRow.number}`);
+      // ── Keterangan Kolom di worksheet terpisah (agar tidak terbaca sebagai data saat import) ──
+      const wsGuide = wb.addWorksheet('📋 Panduan Kolom');
+      wsGuide.getColumn(1).width = 22;
+      wsGuide.getColumn(2).width = 70;
 
-      headers.forEach((h) => {
-        const r = ws.addRow([h.label, '', h.desc]);
+      const guideTitle = wsGuide.addRow(['KETERANGAN KOLOM — TEMPLATE IMPORT GURU']);
+      wsGuide.mergeCells(`A${guideTitle.number}:B${guideTitle.number}`);
+      guideTitle.getCell(1).font = { bold: true, size: 12, color: { argb: 'FFFFFFFF' } };
+      guideTitle.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4F46E5' } };
+      guideTitle.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' };
+      guideTitle.height = 28;
+
+      wsGuide.addRow(['KOLOM', 'KETERANGAN']).eachCell(c => {
+        c.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+        c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF6D28D9' } };
+        c.alignment = { vertical: 'middle', horizontal: 'center' };
+      });
+
+      headers.forEach((h, hi) => {
+        const r = wsGuide.addRow([h.label, h.desc]);
         r.getCell(1).font = { bold: true, size: 10, color: { argb: h.required ? 'FFDC2626' : 'FF92400E' } };
-        r.getCell(3).font = { size: 9, italic: true, color: { argb: 'FF6B7280' } };
-        ws.mergeCells(`B${r.number}:B${r.number}`);
-        ws.mergeCells(`C${r.number}:H${r.number}`);
+        r.getCell(2).font = { size: 9, italic: true, color: { argb: 'FF374151' } };
+        r.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: hi % 2 === 0 ? 'FFF8F8FF' : 'FFFFFFFF' } };
+        r.eachCell(c => { c.alignment = { vertical: 'middle', wrapText: true }; });
+        r.height = 20;
       });
 
       // ── Lebar Kolom ──
@@ -160,6 +175,71 @@ const TeacherImportModal: React.FC<TeacherImportModalProps> = ({ existingUsers, 
       URL.revokeObjectURL(url);
     } catch (err: any) {
       alert('Gagal membuat template: ' + err.message);
+    }
+  };
+
+  // ──────────────────────────────────────────────────────
+  // DOWNLOAD TEMPLATE CSV (untuk Google Sheets)
+  // ──────────────────────────────────────────────────────
+  const handleDownloadCSVTemplate = () => {
+    const header = 'username,password,nama_lengkap,nip_nuptk,mata_pelajaran,jenis_kelamin,agama,jabatan';
+    const examples = [
+      'budi.santoso,guru123,Budi Santoso S.Pd,197801012005011001,Matematika,L,Islam,Guru Tetap',
+      'siti.rahayu,pass456,Dra. Siti Rahayu M.Pd,198503152009012002,Bahasa Indonesia,P,Islam,Wali Kelas',
+      'ahmad.fauzi,,Ahmad Fauzi S.T,,Teknik Informatika,L,Islam,Guru Tetap',
+      'dewi.kartika,,Dewi Kartika S.Pd,199201202019012005,Biologi,P,Kristen,Guru Honorer',
+    ];
+    const csv = [header, ...examples].join('\n');
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'TEMPLATE_IMPORT_GURU_CBT.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  // ──────────────────────────────────────────────────────
+  // FETCH DARI GOOGLE SHEETS (Published CSV URL)
+  // ──────────────────────────────────────────────────────
+  const handleFetchSheet = async () => {
+    if (!sheetUrl.trim()) {
+      setParseError('Masukkan URL Google Sheet terlebih dahulu.');
+      return;
+    }
+    setIsFetchingSheet(true);
+    setParseError('');
+    setRows([]);
+    try {
+      const response = await fetch(sheetUrl.trim());
+      if (!response.ok) throw new Error('Gagal mengunduh data. Pastikan Sheet sudah dipublikasikan sebagai CSV dan URL-nya benar.');
+      const text = await response.text();
+      const lines = text.split(/\r\n|\n/).filter(l => l.trim() !== '');
+      const firstLine = lines[0] || '';
+      const commas = (firstLine.match(/,/g) || []).length;
+      const semis = (firstLine.match(/;/g) || []).length;
+      const tabs = (firstLine.match(/\t/g) || []).length;
+      const delim = tabs > commas && tabs > semis ? '\t' : semis > commas ? ';' : ',';
+      const raw = lines.map(line => {
+        const regex = new RegExp(`(?:^|${delim === '\t' ? '\\t' : delim})(\"(?:[^\"]+|\"\")*\"|[^${delim === '\t' ? '\\t' : delim}]*)`, 'g');
+        const row: string[] = [];
+        let m;
+        while ((m = regex.exec(line))) {
+          let v = m[1];
+          if (v.startsWith('"')) v = v.slice(1, -1).replace(/""/g, '"');
+          row.push(v.trim());
+        }
+        return row.length > 1 ? row : line.split(delim).map(s => s.trim().replace(/^"|"$/g, ''));
+      });
+      const parsed = parseAndValidate(raw);
+      setRows(parsed);
+      setMode('preview');
+    } catch (err: any) {
+      setParseError(err.message || 'Gagal mengambil data dari Google Sheet.');
+    } finally {
+      setIsFetchingSheet(false);
     }
   };
 
@@ -331,6 +411,10 @@ const TeacherImportModal: React.FC<TeacherImportModalProps> = ({ existingUsers, 
   // ──────────────────────────────────────────────────────
   // IMPORT KE DATABASE
   // ──────────────────────────────────────────────────────
+  const IMPORT_CHUNK_SIZE = 50;
+  const MAX_RETRY = 3;
+  const [importProgress, setImportProgress] = useState({ done: 0, total: 0, batch: 0, totalBatch: 0 });
+
   const handleConfirm = async () => {
     if (validRows.length === 0) return;
     setMode('importing');
@@ -346,13 +430,29 @@ const TeacherImportModal: React.FC<TeacherImportModalProps> = ({ existingUsers, 
         major: r.mapel,
         gender: r.gender,
         religion: r.agama || 'Islam',
-        photoUrl: r.gender === 'Laki-laki' ? DEFAULT_PROFILE_IMAGES.TEACHER : DEFAULT_PROFILE_IMAGES.TEACHER,
+        photoUrl: DEFAULT_PROFILE_IMAGES.TEACHER,
         role: 'teacher'
       }));
 
-      setImportLog(`Mengimpor ${payload.length} data guru...`);
-      const { error } = await supabase.rpc('admin_import_users', { users_data: payload });
-      if (error) throw error;
+      const chunks: typeof payload[] = [];
+      for (let i = 0; i < payload.length; i += IMPORT_CHUNK_SIZE) {
+        chunks.push(payload.slice(i, i + IMPORT_CHUNK_SIZE));
+      }
+      setImportProgress({ done: 0, total: payload.length, batch: 0, totalBatch: chunks.length });
+
+      for (let i = 0; i < chunks.length; i++) {
+        setImportProgress({ done: i * IMPORT_CHUNK_SIZE, total: payload.length, batch: i + 1, totalBatch: chunks.length });
+        setImportLog(`Batch ${i + 1}/${chunks.length} — mengimpor ${Math.min((i + 1) * IMPORT_CHUNK_SIZE, payload.length)}/${payload.length} guru...`);
+        let lastErr: string = '';
+        for (let attempt = 1; attempt <= MAX_RETRY; attempt++) {
+          const { error } = await supabase.rpc('admin_import_users', { users_data: chunks[i] });
+          if (!error) { lastErr = ''; break; }
+          lastErr = error.message;
+          if (attempt < MAX_RETRY) await new Promise(r => setTimeout(r, 1500 * attempt));
+        }
+        if (lastErr) throw new Error(`Batch ${i + 1}/${chunks.length} gagal setelah ${MAX_RETRY}x: ${lastErr}`);
+      }
+      setImportProgress({ done: payload.length, total: payload.length, batch: chunks.length, totalBatch: chunks.length });
 
       setImportLog('Memperbaiki akun login guru...');
       await supabase.rpc('repair_teacher_logins');
@@ -419,15 +519,27 @@ const TeacherImportModal: React.FC<TeacherImportModalProps> = ({ existingUsers, 
                       Download file template <strong>.xlsx</strong> yang sudah berisi format kolom, contoh data, dan petunjuk pengisian.
                       Isi data guru sesuai template, lalu simpan.
                     </p>
-                    <button
-                      onClick={handleDownloadTemplate}
-                      className="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-5 py-2.5 rounded-lg shadow-sm transition-colors"
-                    >
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                      </svg>
-                      Download TEMPLATE_IMPORT_GURU_CBT.xlsx
-                    </button>
+                    <div className="flex flex-wrap gap-3">
+                      <button
+                        onClick={handleDownloadTemplate}
+                        className="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-5 py-2.5 rounded-lg shadow-sm transition-colors"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                        Download Template .xlsx
+                      </button>
+                      <button
+                        onClick={handleDownloadCSVTemplate}
+                        className="inline-flex items-center gap-2 bg-teal-600 hover:bg-teal-700 text-white font-semibold px-5 py-2.5 rounded-lg shadow-sm transition-colors"
+                        title="Download CSV untuk diupload ke Google Sheets lalu dipublish sebagai CSV"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                        </svg>
+                        Download Template .csv (Google Sheets)
+                      </button>
+                    </div>
 
                     {/* Info kolom */}
                     <div className="mt-4 grid grid-cols-2 md:grid-cols-4 gap-2">
@@ -452,34 +564,69 @@ const TeacherImportModal: React.FC<TeacherImportModalProps> = ({ existingUsers, 
                 </div>
               </div>
 
-              {/* Step 2: Upload File */}
+              {/* Step 2: Upload File atau Google Sheets */}
               <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 rounded-xl p-6">
                 <div className="flex items-start gap-4">
                   <div className="bg-blue-100 text-blue-700 w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 text-xl font-bold">2</div>
-                  <div className="flex-grow">
-                    <h4 className="text-lg font-bold text-gray-800 mb-1">Upload File Spreadsheet</h4>
-                    <p className="text-sm text-gray-600 mb-4">
-                      Upload file yang sudah diisi. Mendukung format <strong>.xlsx</strong> (Excel), <strong>.xls</strong>, dan <strong>.csv</strong>.
-                    </p>
-                    <button
-                      onClick={() => fileInputRef.current?.click()}
-                      className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold px-5 py-2.5 rounded-lg shadow-sm transition-colors"
-                    >
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-                      </svg>
-                      Pilih File (.xlsx / .csv)
-                    </button>
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept=".xlsx,.xls,.csv"
-                      className="hidden"
-                      onChange={handleFileUpload}
-                    />
-                    <p className="text-xs text-gray-400 mt-3">
-                      Catatan: Jika menggunakan CSV, pisahkan kolom dengan koma (,) atau titik koma (;). Simpan Excel sebagai CSV UTF-8 jika perlu.
-                    </p>
+                  <div className="flex-grow space-y-4">
+                    <div>
+                      <h4 className="text-lg font-bold text-gray-800 mb-1">Upload File Spreadsheet</h4>
+                      <p className="text-sm text-gray-600 mb-3">
+                        Upload file yang sudah diisi. Mendukung format <strong>.xlsx</strong> (Excel), <strong>.xls</strong>, dan <strong>.csv</strong>.
+                      </p>
+                      <button
+                        onClick={() => fileInputRef.current?.click()}
+                        className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold px-5 py-2.5 rounded-lg shadow-sm transition-colors"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                        </svg>
+                        Pilih File (.xlsx / .csv)
+                      </button>
+                      <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleFileUpload} />
+                    </div>
+
+                    {/* Divider */}
+                    <div className="flex items-center gap-3">
+                      <div className="flex-1 border-t border-blue-200" />
+                      <span className="text-xs font-semibold text-blue-400 uppercase tracking-wide">atau</span>
+                      <div className="flex-1 border-t border-blue-200" />
+                    </div>
+
+                    {/* Google Sheets Section */}
+                    <div className="bg-white/70 rounded-xl border border-emerald-200 p-4">
+                      <div className="flex items-center gap-2 mb-2">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                        <h5 className="font-bold text-gray-800 text-sm">Sinkronisasi dari Google Sheets</h5>
+                      </div>
+                      <p className="text-xs text-gray-500 mb-3">
+                        Isi template di Google Sheets, lalu publish sebagai CSV dan tempel URL-nya di sini.
+                        <br/>
+                        <strong>Cara publish:</strong> File → Bagikan → Publikasikan ke web → pilih sheet → format <strong>CSV</strong> → Publikasikan → salin link.
+                      </p>
+                      <div className="flex gap-2">
+                        <input
+                          type="url"
+                          value={sheetUrl}
+                          onChange={(e) => setSheetUrl(e.target.value)}
+                          placeholder="https://docs.google.com/spreadsheets/d/.../pub?output=csv"
+                          className="flex-1 p-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none"
+                        />
+                        <button
+                          onClick={handleFetchSheet}
+                          disabled={isFetchingSheet || !sheetUrl.trim()}
+                          className="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-4 py-2.5 rounded-lg text-sm disabled:opacity-50 disabled:cursor-not-allowed transition-colors whitespace-nowrap"
+                        >
+                          {isFetchingSheet ? (
+                            <><svg className="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/></svg> Mengambil...</>
+                          ) : (
+                            <><svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg> Ambil Data</>
+                          )}
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -598,15 +745,37 @@ const TeacherImportModal: React.FC<TeacherImportModalProps> = ({ existingUsers, 
 
           {/* ── MODE: IMPORTING ── */}
           {mode === 'importing' && (
-            <div className="flex flex-col items-center justify-center py-20 space-y-4">
-              <div className="relative">
-                <svg className="animate-spin h-16 w-16 text-purple-600" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                </svg>
+            <div className="flex flex-col items-center justify-center py-12 px-8 space-y-6">
+              <div className="relative h-20 w-20">
+                <svg className="h-20 w-20 text-purple-100" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2.5" fill="none"/></svg>
+                <svg className="animate-spin h-20 w-20 text-purple-600 absolute inset-0" style={{animationDuration:'1.2s'}} viewBox="0 0 24 24"><path fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
+                </div>
               </div>
-              <h3 className="text-xl font-bold text-gray-800">Sedang Memproses...</h3>
-              <p className="text-gray-500 text-sm">{importLog || 'Mohon tunggu, jangan tutup jendela ini.'}</p>
+              <div className="text-center">
+                <h3 className="text-xl font-bold text-gray-800">Mengimpor Guru...</h3>
+                <p className="text-gray-400 text-sm mt-1">Jangan tutup atau refresh halaman ini</p>
+              </div>
+
+              {importProgress.total > 0 && (
+                <div className="w-full max-w-md space-y-3">
+                  <div className="flex justify-between text-sm font-semibold">
+                    <span className="text-gray-500">Batch <span className="text-purple-600">{importProgress.batch}</span> / {importProgress.totalBatch}</span>
+                    <span className="text-gray-800">{Math.min(importProgress.done + IMPORT_CHUNK_SIZE, importProgress.total)} / {importProgress.total} guru</span>
+                  </div>
+                  <div className="relative h-4 bg-gray-100 rounded-full overflow-hidden shadow-inner">
+                    <div
+                      className="absolute inset-y-0 left-0 bg-gradient-to-r from-purple-500 to-indigo-500 rounded-full transition-all duration-500"
+                      style={{ width: `${Math.round((Math.min(importProgress.done + IMPORT_CHUNK_SIZE, importProgress.total) / importProgress.total) * 100)}%` }}
+                    />
+                    <div className="absolute inset-0 flex items-center justify-center text-[10px] font-black text-white drop-shadow">
+                      {Math.round((Math.min(importProgress.done + IMPORT_CHUNK_SIZE, importProgress.total) / importProgress.total) * 100)}%
+                    </div>
+                  </div>
+                  <p className="text-center text-xs text-gray-400">{importLog}</p>
+                </div>
+              )}
             </div>
           )}
         </div>

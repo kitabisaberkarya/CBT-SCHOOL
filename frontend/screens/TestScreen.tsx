@@ -1,13 +1,21 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import Header from '../components/Header';
+import LoadingScreen from '../components/LoadingScreen';
 import { Answer, Question, AppConfig, User } from '../types';
 import QuestionListModal from '../components/QuestionListModal';
 import ConfirmationModal from '../components/ConfirmationModal';
 import WarningModal from '../components/WarningModal';
 import DisqualificationModal from '../components/DisqualificationModal';
-import ErrorBoundary from '../components/ErrorBoundary';
 import { supabase } from '../supabaseClient';
 import { calculateScore } from '../utils/scoring';
+import { renderMathInText, containsMath, sanitizeMathHtml } from '../utils/renderMath';
+
+/** Render teks soal/opsi dengan KaTeX jika mengandung notasi math */
+function mathHtml(text: string): string {
+  if (!text) return '';
+  if (!containsMath(text)) return text;
+  return sanitizeMathHtml(renderMathInText(text));
+}
 
 interface TestScreenProps {
   onFinishTest: () => void;
@@ -85,17 +93,20 @@ const checkIsFullScreen = () => {
 };
 
 // Helper untuk meminta fullscreen (cross-browser)
-const requestFullScreen = async () => {
+const requestFullScreen = async (isRequestingRef?: React.MutableRefObject<boolean>) => {
   const docEl = document.documentElement as any;
-  const requestMethod = docEl.requestFullscreen || 
-                        docEl.webkitRequestFullscreen || 
-                        docEl.mozRequestFullScreen || 
+  const requestMethod = docEl.requestFullscreen ||
+                        docEl.webkitRequestFullscreen ||
+                        docEl.mozRequestFullScreen ||
                         docEl.msRequestFullscreen;
   if (requestMethod) {
     try {
+      if (isRequestingRef) isRequestingRef.current = true;
       await requestMethod.call(docEl);
     } catch (e) {
       console.warn("Manual fullscreen request failed", e);
+    } finally {
+      if (isRequestingRef) setTimeout(() => { isRequestingRef.current = false; }, 500);
     }
   }
 };
@@ -108,6 +119,8 @@ const TestScreen: React.FC<TestScreenProps> = ({ onFinishTest, user, onLogout, q
   const [isFinishConfirmOpen, setFinishConfirmOpen] = useState(false);
   const [sessionId, setSessionId] = useState<any>(null);
   const [isSessionLoading, setIsSessionLoading] = useState(true);
+  const [sessionError, setSessionError] = useState<string | null>(null);
+  const [sessionRetryCount, setSessionRetryCount] = useState(0);
   
   // Theme State
   const [currentThemeMode, setCurrentThemeMode] = useState<ThemeType>('light');
@@ -117,7 +130,22 @@ const TestScreen: React.FC<TestScreenProps> = ({ onFinishTest, user, onLogout, q
   const [isWarningOpen, setIsWarningOpen] = useState(false);
   const [isDisqualified, setIsDisqualified] = useState(false);
   // Default true agar tidak flicker saat load pertama, nanti useEffect akan memvalidasi
-  const [isFullscreenMode, setIsFullscreenMode] = useState(true); 
+  const [isFullscreenMode, setIsFullscreenMode] = useState(true);
+
+  // Suspend State
+  const [isSuspended, setIsSuspended] = useState(false);
+
+  // Screenshot Blocker State
+  const [isScreenshotBlocked, setIsScreenshotBlocked] = useState(false);
+
+  // Refresh Soal State
+  const [localQuestions, setLocalQuestions] = useState(questions);
+  const [isRefreshingQuestions, setIsRefreshingQuestions] = useState(false);
+
+  // Anti-Cheat Countdown: Countdown 7 detik saat siswa meninggalkan halaman
+  const [leaveCountdown, setLeaveCountdown] = useState<number | null>(null);
+  const leaveCountdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const leaveCountdownActiveRef = useRef(false); // Cegah double-start countdown
 
   // Auto-Save State
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'error'>('saved');
@@ -135,6 +163,10 @@ const TestScreen: React.FC<TestScreenProps> = ({ onFinishTest, user, onLogout, q
   const handleFinishExamRef = useRef<() => Promise<void>>(async () => {});
   // Anti-cheat: cegah double-fire violation saat multiple events terjadi bersamaan
   const isViolationProcessingRef = useRef(false);
+  const isRequestingFullscreenRef = useRef(false); // Cegah blur event saat request fullscreen
+  // Ref untuk real-time admin action listener (hindari stale closure)
+  const isDisqualifiedRef = useRef(false);
+  const violationCountRef = useRef(0);
 
   // Matching Interaction State
   const [activeLeftPoint, setActiveLeftPoint] = useState<string | null>(null);
@@ -207,15 +239,45 @@ const TestScreen: React.FC<TestScreenProps> = ({ onFinishTest, user, onLogout, q
     const initSession = async () => {
         setIsSessionLoading(true);
         try {
-            const { data: userData } = await supabase.from('users').select('id').eq('nisn', userId).single();
-            const { data: scheduleData } = await supabase.from('schedules').select('id').eq('test_id', testId).limit(1).single();
+            // Gunakan user.id dari props langsung (UUID sudah tersedia, tidak perlu query ulang)
+            const userUuid = user.id;
+            if (!userUuid) {
+                setSessionError('Sesi login tidak valid. Silakan logout dan login kembali.');
+                setIsSessionLoading(false);
+                return;
+            }
 
-            // Panggil RPC untuk create atau get sesi yang ada (Atomic operation)
-            const { data: rpcId } = await supabase.rpc('create_exam_session', {
-                p_user_uuid: userData?.id,
-                p_schedule_uuid: scheduleData?.id,
+            // Cek suspend menggunakan UUID langsung
+            const { data: suspendData } = await supabase.from('users').select('is_suspended').eq('id', userUuid).maybeSingle();
+            if (suspendData?.is_suspended) {
+                setIsSuspended(true);
+                setIsSessionLoading(false);
+                return;
+            }
+
+            const { data: scheduleData, error: schedErr } = await supabase.from('schedules').select('id').eq('test_id', testId).limit(1).single();
+
+            if (schedErr || !scheduleData?.id) {
+                setSessionError('Jadwal ujian tidak ditemukan. Pastikan jadwal sudah dibuat oleh guru dan ujian sedang berlangsung.');
+                return;
+            }
+
+            // Panggil RPC dengan UUID yang sudah pasti valid
+            const { data: rpcId, error: rpcErr } = await supabase.rpc('create_exam_session', {
+                p_user_uuid: userUuid,
+                p_schedule_uuid: scheduleData.id,
                 p_duration_seconds: durationMinutes * 60
             });
+
+            if (rpcErr) {
+                setSessionError(`Gagal membuat sesi ujian: ${rpcErr.message}`);
+                return;
+            }
+
+            if (!rpcId) {
+                setSessionError('Gagal membuat sesi ujian. Pastikan jadwal ujian masih berlangsung dan token valid.');
+                return;
+            }
 
             if (rpcId) {
                 const { data: session } = await supabase.from('student_exam_sessions').select('*').eq('id', rpcId).single();
@@ -230,7 +292,12 @@ const TestScreen: React.FC<TestScreenProps> = ({ onFinishTest, user, onLogout, q
                 }
 
                 setSessionId(session.id);
-                setTimeLeft(session.time_left_seconds);
+                // Guard: jika time_left_seconds null/0/negatif → gunakan durasi penuh (sesi baru)
+                const restoredTime = (typeof session.time_left_seconds === 'number' && session.time_left_seconds > 0)
+                    ? session.time_left_seconds
+                    : durationMinutes * 60;
+                setTimeLeft(restoredTime);
+                timeLeftRef.current = restoredTime;
 
                 // Load Violation Count dari DB (Penting untuk persistence)
                 setViolationCount(session.violations || 0);
@@ -304,14 +371,16 @@ const TestScreen: React.FC<TestScreenProps> = ({ onFinishTest, user, onLogout, q
                 // Hapus localStorage — DB sudah menjadi sumber kebenaran
                 localStorage.removeItem(storageKey);
             }
-        } catch (e) {
+        } catch (e: any) {
             console.error("Init error", e);
+            setSessionError(e?.message || 'Gagal menghubungkan ke server ujian. Periksa koneksi jaringan.');
         } finally {
             setIsSessionLoading(false);
         }
     };
     initSession();
-  }, [testId, userId]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [testId, userId, sessionRetryCount]);
 
   // --- SCORING LOGIC ---
   const handleFinishExam = async () => {
@@ -463,6 +532,132 @@ const TestScreen: React.FC<TestScreenProps> = ({ onFinishTest, user, onLogout, q
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [sessionId]);
 
+  // Initial fullscreen check — hanya sekali saat mount, tidak ikut dependency anti-cheat
+  useEffect(() => {
+    setIsFullscreenMode(checkIsFullScreen());
+  }, []);
+
+  // Sync refs agar realtime listener tidak pakai stale closure
+  useEffect(() => { isDisqualifiedRef.current = isDisqualified; }, [isDisqualified]);
+  useEffect(() => { violationCountRef.current = violationCount; }, [violationCount]);
+
+  // Realtime subscription untuk deteksi suspend saat ujian sedang berlangsung
+  useEffect(() => {
+    if (!sessionId) return;
+    const channel = supabase
+      .channel('suspend_check_' + userId)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'users', filter: `nisn=eq.${userId}` }, (payload: any) => {
+          if (payload.new?.is_suspended === true) {
+              setIsSuspended(true);
+          }
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [sessionId, userId]);
+
+  // Realtime listener untuk aksi admin dari Pemantauan Ujian
+  // Mendeteksi: Finish, Lanjutkan (Safe), Mulai dari Awal, +Waktu
+  useEffect(() => {
+    if (!sessionId) return;
+    const channel = supabase
+      .channel('admin_actions_' + sessionId)
+      .on('postgres_changes', {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'student_exam_sessions',
+          filter: `id=eq.${sessionId}`,
+      }, (payload: any) => {
+          const n = payload.new;
+          if (!n) return;
+
+          // Admin force-finish → langsung ke halaman hasil
+          if (n.status === 'Selesai') {
+              onFinishTest();
+              return;
+          }
+
+          // Admin resume (Lanjutkan Safe) atau full reset (Mulai dari Awal)
+          // Deteksi: violations di DB lebih kecil dari yang kita tahu, atau status berubah dari Diskualifikasi
+          if (n.status === 'Mengerjakan') {
+              const dbViolations = n.violations ?? 0;
+              const adminCleared = dbViolations < violationCountRef.current || isDisqualifiedRef.current;
+              if (adminCleared) {
+                  // Reload halaman agar state fresh (jawaban tersimpan di DB, tidak hilang)
+                  window.location.reload();
+                  return;
+              }
+              // Admin tambah waktu (+Waktu): time naik signifikan
+              const dbTime = n.time_left_seconds;
+              if (typeof dbTime === 'number' && dbTime > timeLeftRef.current + 60) {
+                  setTimeLeft(dbTime);
+                  timeLeftRef.current = dbTime;
+              }
+          }
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [sessionId, onFinishTest]);
+
+  // Handler refresh soal — fetch ulang semua soal dari DB berdasarkan test_id
+  // Mendukung soal baru yang ditambahkan guru saat ujian berlangsung
+  const handleRefreshQuestions = async () => {
+    if (isRefreshingQuestions) return;
+    setIsRefreshingQuestions(true);
+    try {
+        const { data, error } = await supabase
+            .from('questions')
+            .select('*')
+            .eq('test_id', testId)
+            .order('id', { ascending: true });
+        if (error) throw error;
+        if (data && data.length > 0) {
+            const mapDBToQuestion = (q: any, existing?: any) => ({
+                ...(existing || {}),
+                id: q.id,
+                test_id: q.test_id,
+                type: q.type,
+                question: q.question ?? existing?.question ?? '',
+                image: q.image_url ?? existing?.image,
+                audio: q.audio_url ?? existing?.audio,
+                video: q.video_url ?? existing?.video,
+                options: q.options ?? existing?.options ?? [],
+                optionImages: q.option_images ?? existing?.optionImages,
+                matchingRightOptions: q.matching_right_options ?? existing?.matchingRightOptions,
+                correctAnswerIndex: q.correct_answer_index ?? existing?.correctAnswerIndex,
+                answerKey: q.answer_key ?? existing?.answerKey,
+                metadata: q.metadata ?? existing?.metadata,
+                weight: q.weight ?? existing?.weight ?? 1,
+                difficulty: q.difficulty ?? existing?.difficulty,
+                cognitiveLevel: q.cognitive_level ?? existing?.cognitiveLevel,
+                topic: q.topic ?? existing?.topic,
+            });
+
+            setLocalQuestions(prev => {
+                const existingMap: Record<number, any> = {};
+                prev.forEach(q => { existingMap[q.id] = q; });
+
+                // Update soal yang sudah ada, pertahankan urutan
+                const updated = prev.map(q => {
+                    const fresh = data.find((d: any) => d.id === q.id);
+                    return fresh ? mapDBToQuestion(fresh, q) : q;
+                });
+
+                // Tambahkan soal baru yang belum ada di daftar
+                const existingIds = new Set(prev.map(q => q.id));
+                const newOnes = data
+                    .filter((d: any) => !existingIds.has(d.id))
+                    .map((d: any) => mapDBToQuestion(d));
+
+                return [...updated, ...newOnes];
+            });
+        }
+    } catch (err) {
+        console.warn('[RefreshSoal] Gagal memperbarui soal:', err);
+    } finally {
+        setIsRefreshingQuestions(false);
+    }
+  };
+
   // --- ANTI-CHEAT & FULLSCREEN LOGIC ---
   useEffect(() => {
     // Debugging Anti-Cheat Status
@@ -476,7 +671,7 @@ const TestScreen: React.FC<TestScreenProps> = ({ onFinishTest, user, onLogout, q
         isViolationProcessingRef.current = true;
 
         try {
-            // Gunakan functional updater agar tidak bergantung pada closure violationCount
+            // Gunakan functional updater agar selalu dapat nilai terkini (bukan closure stale)
             let newCount = 0;
             setViolationCount(prev => {
                 newCount = prev + 1;
@@ -486,13 +681,17 @@ const TestScreen: React.FC<TestScreenProps> = ({ onFinishTest, user, onLogout, q
             // Beri waktu React memproses state baru sebelum lanjut
             await new Promise(r => setTimeout(r, 50));
 
-            // Ambil nilai terkini via ref setelah setState
-            const latestCount = violationCount + 1;
+            // Pakai newCount dari functional updater — BUKAN violationCount (closure bisa stale)
+            const latestCount = newCount;
             const updates: any = { violations: latestCount };
 
             if (latestCount >= config.antiCheatViolationLimit) {
                 updates.status = 'Diskualifikasi';
                 setIsDisqualified(true);
+                // Hitung dan simpan nilai dari jawaban yang sudah terekam (tidak biarkan 0)
+                const scoreSnapshot = calculateScore(questions, { ...answersRef.current });
+                updates.score = scoreSnapshot;
+                updates.submitted_at = new Date().toISOString();
             }
 
             await supabase.from('student_exam_sessions').update(updates).eq('id', sessionId);
@@ -519,22 +718,83 @@ const TestScreen: React.FC<TestScreenProps> = ({ onFinishTest, user, onLogout, q
         }
     };
 
-    // 1. Visibility Change (Tab Switching / Minimize)
+    // --- Countdown helper: mulai / batalkan countdown 7 detik → langsung diskualifikasi ---
+    const LEAVE_COUNTDOWN_SECONDS = 7;
+
+    // Disqualify langsung saat countdown habis (tab ditinggal 7 detik)
+    const handleTabLeaveDisqualify = async () => {
+        if (isDisqualified || isViolationProcessingRef.current || !sessionId) return;
+        isViolationProcessingRef.current = true;
+        try {
+            const scoreSnapshot = calculateScore(questions, { ...answersRef.current });
+            const latestViolations = violationCount + 1;
+            await supabase.from('student_exam_sessions').update({
+                status: 'Diskualifikasi',
+                violations: latestViolations,
+                score: scoreSnapshot,
+                submitted_at: new Date().toISOString(),
+            }).eq('id', sessionId);
+            setViolationCount(latestViolations);
+            setIsDisqualified(true);
+        } catch (e) {
+            console.error("Failed to disqualify on tab leave", e);
+        } finally {
+            setTimeout(() => { isViolationProcessingRef.current = false; }, 1000);
+        }
+    };
+
+    const startLeaveCountdown = () => {
+        // Cegah double-start
+        if (leaveCountdownActiveRef.current || isDisqualified) return;
+        leaveCountdownActiveRef.current = true;
+        setLeaveCountdown(LEAVE_COUNTDOWN_SECONDS);
+
+        leaveCountdownIntervalRef.current = setInterval(() => {
+            setLeaveCountdown(prev => {
+                if (prev === null || prev <= 1) {
+                    // Waktu habis → langsung diskualifikasi
+                    clearInterval(leaveCountdownIntervalRef.current!);
+                    leaveCountdownIntervalRef.current = null;
+                    leaveCountdownActiveRef.current = false;
+                    handleTabLeaveDisqualify();
+                    return null;
+                }
+                return prev - 1;
+            });
+        }, 1000);
+    };
+
+    const cancelLeaveCountdown = () => {
+        if (leaveCountdownIntervalRef.current) {
+            clearInterval(leaveCountdownIntervalRef.current);
+            leaveCountdownIntervalRef.current = null;
+        }
+        leaveCountdownActiveRef.current = false;
+        setLeaveCountdown(null);
+    };
+
+    // 1. Visibility Change (Tab Switching / Minimize / Split Screen)
     const onVisibilityChange = () => {
-        if (document.hidden && !isWarningOpen && !isDisqualified) {
-            handleViolation();
+        if (document.hidden && !isDisqualified) {
+            startLeaveCountdown();
+        } else if (!document.hidden) {
+            // Siswa kembali → batalkan countdown (pelanggaran sudah tercatat jika sempat)
+            cancelLeaveCountdown();
         }
     };
 
     // 2. Blur (Clicking outside / Overlay / Alt+Tab)
     const onBlur = () => {
-       if (!isWarningOpen && !isDisqualified) {
-           handleViolation();
-       }
+        // Abaikan blur saat sedang request fullscreen (mencegah false-positive)
+        if (!isDisqualified && !isRequestingFullscreenRef.current) {
+            startLeaveCountdown();
+        }
     };
 
-    // PENTING: Initial Check saat komponen mount
-    setIsFullscreenMode(checkIsFullScreen());
+    // 3. Focus kembali → batalkan countdown
+    const onFocus = () => {
+        cancelLeaveCountdown();
+    };
 
     // Event Listeners
     document.addEventListener('fullscreenchange', handleFullscreenChange);
@@ -544,6 +804,7 @@ const TestScreen: React.FC<TestScreenProps> = ({ onFinishTest, user, onLogout, q
     
     document.addEventListener('visibilitychange', onVisibilityChange);
     window.addEventListener('blur', onBlur);
+    window.addEventListener('focus', onFocus);
 
     // Disable Right Click & Copy
     const preventContextMenu = (e: Event) => e.preventDefault();
@@ -552,6 +813,100 @@ const TestScreen: React.FC<TestScreenProps> = ({ onFinishTest, user, onLogout, q
     document.addEventListener('cut', preventContextMenu);
     document.addEventListener('paste', preventContextMenu);
 
+    // ── SCREENSHOT BLOCKER ──────────────────────────────────────────────────
+    // Gunakan DOM manipulation langsung (bukan React state) agar overlay muncul
+    // SINKRON sebelum browser sempat menangkap screenshot.
+    const triggerScreenshotBlock = () => {
+        const overlay = document.getElementById('cbt-screenshot-blocker');
+        if (overlay) overlay.style.display = 'flex';
+        setIsScreenshotBlocked(true);
+        // Bersihkan clipboard agar gambar layar tidak dapat ditempel
+        try { navigator.clipboard.writeText(''); } catch {}
+        try {
+            const ta = document.createElement('textarea');
+            ta.value = '';
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+        } catch {}
+        setTimeout(() => {
+            setIsScreenshotBlocked(false);
+            if (overlay) overlay.style.display = 'none';
+        }, 2000);
+    };
+
+    // 1. Blokir keyboard: PrintScreen + semua kombinasi screenshot lazim
+    const handleKeyDown = (e: KeyboardEvent) => {
+        const key  = e.key  || '';
+        const code = e.code || '';
+
+        // PrintScreen (semua variant)
+        if (key === 'PrintScreen' || code === 'PrintScreen' || key === 'Print' || key === 'Snapshot') {
+            e.preventDefault();
+            e.stopPropagation();
+            triggerScreenshotBlock();
+            return;
+        }
+        // Windows Snipping Tool: Win+Shift+S (Meta+Shift+S)
+        if (e.metaKey && e.shiftKey && (key === 's' || key === 'S')) {
+            e.preventDefault();
+            triggerScreenshotBlock();
+            return;
+        }
+        // Ctrl+P (Print), Ctrl+Shift+S, Ctrl+Shift+P (DevTools screenshots)
+        if (e.ctrlKey && (key === 'p' || key === 'P')) {
+            e.preventDefault();
+            triggerScreenshotBlock();
+            return;
+        }
+        if (e.ctrlKey && e.shiftKey && (key === 's' || key === 'S' || key === 'p' || key === 'P')) {
+            e.preventDefault();
+            triggerScreenshotBlock();
+            return;
+        }
+        // macOS screenshot: Cmd+Shift+3, Cmd+Shift+4, Cmd+Shift+5
+        if (e.metaKey && e.shiftKey && (key === '3' || key === '4' || key === '5')) {
+            e.preventDefault();
+            triggerScreenshotBlock();
+            return;
+        }
+        // F12 (DevTools)
+        if (key === 'F12') {
+            e.preventDefault();
+            return;
+        }
+        // Ctrl+Shift+I/J/C (DevTools open)
+        if (e.ctrlKey && e.shiftKey && (key === 'i' || key === 'I' || key === 'j' || key === 'J' || key === 'c' || key === 'C')) {
+            e.preventDefault();
+            return;
+        }
+    };
+    document.addEventListener('keydown', handleKeyDown, true); // capture phase agar lebih prioritas
+
+    // 2. Blokir clipboard image paste (mencegah hasil screenshot ditempel)
+    const handlePaste = (e: ClipboardEvent) => {
+        if (e.clipboardData?.files?.length) {
+            e.preventDefault();
+        }
+    };
+    document.addEventListener('paste', handlePaste);
+
+    // 3. Screen Capture API interception — blokir getDisplayMedia (screen share/OBS)
+    const origGetDisplayMedia = navigator.mediaDevices?.getDisplayMedia?.bind(navigator.mediaDevices);
+    if (origGetDisplayMedia && navigator.mediaDevices) {
+        (navigator.mediaDevices as any).getDisplayMedia = async (...args: any[]) => {
+            triggerScreenshotBlock();
+            throw new DOMException('Screen capture is disabled during exam.', 'NotAllowedError');
+        };
+    }
+    // Simpan ref untuk restore saat cleanup
+    const restoreGetDisplayMedia = () => {
+        if (origGetDisplayMedia && navigator.mediaDevices) {
+            (navigator.mediaDevices as any).getDisplayMedia = origGetDisplayMedia;
+        }
+    };
+
     return () => {
         document.removeEventListener('fullscreenchange', handleFullscreenChange);
         document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
@@ -559,16 +914,95 @@ const TestScreen: React.FC<TestScreenProps> = ({ onFinishTest, user, onLogout, q
         document.removeEventListener('MSFullscreenChange', handleFullscreenChange);
         document.removeEventListener('visibilitychange', onVisibilityChange);
         window.removeEventListener('blur', onBlur);
+        window.removeEventListener('focus', onFocus);
+        // Bersihkan countdown saat unmount
+        if (leaveCountdownIntervalRef.current) clearInterval(leaveCountdownIntervalRef.current);
         document.removeEventListener('contextmenu', preventContextMenu);
         document.removeEventListener('copy', preventContextMenu);
         document.removeEventListener('cut', preventContextMenu);
         document.removeEventListener('paste', preventContextMenu);
+        document.removeEventListener('keydown', handleKeyDown, true);
+        document.removeEventListener('paste', handlePaste);
+        // Restore getDisplayMedia saat ujian selesai
+        restoreGetDisplayMedia();
     };
   }, [config.enableAntiCheat, violationCount, isWarningOpen, isDisqualified, sessionId, config.antiCheatViolationLimit, isSessionLoading]);
 
   const resumeFromWarning = () => {
       setIsWarningOpen(false);
-      requestFullScreen(); // Coba paksa fullscreen lagi
+      requestFullScreen(isRequestingFullscreenRef);
+  };
+
+  // --- INTERNET MONITOR SELAMA UJIAN BERLANGSUNG ---
+  const [internetDetected, setInternetDetected] = useState(false);
+  const internetCheckIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    // Monitor internet hanya aktif jika examNetworkMode === 'offline'
+    if (config.examNetworkMode !== 'offline' || isDisqualified || !sessionId || isSessionLoading) return;
+
+    // Fungsi cek internet — paralel 4 URL, timeout 8 detik
+    const checkInternet = async (): Promise<boolean> => {
+      const URLS = [
+        'https://www.google.com/generate_204',
+        'https://connectivitycheck.gstatic.com/generate_204',
+        'https://clients3.google.com/generate_204',
+        'https://www.gstatic.com/generate_204',
+      ];
+      const checkOne = (url: string): Promise<boolean> =>
+        new Promise((resolve) => {
+          const controller = new AbortController();
+          const timer = setTimeout(() => { controller.abort(); resolve(false); }, 8000);
+          fetch(url, { method: 'HEAD', mode: 'no-cors', cache: 'no-store', signal: controller.signal })
+            .then(() => { clearTimeout(timer); resolve(true); })
+            .catch(() => { clearTimeout(timer); resolve(false); });
+        });
+      const results = await Promise.all(URLS.map(checkOne));
+      return results.some(Boolean);
+    };
+
+    // Jalankan cek pertama setelah 15 detik (beri waktu halaman stabil)
+    // lalu ulangi tiap 45 detik selama ujian
+    const runCheck = async () => {
+      if (isDisqualified) return;
+      const hasInternet = await checkInternet();
+      if (hasInternet) {
+        setInternetDetected(true); // Tampilkan modal blokir
+      }
+      // Jika tidak ada internet, biarkan ujian lanjut (modal otomatis hilang)
+    };
+
+    const initialTimer = setTimeout(runCheck, 15000);
+    internetCheckIntervalRef.current = setInterval(runCheck, 45000);
+
+    return () => {
+      clearTimeout(initialTimer);
+      if (internetCheckIntervalRef.current) clearInterval(internetCheckIntervalRef.current);
+    };
+  }, [config.examNetworkMode, isDisqualified, sessionId, isSessionLoading]);
+
+  // Handler tombol "Periksa Ulang Koneksi" di modal internet
+  const handleRecheckInternet = async () => {
+    const URLS = [
+      'https://www.google.com/generate_204',
+      'https://connectivitycheck.gstatic.com/generate_204',
+      'https://clients3.google.com/generate_204',
+      'https://www.gstatic.com/generate_204',
+    ];
+    const checkOne = (url: string): Promise<boolean> =>
+      new Promise((resolve) => {
+        const controller = new AbortController();
+        const timer = setTimeout(() => { controller.abort(); resolve(false); }, 8000);
+        fetch(url, { method: 'HEAD', mode: 'no-cors', cache: 'no-store', signal: controller.signal })
+          .then(() => { clearTimeout(timer); resolve(true); })
+          .catch(() => { clearTimeout(timer); resolve(false); });
+      });
+    const results = await Promise.all(URLS.map(checkOne));
+    const stillOnline = results.some(Boolean);
+    if (!stillOnline) {
+      setInternetDetected(false); // Internet sudah dimatikan, lanjutkan ujian
+    }
+    // Jika masih online, modal tetap tampil
   };
 
   // --- Answer Payload Builder ---
@@ -596,8 +1030,10 @@ const TestScreen: React.FC<TestScreenProps> = ({ onFinishTest, user, onLogout, q
   // --- Answer Update Logic — DB adalah sumber kebenaran utama ---
   const saveToSupabase = async (qId: number, val: any, isUnsure: boolean) => {
       if (!sessionId) {
-          console.error("[SAVE] sessionId null, jawaban tidak tersimpan.");
-          setSaveStatus('error');
+          console.error("[SAVE] sessionId null, jawaban tidak tersimpan. Sesi belum siap.");
+          // Jangan tampilkan error jika sesi belum dimuat sama sekali (masih loading)
+          // hanya tampilkan error jika sesi sudah selesai loading tapi ID masih null
+          if (!isSessionLoading) setSaveStatus('error');
           return;
       }
 
@@ -705,7 +1141,7 @@ const TestScreen: React.FC<TestScreenProps> = ({ onFinishTest, user, onLogout, q
     }
   };
 
-  const currentQuestion = questions[currentQuestionIndex];
+  const currentQuestion = localQuestions[currentQuestionIndex];
   const currentAnswer = answers[currentQuestion?.id] || { value: null, unsure: false };
 
   // --- Render Helpers ---
@@ -735,7 +1171,12 @@ const TestScreen: React.FC<TestScreenProps> = ({ onFinishTest, user, onLogout, q
                                         handleUpdateAnswer(currentQuestion.id, next);
                                     }} className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600 rounded-lg border-slate-300" />
                                 </div>
-                                <div className={`ml-4 sm:ml-5 ${currentTheme.textMain} font-medium sm:font-bold leading-relaxed text-base sm:text-lg`} dangerouslySetInnerHTML={{ __html: opt }} />
+                                <div className="ml-4 sm:ml-5 flex-1">
+                                    <div className={`${currentTheme.textMain} font-medium sm:font-bold leading-relaxed text-base sm:text-lg`} dangerouslySetInnerHTML={{ __html: mathHtml(opt) }} />
+                                    {currentQuestion.optionImages?.[originalIndex] && (
+                                        <img src={currentQuestion.optionImages[originalIndex]} alt={`Gambar opsi ${originalIndex + 1}`} className="mt-2 max-w-xs max-h-48 rounded-lg object-contain" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                                    )}
+                                </div>
                             </label>
                         );
                     })}
@@ -900,7 +1341,12 @@ const TestScreen: React.FC<TestScreenProps> = ({ onFinishTest, user, onLogout, q
                                 <div className="pt-0.5">
                                     <input type="radio" checked={isSelected} onChange={() => handleUpdateAnswer(currentQuestion.id, originalIndex)} className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600 border-slate-300" />
                                 </div>
-                                <div className={`ml-4 sm:ml-5 ${currentTheme.textMain} font-medium sm:font-black leading-relaxed text-base sm:text-lg`} dangerouslySetInnerHTML={{ __html: opt }} />
+                                <div className="ml-4 sm:ml-5 flex-1">
+                                    <div className={`${currentTheme.textMain} font-medium sm:font-black leading-relaxed text-base sm:text-lg`} dangerouslySetInnerHTML={{ __html: opt }} />
+                                    {currentQuestion.optionImages?.[originalIndex] && (
+                                        <img src={currentQuestion.optionImages[originalIndex]} alt={`Gambar opsi ${originalIndex + 1}`} className="mt-2 max-w-xs max-h-48 rounded-lg object-contain" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                                    )}
+                                </div>
                             </label>
                         );
                     })}
@@ -916,25 +1362,90 @@ const TestScreen: React.FC<TestScreenProps> = ({ onFinishTest, user, onLogout, q
     return `${h > 0 ? h + ':' : ''}${m.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
   };
 
+  // Tampilan suspend — akun ditangguhkan
+  if (isSuspended) {
+      return (
+          <div className="h-screen flex flex-col items-center justify-center bg-gray-100 p-6 text-center">
+              <div className="w-20 h-20 bg-gray-300 rounded-full flex items-center justify-center mb-6 shadow-lg">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                  </svg>
+              </div>
+              <h1 className="text-2xl font-black text-gray-800 mb-2">Akun Ditangguhkan</h1>
+              <p className="text-gray-500 max-w-sm mb-6">Akses Anda telah ditangguhkan oleh administrator. Silakan hubungi pengawas ujian untuk informasi lebih lanjut.</p>
+              <button onClick={onLogout} className="px-8 py-3 bg-gray-700 text-white font-bold rounded-xl hover:bg-gray-800 transition">
+                  Kembali ke Login
+              </button>
+          </div>
+      );
+  }
+
   if (isSessionLoading) {
       return (
-          <div className={`h-screen flex flex-col items-center justify-center ${currentTheme.bgApp}`}>
-              <div className="w-16 h-16 sm:w-20 sm:h-20 border-[6px] border-blue-600 border-t-transparent rounded-full animate-spin mb-6"></div>
-              <p className={`${currentTheme.textMain} font-black tracking-widest animate-pulse text-sm sm:text-lg`}>MENGHUBUNGKAN KE SERVER UJIAN...</p>
+          <LoadingScreen
+            message="Menghubungkan ke server ujian..."
+            subMessage="Menyiapkan sesi ujian Anda"
+            primaryColor="#1d4ed8"
+          />
+      );
+  }
+
+  // Session gagal diinisialisasi — tampilkan error dengan tombol retry
+  if (!sessionId && sessionError) {
+      return (
+          <div className="h-screen flex flex-col items-center justify-center bg-gray-100 p-6 text-center">
+              <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mb-6 shadow-lg">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+              </div>
+              <h1 className="text-xl font-black text-gray-800 mb-2">Gagal Memulai Sesi Ujian</h1>
+              <p className="text-gray-500 max-w-sm mb-6 text-sm">{sessionError}</p>
+              <button
+                  onClick={() => { setSessionError(null); setIsSessionLoading(true); setSessionRetryCount(c => c + 1); }}
+                  className="px-8 py-3 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition shadow-md"
+              >
+                  Coba Lagi
+              </button>
+              <button onClick={onLogout} className="mt-4 text-sm text-gray-400 hover:text-gray-600 underline">
+                  Kembali ke Login
+              </button>
           </div>
       );
   }
 
   return (
-    <div 
-        className={`h-screen flex flex-col ${currentTheme.bgApp} overflow-hidden select-none transition-colors duration-300 relative`} 
+    <div
+        className={`h-screen flex flex-col ${currentTheme.bgApp} overflow-hidden select-none transition-colors duration-300 relative`}
+        style={{
+            // CSS protection: konten tidak bisa dipilih atau diseret
+            userSelect: 'none',
+            WebkitUserSelect: 'none',
+            // CSS media query print tidak bisa langsung inline, tapi cegah drag
+            WebkitUserDrag: 'none',
+        } as React.CSSProperties}
         onContextMenu={(e) => {
             e.preventDefault();
             return false;
         }}
+        onDragStart={(e) => e.preventDefault()}
     >
-      {/* Custom Style for Progress Animation */}
+      {/* Custom Style for Progress Animation + Anti-Screenshot */}
       <style>{`
+        @media print {
+          body * { visibility: hidden !important; }
+          body::after {
+            content: 'UJIAN CBT — CETAK TIDAK DIIZINKAN';
+            visibility: visible !important;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 2rem;
+            font-weight: 900;
+            color: #111;
+          }
+        }
         @keyframes progress-stripes {
             0% { background-position: 1rem 0; }
             100% { background-position: 0 0; }
@@ -962,6 +1473,21 @@ const TestScreen: React.FC<TestScreenProps> = ({ onFinishTest, user, onLogout, q
         }
       `}</style>
 
+      {/* --- SCREENSHOT BLOCKER OVERLAY ---
+          Selalu ada di DOM tapi tersembunyi (display:none).
+          Ditampilkan via DOM langsung (getElementById) agar sinkron
+          sebelum browser sempat capture screenshot. */}
+      <div
+          id="cbt-screenshot-blocker"
+          className="fixed inset-0 z-[99999] bg-black flex items-center justify-center"
+          style={{ display: 'none', pointerEvents: 'none' }}
+          aria-hidden="true"
+      >
+          <p className="text-white/5 text-xs font-black tracking-widest select-none">
+              CBT SECURE — SCREENSHOT BLOCKED
+          </p>
+      </div>
+
       {/* --- SCREEN BLOCKER FOR ANTI-CHEAT --- */}
       {config.enableAntiCheat && !isFullscreenMode && !isDisqualified && (
           <div className="fixed inset-0 z-[9999] bg-white/95 backdrop-blur-3xl flex flex-col items-center justify-center p-4 sm:p-8 text-center animate-fade-in">
@@ -975,7 +1501,7 @@ const TestScreen: React.FC<TestScreenProps> = ({ onFinishTest, user, onLogout, q
                   Aplikasi mendeteksi Anda keluar dari mode layar penuh. Untuk melanjutkan ujian, wajib kembali ke mode layar penuh.
               </p>
               <button 
-                  onClick={requestFullScreen}
+                  onClick={() => requestFullScreen(isRequestingFullscreenRef)}
                   className="px-6 py-3 sm:px-10 sm:py-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-2xl shadow-xl shadow-blue-200 hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 flex items-center gap-2 sm:gap-3 text-sm sm:text-base"
               >
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 sm:h-6 sm:w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -999,36 +1525,55 @@ const TestScreen: React.FC<TestScreenProps> = ({ onFinishTest, user, onLogout, q
       <div className={`${currentTheme.bgCard} shadow-sm border-b ${currentTheme.border} px-4 py-3 sm:px-12 sm:py-4 flex justify-between items-center z-20 transition-colors duration-300`}>
           <div className="flex items-center space-x-3 sm:space-x-5">
               <div className="bg-blue-600 text-white w-10 h-10 sm:w-14 sm:h-14 rounded-xl sm:rounded-3xl flex items-center justify-center font-black text-lg sm:text-2xl shadow-lg sm:shadow-xl shadow-blue-200">{currentQuestionIndex + 1}</div>
-              <div className="hidden sm:block">
+              <div className="hidden sm:flex sm:flex-col">
                   <p className={`text-[10px] font-black ${currentTheme.textSub} uppercase tracking-widest leading-none mb-1`}>Nomor Soal</p>
-                  <p className={`text-base font-black ${currentTheme.textMain}`}>dari {questions.length} Soal</p>
+                  <p className={`text-base font-black ${currentTheme.textMain}`}>dari {localQuestions.length} Soal</p>
               </div>
+              {/* Tombol Refresh Soal — untuk memperbarui konten soal tanpa reload browser */}
+              <button
+                  onClick={handleRefreshQuestions}
+                  disabled={isRefreshingQuestions}
+                  title="Perbarui soal (gunakan jika soal diubah oleh guru saat ujian berlangsung)"
+                  className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs font-bold border transition-all shadow-sm ${currentTheme.bgCard} ${currentTheme.border} ${currentTheme.textSub} hover:border-blue-400 hover:text-blue-600 disabled:opacity-50`}
+              >
+                  <svg xmlns="http://www.w3.org/2000/svg" className={`h-4 w-4 ${isRefreshingQuestions ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  <span className="hidden sm:inline">{isRefreshingQuestions ? 'Memperbarui...' : 'Perbarui'}</span>
+              </button>
           </div>
 
           <div className="flex items-center space-x-3 sm:space-x-8">
               
-              {/* Theme Toggle Buttons */}
-              <div className="hidden md:flex items-center bg-gray-100/50 p-1 rounded-xl gap-1">
+              {/* Theme Toggle Buttons — tampil di semua ukuran layar termasuk mobile */}
+              <div className="flex items-center bg-gray-100/50 p-1 rounded-xl gap-1">
                   {(['light', 'sepia', 'dark'] as ThemeType[]).map((themeKey) => (
                       <button
                           key={themeKey}
                           onClick={() => handleThemeChange(themeKey)}
-                          className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all ${currentThemeMode === themeKey ? 'ring-2 ring-blue-500 shadow-md scale-110' : 'hover:scale-105 opacity-70 hover:opacity-100'}`}
+                          className={`w-7 h-7 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center transition-all ${currentThemeMode === themeKey ? 'ring-2 ring-blue-500 shadow-md scale-110' : 'hover:scale-105 opacity-70 hover:opacity-100'}`}
                           title={`Mode ${THEMES[themeKey].label}`}
                           style={{ backgroundColor: themeKey === 'light' ? '#fff' : themeKey === 'sepia' ? '#fdf6e3' : '#1f2937' }}
                       >
-                          <div className={`w-3 h-3 rounded-full ${themeKey === 'light' ? 'bg-gray-300' : themeKey === 'sepia' ? 'bg-[#887057]' : 'bg-gray-500'}`}></div>
+                          <div className={`w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full ${themeKey === 'light' ? 'bg-gray-300' : themeKey === 'sepia' ? 'bg-[#887057]' : 'bg-gray-500'}`}></div>
                       </button>
                   ))}
               </div>
 
-              {/* Save Indicator (Subtle Dot Only) */}
-              <div className="flex items-center" title={saveStatus === 'saved' ? 'Tersimpan' : saveStatus === 'saving' ? 'Menyimpan...' : 'Gagal Simpan'}>
-                  <div className={`w-3 h-3 rounded-full shadow-sm transition-all duration-500 ${
-                      saveStatus === 'saved' ? 'bg-emerald-500' : 
-                      saveStatus === 'saving' ? 'bg-blue-500 animate-pulse scale-110' : 
-                      'bg-red-500 animate-bounce'
+              {/* Save Indicator */}
+              <div className="flex items-center gap-1.5" title={saveStatus === 'saved' ? 'Jawaban tersimpan' : saveStatus === 'saving' ? 'Menyimpan jawaban...' : 'Gagal simpan – coba pilih ulang'}>
+                  <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 transition-all duration-300 ${
+                      saveStatus === 'saved'  ? 'bg-emerald-400' :
+                      saveStatus === 'saving' ? 'bg-blue-400 animate-pulse scale-125' :
+                                               'bg-red-500 animate-bounce'
                   }`}></div>
+                  <span className={`hidden sm:inline text-[10px] font-bold transition-all duration-300 ${
+                      saveStatus === 'saved'  ? 'text-emerald-300' :
+                      saveStatus === 'saving' ? 'text-blue-300' :
+                                               'text-red-400'
+                  }`}>
+                      {saveStatus === 'saved' ? '✓ Tersimpan' : saveStatus === 'saving' ? 'Menyimpan...' : '✗ Gagal'}
+                  </span>
               </div>
 
               <div className="hidden md:flex flex-col items-end">
@@ -1072,7 +1617,7 @@ const TestScreen: React.FC<TestScreenProps> = ({ onFinishTest, user, onLogout, q
                     </div>
                 </div>
 
-                <div className={`prose max-w-none mb-6 sm:mb-8 text-base sm:text-xl md:text-3xl leading-relaxed font-medium sm:font-bold tracking-tight ${currentTheme.textMain}`} dangerouslySetInnerHTML={{ __html: currentQuestion.question }} />
+                <div className={`prose max-w-none mb-6 sm:mb-8 text-base sm:text-xl md:text-3xl leading-relaxed font-medium sm:font-bold tracking-tight ${currentTheme.textMain}`} dangerouslySetInnerHTML={{ __html: mathHtml(currentQuestion.question) }} />
                 
                 {/* Media Support */}
                 {(currentQuestion.image || currentQuestion.audio || currentQuestion.video) && (
@@ -1152,53 +1697,72 @@ const TestScreen: React.FC<TestScreenProps> = ({ onFinishTest, user, onLogout, q
       {isFinishConfirmOpen && <ConfirmationModal title="Kumpulkan Jawaban?" message="Pastikan semua soal telah terisi dengan benar. Tindakan ini akan mengakhiri sesi ujian Anda." confirmText="YA, KUMPULKAN" cancelText="BATAL" onConfirm={handleFinishExam} onCancel={() => setFinishConfirmOpen(false)} confirmColor="green" cancelColor="red" />}
       
       {isWarningOpen && (
-        <WarningModal 
-            onClose={resumeFromWarning} 
-            violationCount={violationCount} 
-            antiCheatViolationLimit={config.antiCheatViolationLimit} 
+        <WarningModal
+            onClose={resumeFromWarning}
+            violationCount={violationCount}
+            antiCheatViolationLimit={config.antiCheatViolationLimit}
         />
       )}
-      
+
+      {/* Modal Blokir Internet — tampil otomatis jika internet terdeteksi saat ujian */}
+      {internetDetected && !isDisqualified && (
+        <div className="fixed inset-0 z-[9998] flex items-center justify-center bg-black/85 backdrop-blur-sm">
+          <div className="bg-white rounded-3xl shadow-2xl p-8 mx-4 w-full max-w-sm text-center border-4 border-orange-500">
+            <div className="w-20 h-20 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-orange-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0" />
+              </svg>
+            </div>
+            <h2 className="text-xl font-extrabold text-orange-700 mb-2">INTERNET TERDETEKSI!</h2>
+            <p className="text-gray-700 text-sm mb-4 leading-relaxed">
+              Ujian ini berjalan dalam <strong className="text-orange-600">Mode Offline</strong>.<br />
+              Perangkat Anda masih terdeteksi memiliki koneksi internet aktif.<br />
+              <span className="font-semibold text-orange-600">Ujian tidak dapat dilanjutkan.</span>
+            </p>
+            <div className="bg-orange-50 rounded-lg px-3 py-2 mb-5 text-left text-xs text-gray-600 space-y-1">
+              <p className="font-bold text-orange-700 mb-1">Cara mematikan internet:</p>
+              <p>• <strong>Android:</strong> Geser notifikasi → matikan Data Seluler &amp; WiFi luar</p>
+              <p>• <strong>iPhone:</strong> Pengaturan → Mode Pesawat ON → WiFi sekolah ON</p>
+              <p>• <strong>Laptop:</strong> Matikan WiFi luar / cabut kabel LAN eksternal</p>
+            </div>
+            <button
+              onClick={handleRecheckInternet}
+              className="w-full bg-orange-500 hover:bg-orange-600 active:scale-95 text-white font-bold py-3 rounded-xl transition-all shadow-lg"
+            >
+              Saya Sudah Matikan Internet — Periksa Ulang
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Overlay Countdown — tampil saat siswa meninggalkan halaman ujian */}
+      {leaveCountdown !== null && !isDisqualified && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/80 backdrop-blur-sm">
+          <div className="bg-white rounded-3xl shadow-2xl p-8 mx-4 w-full max-w-sm text-center border-4 border-red-500 animate-scale-up">
+            <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+              </svg>
+            </div>
+            <h2 className="text-xl font-extrabold text-red-700 mb-2">PERINGATAN!</h2>
+            <p className="text-gray-700 font-semibold text-sm mb-4">
+              Anda terdeteksi meninggalkan halaman ujian.<br />
+              Kembali dalam waktu:
+            </p>
+            <div className="text-7xl font-black text-red-600 mb-2 tabular-nums animate-pulse">
+              {leaveCountdown}
+            </div>
+            <p className="text-xs text-gray-500 mb-4">detik</p>
+            <p className="text-xs text-red-600 font-semibold bg-red-50 rounded-lg px-3 py-2">
+              Segera kembali! Jika tidak kembali, Anda akan DIDISKUALIFIKASI otomatis.
+            </p>
+          </div>
+        </div>
+      )}
+
       {isDisqualified && <DisqualificationModal onLogout={onLogout} />}
     </div>
   );
 };
 
-// Wrap dengan Error Boundary khusus untuk TestScreen.
-// Jika terjadi error di dalam ujian, siswa mendapat pesan ramah
-// dan bisa refresh tanpa kehilangan jawaban yang sudah tersimpan di DB.
-const TestScreenWithBoundary: React.FC<TestScreenProps> = (props) => (
-  <ErrorBoundary
-    fallback={
-      <div className="min-h-screen bg-gray-900 flex items-center justify-center p-4">
-        <div className="bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full p-8 text-center text-white">
-          <div className="w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
-            <svg className="w-8 h-8 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
-            </svg>
-          </div>
-          <h2 className="text-xl font-bold mb-2">Gangguan Teknis</h2>
-          <p className="text-gray-300 text-sm mb-6">
-            Halaman ujian mengalami gangguan.{' '}
-            <span className="font-semibold text-green-400">Jawaban Anda yang sudah tersimpan aman.</span>{' '}
-            Silakan refresh halaman, dan sesi ujian Anda akan dilanjutkan.
-          </p>
-          <button
-            onClick={() => window.location.reload()}
-            className="w-full py-3 bg-blue-600 hover:bg-blue-700 rounded-xl font-semibold transition-colors"
-          >
-            Refresh & Lanjutkan Ujian
-          </button>
-          <p className="text-xs text-gray-500 mt-4">
-            Hubungi pengawas jika masalah berlanjut.
-          </p>
-        </div>
-      </div>
-    }
-  >
-    <TestScreen {...props} />
-  </ErrorBoundary>
-);
-
-export default TestScreenWithBoundary;
+export default TestScreen;

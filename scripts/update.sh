@@ -82,6 +82,21 @@ log_info "STEP 4/5: Restore file .env..."
 [ -f "${BACKUP_CONF_DIR}/.env.utils" ]    && cp "${BACKUP_CONF_DIR}/.env.utils"    "frontend/utils/.env"
 log_success ".env files restored"
 
+# --- LANGKAH 4b: RESTORE FOTO PROFIL & LOGO LOKAL ---
+# Foto dan logo di Foto_Profile/ & Logo_Sekolah/ harus dicopy ke public/assets/
+# agar tetap ada setelah setiap rebuild (Vite menyertakan public/ ke dist/ secara otomatis)
+log_info "Menyinkronkan foto profil & logo ke public/assets..."
+FOTO_SRC="${PROJECT_ROOT}/frontend/Foto_Profile"
+LOGO_SRC="${PROJECT_ROOT}/frontend/Logo_Sekolah"
+PUB_ASSETS="${PROJECT_ROOT}/frontend/public/assets"
+mkdir -p "${PUB_ASSETS}"
+[ -f "${FOTO_SRC}/admin.png" ] && cp -f "${FOTO_SRC}/admin.png" "${PUB_ASSETS}/profile_admin.png"
+[ -f "${FOTO_SRC}/guru.png"  ] && cp -f "${FOTO_SRC}/guru.png"  "${PUB_ASSETS}/profile_guru.png"
+[ -f "${FOTO_SRC}/boy.png"   ] && cp -f "${FOTO_SRC}/boy.png"   "${PUB_ASSETS}/profile_boy.png"
+[ -f "${FOTO_SRC}/girl.png"  ] && cp -f "${FOTO_SRC}/girl.png"  "${PUB_ASSETS}/profile_girl.png"
+[ -f "${LOGO_SRC}/KEMENDIKBUD.png" ] && cp -f "${LOGO_SRC}/KEMENDIKBUD.png" "${PUB_ASSETS}/KEMENDIKBUD.png"
+log_success "Foto profil & logo disinkronkan"
+
 # --- LANGKAH 5: REBUILD DAN DEPLOY ---
 log_info "STEP 5/5: Build dan deploy..."
 "${SCRIPT_DIR}/deploy.sh" all

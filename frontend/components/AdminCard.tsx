@@ -1,205 +1,305 @@
 
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import { User, AppConfig } from '../types';
+import html2pdf from 'html2pdf.js';
 
 interface AdminCardProps {
   adminUser: User;
   config: AppConfig;
 }
 
+// Ukuran kartu portrait: 54mm × 85.6mm (standar ID card portrait)
+// Di layar ditampilkan 2.5× = 240px × 380px
+const CARD_W_PX = 240;
+const CARD_H_PX = 380;
+const CARD_W_MM = 54;
+const CARD_H_MM = 85.6;
+
 const AdminCard: React.FC<AdminCardProps> = ({ adminUser, config }) => {
-  const printRef = useRef<HTMLDivElement>(null);
-
-  const handlePrint = () => {
-    if (!printRef.current) return;
-
-    // 1. Ambil konten kartu
-    const content = printRef.current.innerHTML;
-    
-    // 2. Buat iframe tersembunyi untuk proses cetak yang terisolasi
-    const iframe = document.createElement('iframe');
-    iframe.style.position = 'absolute';
-    iframe.style.width = '0px';
-    iframe.style.height = '0px';
-    iframe.style.border = 'none';
-    document.body.appendChild(iframe);
-
-    const doc = iframe.contentWindow?.document;
-    if (doc) {
-        doc.open();
-        doc.write(`
-            <html>
-                <head>
-                    <title>Cetak Kartu Admin - ${config.schoolName}</title>
-                    <style>
-                        body {
-                            font-family: 'Inter', sans-serif;
-                            display: flex;
-                            justify-content: center;
-                            align-items: center;
-                            height: 100vh;
-                            margin: 0;
-                            background-color: white;
-                            -webkit-print-color-adjust: exact !important;
-                            print-color-adjust: exact !important;
-                        }
-                        /* Tailwind Utilities Replacement for Print */
-                        .relative { position: relative; }
-                        .rounded-3xl { border-radius: 1.5rem; }
-                        .shadow-2xl { box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25); }
-                        .overflow-hidden { overflow: hidden; }
-                        .flex { display: flex; }
-                        .items-center { align-items: center; }
-                        .justify-center { justify-content: center; }
-                        .justify-between { justify-content: space-between; }
-                        .flex-col { flex-direction: column; }
-                        .text-center { text-align: center; }
-                        .text-white { color: white; }
-                        .p-8 { padding: 2rem; }
-                        .mt-5 { margin-top: 1.25rem; }
-                        .mt-3 { margin-top: 0.75rem; }
-                        .mb-8 { margin-bottom: 2rem; }
-                        .border { border-width: 1px; }
-                        .border-white\\/10 { border-color: rgba(255, 255, 255, 0.1); }
-                        .bg-black\\/20 { background-color: rgba(0, 0, 0, 0.2); }
-                        .backdrop-blur-2xl { backdrop-filter: blur(40px); }
-                        .w-full { width: 100%; }
-                        .h-full { height: 100%; }
-                        .absolute { position: absolute; }
-                        .inset-0 { top: 0; right: 0; bottom: 0; left: 0; }
-                        .object-contain { object-fit: contain; }
-                        .object-cover { object-fit: cover; }
-                        .rounded-full { border-radius: 9999px; }
-                        .font-bold { font-weight: 700; }
-                        .font-extrabold { font-weight: 800; }
-                        .text-sm { font-size: 0.875rem; line-height: 1.25rem; }
-                        .text-xs { font-size: 0.75rem; line-height: 1rem; }
-                        .text-3xl { font-size: 1.875rem; line-height: 2.25rem; }
-                        .tracking-widest { letter-spacing: 0.1em; }
-                        .bg-white { background-color: white; }
-                        .text-slate-400 { color: #94a3b8; }
-                        .text-cyan-300 { color: #67e8f9; }
-                        .bg-black\\/30 { background-color: rgba(0, 0, 0, 0.3); }
-                        .px-4 { padding-left: 1rem; padding-right: 1rem; }
-                        .py-1\\.5 { padding-top: 0.375rem; padding-bottom: 0.375rem; }
-                        .w-10 { width: 2.5rem; }
-                        .h-10 { height: 2.5rem; }
-                        .w-32 { width: 8rem; }
-                        .h-32 { height: 8rem; }
-                        .w-40 { width: 10rem; }
-                        .h-40 { height: 10rem; }
-                        .p-1 { padding: 0.25rem; }
-                        .p-3 { padding: 0.75rem; }
-                        .rounded-xl { border-radius: 0.75rem; }
-                        .rounded-md { border-radius: 0.375rem; }
-                        .shadow-lg { box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1); }
-                        
-                        /* Background Gradient Enforcement */
-                        .futuristic-card {
-                            background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 50%, #312e81 100%) !important;
-                            -webkit-print-color-adjust: exact;
-                            print-color-adjust: exact;
-                        }
-                    </style>
-                </head>
-                <body>
-                    <div style="transform: scale(0.9);">
-                        ${content}
-                    </div>
-                </body>
-            </html>
-        `);
-        doc.close();
-        
-        // Tunggu gambar load sebelum print
-        setTimeout(() => {
-            iframe.contentWindow?.focus();
-            iframe.contentWindow?.print();
-            // Hapus iframe setelah print (diberi delay agar print dialog tidak putus)
-            setTimeout(() => {
-                document.body.removeChild(iframe);
-            }, 1000);
-        }, 500);
-    }
-  };
+  const cardRef = useRef<HTMLDivElement>(null);
+  const [isDownloading, setIsDownloading] = useState(false);
 
   const qrData = adminUser.qr_login_password
     ? `cbtauth::admin_pw::${adminUser.username}::${adminUser.qr_login_password}`
     : `cbtauth::admin::${adminUser.username}::${adminUser.id}`;
 
+  // ECC=H: 30% error tolerance, tetap terbaca dengan logo di tengah
+  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qrData)}&qzone=2&ecc=H&bgcolor=ffffff`;
   const displayUsername = adminUser.username.split('@')[0];
+  const primaryColor = config.primaryColor || '#1e3a8a';
+
+  /* ── Download PDF ─────────────────────────────────────────── */
+  const handleDownloadPDF = async () => {
+    if (!cardRef.current || isDownloading) return;
+    setIsDownloading(true);
+    try {
+      // Ukuran PDF presisi = ukuran kartu DOM (tidak ada clipping)
+      const opt = {
+        margin:   0,
+        filename: `kartu-admin-${displayUsername}.pdf`,
+        image:    { type: 'jpeg', quality: 0.99 },
+        html2canvas: {
+          scale:        4,
+          useCORS:      true,
+          logging:      false,
+          width:        CARD_W_PX,
+          height:       CARD_H_PX,
+          windowWidth:  CARD_W_PX,
+          windowHeight: CARD_H_PX,
+        },
+        jsPDF: {
+          unit:        'mm',
+          format:      [CARD_W_MM, CARD_H_MM],  // 54mm × 85.6mm
+          orientation: 'portrait' as const,
+        },
+      };
+      await html2pdf().set(opt).from(cardRef.current).save();
+    } catch (e) {
+      console.error('PDF error:', e);
+      alert('Gagal membuat PDF. Coba lagi.');
+    } finally {
+      setIsDownloading(false);
+    }
+  };
+
+  /* ── Print via iframe ─────────────────────────────────────── */
+  const handlePrint = () => {
+    if (!cardRef.current) return;
+    const content = cardRef.current.outerHTML;
+    const iframe = document.createElement('iframe');
+    iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:0;height:0;border:none;';
+    document.body.appendChild(iframe);
+    const doc = iframe.contentWindow?.document;
+    if (!doc) return;
+    doc.open();
+    // Skala: konversi px card ke mm halaman cetak
+    // 1mm = 96/25.4 = 3.7795px pada 96dpi
+    // scale = (CARD_W_MM * 3.7795) / CARD_W_PX
+    const printScale = (CARD_W_MM * 96) / (25.4 * CARD_W_PX);
+    doc.write(`<!DOCTYPE html><html><head>
+      <meta charset="utf-8"/>
+      <title>Kartu Admin — ${config.schoolName}</title>
+      <style>
+        *{box-sizing:border-box;margin:0;padding:0;}
+        @page{
+          size:${CARD_W_MM}mm ${CARD_H_MM}mm;
+          margin:0;
+        }
+        html,body{
+          width:${CARD_W_MM}mm;
+          height:${CARD_H_MM}mm;
+          overflow:hidden;
+          background:white;
+          -webkit-print-color-adjust:exact;
+          print-color-adjust:exact;
+        }
+        body>div{
+          width:${CARD_W_PX}px !important;
+          height:${CARD_H_PX}px !important;
+          transform-origin:0 0;
+          transform:scale(${printScale.toFixed(6)});
+          overflow:hidden;
+        }
+      </style>
+    </head><body>${content}</body></html>`);
+    doc.close();
+    setTimeout(() => {
+      iframe.contentWindow?.focus();
+      iframe.contentWindow?.print();
+      setTimeout(() => { if (document.body.contains(iframe)) document.body.removeChild(iframe); }, 2000);
+    }, 700);
+  };
 
   return (
-    <div className="animate-fade-in w-full h-full flex flex-col items-center">
-      <div className="w-full flex justify-between items-center mb-8 px-8 mt-4 no-print">
-        <h1 className="text-3xl font-bold text-gray-800">Cetak Kartu Admin</h1>
-        <button
-          onClick={handlePrint}
-          className="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg shadow-md hover:shadow-lg transition-transform transform hover:-translate-y-0.5 flex items-center space-x-2"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M5 4v3H4a2 2 0 00-2 2v3a2 2 0 002 2h1v3a2 2 0 002 2h8a2 2 0 002-2v-3h1a2 2 0 002-2V9a2 2 0 00-2-2h-1V4a2 2 0 00-2-2H7a2 2 0 00-2 2zm8 0H7v3h6V4zm0 8H7v4h6v-4z" clipRule="evenodd" /></svg>
-          <span>Cetak Kartu</span>
-        </button>
+    <div className="animate-fade-in w-full flex flex-col items-center pb-10">
+
+      {/* ── Toolbar ─────────────────────────────────────────────── */}
+      <div className="w-full flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-8 px-4 sm:px-8 mt-4">
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">Cetak Kartu Admin</h1>
+          <p className="text-sm text-gray-500 mt-0.5">
+            ID Card administrator — ukuran standar {CARD_W_MM}×{CARD_H_MM} mm (portrait)
+          </p>
+        </div>
+        <div className="flex gap-3 flex-wrap">
+          <button
+            onClick={handleDownloadPDF}
+            disabled={isDownloading}
+            className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed text-white font-bold py-2.5 px-5 rounded-xl shadow-md hover:shadow-lg transition-all"
+          >
+            {isDownloading ? (
+              <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+              </svg>
+            ) : (
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+              </svg>
+            )}
+            <span>{isDownloading ? 'Membuat PDF...' : 'Download PDF'}</span>
+          </button>
+
+          <button
+            onClick={handlePrint}
+            className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 px-5 rounded-xl shadow-md hover:shadow-lg transition-all"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/>
+            </svg>
+            <span>Print</span>
+          </button>
+        </div>
       </div>
 
-      <div className="flex-grow flex justify-center items-start pt-10">
-        {/* WRAPPER REF UNTUK ISI KARTU SAJA */}
-        <div ref={printRef}>
-            <div 
-            className="futuristic-card relative rounded-3xl shadow-2xl overflow-hidden flex items-center justify-center" 
-            style={{ 
-                width: '400px', 
-                height: '600px',
-                background: 'linear-gradient(135deg, #0f172a 0%, #1e3a8a 50%, #312e81 100%)', // Fallback inline style
-                border: '1px solid #334155'
+      {/* ── Preview Area ─────────────────────────────────────────── */}
+      <div className="w-full flex justify-center px-4">
+        <div className="bg-slate-300 rounded-2xl p-8 sm:p-12 shadow-inner flex flex-col items-center gap-5">
+          <p className="text-xs text-slate-500 font-semibold uppercase tracking-widest">
+            Preview • {CARD_W_MM} × {CARD_H_MM} mm
+          </p>
+
+          {/* ═══════════════ KARTU (ref untuk PDF/Print) ═══════════════ */}
+          <div
+            ref={cardRef}
+            style={{
+              width:        `${CARD_W_PX}px`,
+              height:       `${CARD_H_PX}px`,
+              borderRadius: '14px',
+              overflow:     'hidden',
+              position:     'relative',
+              fontFamily:   "'Inter', 'Segoe UI', sans-serif",
+              flexShrink:   0,
+              boxShadow:    '0 24px 64px rgba(0,0,0,0.45)',
+              background:   `linear-gradient(160deg, #0f172a 0%, ${primaryColor} 60%, #1e1b4b 100%)`,
             }}
-            >
-            {/* Pattern Overlay */}
-            <div 
-                className="absolute inset-0 w-full h-full opacity-20" 
-                style={{ 
-                    backgroundImage: 'radial-gradient(circle at 2px 2px, rgba(255,255,255,0.15) 1px, transparent 0)', 
-                    backgroundSize: '20px 20px' 
-                }}
-            ></div>
-            
-            <div className="relative w-[90%] h-[95%] bg-black/20 backdrop-blur-md border border-white/10 rounded-2xl p-8 flex flex-col justify-between items-center text-center text-white">
-                
-                <div className="flex items-center space-x-3 self-start w-full border-b border-white/10 pb-4">
-                <div className="w-12 h-12 bg-white rounded-full flex items-center justify-center p-1 shadow-lg">
-                    <img src={config.logoUrl} alt="Logo" className="w-full h-full object-contain" />
-                </div>
-                <div className="text-left flex-1">
-                    <p className="font-bold text-sm leading-tight uppercase tracking-wider">{config.schoolName}</p>
-                    <p className="text-[10px] text-cyan-300 font-mono mt-0.5">SECURE ACCESS PASS</p>
-                </div>
-                </div>
+          >
+            {/* ── Background: dot grid ── */}
+            <div style={{
+              position:'absolute', inset:0,
+              backgroundImage:'radial-gradient(circle, rgba(255,255,255,0.10) 1px, transparent 1px)',
+              backgroundSize:'14px 14px',
+            }}/>
 
-                <div className="flex flex-col items-center mt-2">
-                <div className="relative group">
-                    <div className="absolute -inset-1 bg-gradient-to-r from-cyan-400 to-blue-500 rounded-full blur opacity-25 group-hover:opacity-75 transition duration-1000 group-hover:duration-200"></div>
-                    <img 
-                    src={adminUser.photoUrl} 
-                    alt="Foto Admin" 
-                    className="relative w-36 h-36 rounded-full object-cover border-4 border-slate-700/50 shadow-2xl"
-                    />
-                </div>
-                
-                <h2 className="font-extrabold text-2xl tracking-widest mt-6 mb-1 text-white drop-shadow-md">{adminUser.fullName.toUpperCase()}</h2>
-                <span className="bg-blue-600/80 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider text-blue-100 shadow-sm">Administrator</span>
-                </div>
+            {/* ── Decorative blobs ── */}
+            <div style={{
+              position:'absolute', top:'-50px', right:'-50px',
+              width:'180px', height:'180px', borderRadius:'50%',
+              background:'rgba(99,102,241,0.18)',
+            }}/>
+            <div style={{
+              position:'absolute', bottom:'-40px', left:'-40px',
+              width:'150px', height:'150px', borderRadius:'50%',
+              background:'rgba(6,182,212,0.12)',
+            }}/>
 
-                <div className="mt-6 bg-white p-3 rounded-xl shadow-xl">
-                <img 
-                    src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(qrData)}&qzone=1&ecc=M`}
-                    alt="QR Code Admin Login" 
-                    className="w-40 h-40 object-contain"
+            {/* ── CONTENT ── */}
+            <div style={{ position:'relative', zIndex:10, height:'100%', display:'flex', flexDirection:'column', alignItems:'center', padding:'18px 16px 0', paddingBottom:'0' }}>
+
+              {/* 1. Header — logo + nama sekolah */}
+              <div style={{ width:'100%', display:'flex', alignItems:'center', gap:'10px', borderBottom:'1px solid rgba(255,255,255,0.15)', paddingBottom:'12px', marginBottom:'14px' }}>
+                <div style={{ width:'36px', height:'36px', background:'white', borderRadius:'50%', flexShrink:0,
+                  display:'flex', alignItems:'center', justifyContent:'center', padding:'4px',
+                  boxShadow:'0 2px 10px rgba(0,0,0,0.4)' }}>
+                  <img src={config.logoUrl} alt="Logo" style={{ width:'100%', height:'100%', objectFit:'contain' }}/>
+                </div>
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div style={{ color:'white', fontWeight:800, fontSize:'9.5px', lineHeight:1.25,
+                    textTransform:'uppercase', letterSpacing:'0.04em',
+                    overflow:'hidden', display:'-webkit-box',
+                    WebkitLineClamp:2, WebkitBoxOrient:'vertical' as any }}>
+                    {config.schoolName}
+                  </div>
+                  <div style={{ color:'#67e8f9', fontSize:'7px', fontWeight:600, marginTop:'2px',
+                    letterSpacing:'0.1em', textTransform:'uppercase' }}>
+                    CBT School Enterprise
+                  </div>
+                </div>
+              </div>
+
+              {/* 2. Foto profil */}
+              <div style={{ position:'relative', marginBottom:'10px' }}>
+                {/* Gradient ring */}
+                <div style={{ position:'absolute', inset:'-4px', borderRadius:'50%',
+                  background:'linear-gradient(135deg,#67e8f9,#6366f1,#f472b6)', padding:'3px' }}/>
+                <img
+                  src={adminUser.photoUrl}
+                  alt="Foto Admin"
+                  style={{ position:'relative', width:'88px', height:'88px', borderRadius:'50%',
+                    objectFit:'cover', border:'3px solid #0f172a', display:'block' }}
                 />
-                </div>
-                <p className="text-[10px] text-slate-400 mt-2 font-mono">@{displayUsername}</p>
+              </div>
 
-            </div>
-            </div>
+              {/* 3. Nama */}
+              <div style={{ color:'white', fontWeight:900, fontSize:'13px', letterSpacing:'0.06em',
+                textTransform:'uppercase', textAlign:'center', lineHeight:1.25, marginBottom:'6px',
+                overflow:'hidden', display:'-webkit-box',
+                WebkitLineClamp:2, WebkitBoxOrient:'vertical' as any }}>
+                {adminUser.fullName}
+              </div>
+
+              {/* 4. Badge role */}
+              <div style={{ display:'inline-block', background:'rgba(99,102,241,0.75)',
+                color:'#e0e7ff', fontSize:'8px', fontWeight:700, padding:'3px 12px',
+                borderRadius:'999px', letterSpacing:'0.12em', textTransform:'uppercase',
+                marginBottom:'10px', border:'1px solid rgba(139,92,246,0.5)' }}>
+                Administrator
+              </div>
+
+              {/* 5. Username */}
+              <div style={{ color:'rgba(148,163,184,0.85)', fontSize:'8px', fontFamily:'monospace',
+                letterSpacing:'0.06em', marginBottom:'12px' }}>
+                @{displayUsername}
+              </div>
+
+              {/* 6. QR Code + logo di tengah */}
+              <div style={{ position:'relative', background:'white', borderRadius:'12px',
+                padding:'8px', boxShadow:'0 6px 24px rgba(0,0,0,0.5)',
+                width:'100px', height:'100px',
+                display:'flex', alignItems:'center', justifyContent:'center' }}>
+                <img
+                  src={qrUrl}
+                  alt="QR Login"
+                  crossOrigin="anonymous"
+                  style={{ width:'84px', height:'84px', display:'block' }}
+                />
+                {/* Logo sekolah di tengah QR */}
+                <div style={{
+                  position:'absolute', top:'50%', left:'50%',
+                  transform:'translate(-50%,-50%)',
+                  width:'20px', height:'20px',
+                  background:'white', borderRadius:'4px',
+                  display:'flex', alignItems:'center', justifyContent:'center',
+                  padding:'2px', boxShadow:'0 1px 6px rgba(0,0,0,0.3)',
+                }}>
+                  <img src={config.logoUrl} alt="" style={{ width:'100%', height:'100%', objectFit:'contain' }}/>
+                </div>
+              </div>
+
+              {/* 7. Label scan */}
+              <div style={{ color:'rgba(148,163,184,0.65)', fontSize:'6.5px', fontFamily:'monospace',
+                textAlign:'center', lineHeight:1.5, marginTop:'6px', letterSpacing:'0.08em' }}>
+                SCAN TO LOGIN • CBT SYSTEM
+              </div>
+
+              {/* ── Bottom gradient bar — di dalam flex agar tidak terpotong ── */}
+              <div style={{
+                marginTop:'auto',
+                width:`${CARD_W_PX}px`,
+                marginLeft:'-16px',
+                marginRight:'-16px',
+                height:'5px',
+                flexShrink:0,
+                background:`linear-gradient(90deg, #67e8f9 0%, ${primaryColor} 50%, #a78bfa 100%)`,
+              }}/>
+
+            </div>{/* end content */}
+          </div>
+          {/* ═══════════════ END KARTU ═══════════════ */}
+
+          <p className="text-xs text-slate-500 text-center max-w-xs">
+            QR berisi data login admin — scan dengan aplikasi CBT untuk masuk otomatis
+          </p>
         </div>
       </div>
     </div>

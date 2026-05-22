@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { AppConfig, User } from '../types';
+import { DEFAULT_PROFILE_IMAGES } from '../constants';
 
 interface HeaderProps {
   user?: User;
@@ -68,11 +69,30 @@ const Header: React.FC<HeaderProps> = ({ user, onLogout, pageType = 'default', o
             <p className="text-xs sm:text-sm opacity-90">CBT Application</p>
           </div>
         </div>
-        <div className="flex items-center space-x-4">
+        <div className="flex items-center space-x-3 sm:space-x-4">
             <div className="hidden md:block text-right">
               <p className="font-semibold">{user?.fullName || 'Peserta'}</p>
               <p className="text-xs opacity-80">{user?.class || 'PUSAT-002'}</p>
             </div>
+            {/* Foto Profil Siswa/Guru */}
+            <img
+              src={user?.photoUrl || (
+                user?.role === 'admin' ? DEFAULT_PROFILE_IMAGES.ADMIN
+                : user?.role === 'teacher' ? DEFAULT_PROFILE_IMAGES.TEACHER
+                : user?.gender === 'Perempuan' ? DEFAULT_PROFILE_IMAGES.STUDENT_FEMALE
+                : DEFAULT_PROFILE_IMAGES.STUDENT_MALE
+              )}
+              alt={user?.fullName || 'Foto Profil'}
+              className="w-9 h-9 sm:w-10 sm:h-10 rounded-full object-cover border-2 border-white/40 shadow-md flex-shrink-0"
+              onError={(e) => {
+                const img = e.target as HTMLImageElement;
+                const fallback = user?.role === 'admin' ? DEFAULT_PROFILE_IMAGES.ADMIN
+                  : user?.role === 'teacher' ? DEFAULT_PROFILE_IMAGES.TEACHER
+                  : user?.gender === 'Perempuan' ? DEFAULT_PROFILE_IMAGES.STUDENT_FEMALE
+                  : DEFAULT_PROFILE_IMAGES.STUDENT_MALE;
+                if (img.src !== window.location.origin + fallback) img.src = fallback;
+              }}
+            />
             <button
               onClick={onLogout}
               className="bg-white/10 backdrop-blur-sm border border-white/20 text-white font-bold py-2 px-3 sm:px-4 rounded-lg hover:bg-white/20 transition-all duration-300 flex items-center space-x-2 shadow-sm"

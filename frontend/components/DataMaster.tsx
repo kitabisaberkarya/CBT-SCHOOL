@@ -13,7 +13,7 @@ interface DataMasterProps {
   isDemoMode?: boolean;
 }
 
-type ActiveTab = 'classes' | 'majors' | 'examTypes';
+type ActiveTab = 'classes' | 'majors';
 
 const cardColors = [
   'from-blue-500 to-purple-600',
@@ -39,7 +39,7 @@ const DataMaster: React.FC<DataMasterProps> = ({ masterData, users, onAddItem, o
   const [itemToDelete, setItemToDelete] = useState<MasterDataItem | null>(null);
 
   const data = masterData[activeTab];
-  const tabTitle = activeTab === 'classes' ? 'Kelas' : activeTab === 'majors' ? 'Jurusan' : 'Kategori Ujian';
+  const tabTitle = activeTab === 'classes' ? 'Kelas' : 'Jurusan';
 
   const filteredData = useMemo(() => {
     if (!searchTerm) return data;
@@ -47,7 +47,6 @@ const DataMaster: React.FC<DataMasterProps> = ({ masterData, users, onAddItem, o
   }, [data, searchTerm]);
 
   const getStudentCount = (itemName: string) => {
-    if (activeTab === 'examTypes') return 0;
     const key = activeTab === 'classes' ? 'class' : 'major';
     const normalizedItem = itemName.trim();
     return users.filter(u =>
@@ -64,7 +63,7 @@ const DataMaster: React.FC<DataMasterProps> = ({ masterData, users, onAddItem, o
         else newSet.add(item.id);
         return newSet;
       });
-    } else if (activeTab !== 'examTypes') {
+    } else {
       const key = activeTab === 'classes' ? 'class' : 'major';
       const associatedUsers = users.filter(u => u[key] === item.name);
       setPreviewUserList({ title: `${tabTitle}: ${item.name}`, users: associatedUsers });
@@ -124,7 +123,6 @@ const DataMaster: React.FC<DataMasterProps> = ({ masterData, users, onAddItem, o
             <nav className="-mb-px flex space-x-8 px-6">
               <button onClick={() => { setActiveTab('classes'); setSearchTerm(''); }} className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'classes' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Manajemen Kelas</button>
               <button onClick={() => { setActiveTab('majors'); setSearchTerm(''); }} className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'majors' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Manajemen Jurusan</button>
-              <button onClick={() => { setActiveTab('examTypes'); setSearchTerm(''); }} className={`whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm ${activeTab === 'examTypes' ? 'border-blue-500 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>Kategori Ujian</button>
             </nav>
           </div>
           <div className="p-4 bg-gray-50/50 border-b flex flex-col sm:flex-row gap-4 justify-between items-center">
@@ -161,7 +159,7 @@ const DataMaster: React.FC<DataMasterProps> = ({ masterData, users, onAddItem, o
                 >
                   {isSelectionMode && <input type="checkbox" checked={selectedItems.has(item.id)} readOnly className="absolute top-3 right-3 h-5 w-5 rounded text-blue-600 focus:ring-blue-500 bg-white border-gray-300"/>}
                   <h3 className="font-bold text-xl truncate">{item.name}</h3>
-                  {activeTab !== 'examTypes' && <p className="text-sm opacity-80">{getStudentCount(item.name)} Siswa</p>}
+                  <p className="text-sm opacity-80">{getStudentCount(item.name)} Siswa</p>
                   {!isSelectionMode && !isDemoMode && (
                     <div className="mt-3 pt-3 border-t border-white/30 flex space-x-2 text-sm">
                       <button onClick={(e) => { e.stopPropagation(); setEditingItem(item); setNewItemName(item.name); setNewItemKkm(item.kkm ?? 75); setIsAddEditModalOpen(true); }} className="font-semibold opacity-80 hover:opacity-100 hover:underline">Edit</button>

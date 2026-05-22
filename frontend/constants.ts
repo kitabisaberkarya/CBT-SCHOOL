@@ -51,29 +51,39 @@ const getStorageUrl = (bucket: string, file: string): string => {
 };
 
 /**
- * Default profile images — menggunakan file PNG dari storage Supabase.
- * File tersedia di bucket 'avatars': admin.png, guru.png, boy.png, girl.png
+ * Default profile images — menggunakan file PNG lokal di /assets/.
+ * File bersumber dari /root/Pictures/Foto_Profile/ yang dicopy ke dist/assets/.
+ * Tersedia offline via nginx tanpa bergantung Supabase Storage atau internet.
  *
- * Catatan: Jika sekolah upload foto via admin dashboard,
- * foto tersebut disimpan di Supabase Storage (self-hosted di VHD)
- * dan tetap tersedia offline via LAN.
+ * Fallback chain: /assets/profile_xxx.png → Supabase Storage → SVG inline
  */
 export const DEFAULT_PROFILE_IMAGES = {
-  // Admin — dari avatars/admin.png
-  ADMIN: getStorageUrl('avatars', 'admin.png'),
+  // Admin — dari /root/Pictures/Foto_Profile/admin.png
+  ADMIN: '/assets/profile_admin.png',
 
-  // Siswa Laki-laki — dari avatars/boy.png
-  STUDENT_MALE: getStorageUrl('avatars', 'boy.png'),
+  // Siswa Laki-laki — dari /root/Pictures/Foto_Profile/boy.png
+  STUDENT_MALE: '/assets/profile_boy.png',
 
-  // Siswa Perempuan — dari avatars/girl.png
-  STUDENT_FEMALE: getStorageUrl('avatars', 'girl.png'),
+  // Siswa Perempuan — dari /root/Pictures/Foto_Profile/girl.png
+  STUDENT_FEMALE: '/assets/profile_girl.png',
 
-  // Siswa Netral / Default — dari avatars/boy.png
-  STUDENT_NEUTRAL: getStorageUrl('avatars', 'boy.png'),
+  // Siswa Netral / Default
+  STUDENT_NEUTRAL: '/assets/profile_boy.png',
 
-  // Guru — dari avatars/guru.png
-  TEACHER: getStorageUrl('avatars', 'guru.png'),
+  // Guru — dari /root/Pictures/Foto_Profile/guru.png
+  TEACHER: '/assets/profile_guru.png',
+
+  // SVG fallback (digunakan via onError jika file PNG tidak ada)
+  FALLBACK_ADMIN:   makeAvatarSvg('#3730a3', 'A', 'admin'),
+  FALLBACK_STUDENT: makeAvatarSvg('#0284c7', 'S', 'person'),
+  FALLBACK_TEACHER: makeAvatarSvg('#065f46', 'G', 'teacher'),
 };
+
+/**
+ * Logo sekolah default — dari /root/Pictures/Logo_Sekolah/KEMENDIKBUD.png
+ * File dicopy ke dist/assets/KEMENDIKBUD.png dan bisa diakses via /assets/KEMENDIKBUD.png
+ */
+export const DEFAULT_LOGO_URL = '/assets/KEMENDIKBUD.png';
 
 // ==============================================================================
 //  EXAM EVENT TYPES
@@ -136,6 +146,6 @@ export const COGNITIVE_LEVEL_LABELS: Record<string, string> = {
 //  APP META
 // ==============================================================================
 
-export const APP_VERSION  = '4.0.0';
+export const APP_VERSION  = '4.1.8a.150526.0800';
 export const APP_NAME     = 'CBT School Enterprise';
 export const APP_EDITION  = 'VHD Offline Edition 2026';

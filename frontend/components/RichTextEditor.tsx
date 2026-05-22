@@ -85,22 +85,40 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
 
   const insertMathHtml = useCallback((html: string) => {
     restoreAndFocus();
-    document.execCommand('insertHTML', false, html);
-    handleInput();
-    // ── FIX KURSOR: Setelah insertHTML, collapse selection ke ujung konten yang disisipkan.
-    // Template mengandung &#x200B; (zero-width space) di ujungnya sebagai anchor kursor.
-    // Browser secara natural menempatkan kursor setelah karakter terakhir yang disisipkan.
-    requestAnimationFrame(() => {
-      const sel = window.getSelection();
-      if (sel && sel.rangeCount > 0) {
-        const range = sel.getRangeAt(0);
-        range.collapse(false); // Pastikan kursor di ujung konten yang baru disisipkan
+
+    // ── Gunakan Range API (bukan execCommand insertHTML) agar tidak ada
+    // wrapper <div>/<p> yang otomatis ditambahkan browser, yang menyebabkan
+    // rumus tampil sebagai blok baru (bukan inline di samping teks). ──────
+    const sel = window.getSelection();
+    if (sel && sel.rangeCount > 0) {
+      const range = sel.getRangeAt(0);
+      range.deleteContents();
+
+      // Parse HTML via <template> — hasilnya adalah fragment murni tanpa wrapper
+      const tpl = document.createElement('template');
+      tpl.innerHTML = html;
+      const fragment = tpl.content.cloneNode(true) as DocumentFragment;
+
+      // Simpan referensi node terakhir untuk posisi kursor setelah insert
+      const lastNode = fragment.lastChild;
+      range.insertNode(fragment);
+
+      // Pindahkan kursor tepat setelah konten yang baru disisipkan
+      if (lastNode) {
+        const newRange = document.createRange();
+        newRange.setStartAfter(lastNode);
+        newRange.collapse(true);
         sel.removeAllRanges();
-        sel.addRange(range);
-        savedSelectionRef.current = range.cloneRange();
+        sel.addRange(newRange);
+        savedSelectionRef.current = newRange.cloneRange();
       }
-    });
-  }, [restoreAndFocus, saveSelection]);
+    } else {
+      // Fallback jika tidak ada selection aktif
+      document.execCommand('insertHTML', false, html);
+    }
+
+    handleInput();
+  }, [restoreAndFocus]);
 
   const handleSuperscript = useCallback(() => {
     restoreAndFocus();
@@ -363,11 +381,14 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
 
         /* ── Math formula atoms (contenteditable=false) ── */
         /* Kursor bisa diposisikan sebelum/sesudah formula dengan keyboard arrows */
+        /* pointer-events: none → klik diteruskan ke editor parent sehingga
+           browser tidak memindahkan fokus ke elemen lain (mis. editor opsi jawaban) */
         .prose [contenteditable="false"] {
           user-select: none;
           -webkit-user-select: none;
-          cursor: default;
+          cursor: text;
           display: inline;
+          pointer-events: none;
         }
         /* Zero-width space setelah formula tidak tampak, tapi jadi anchor kursor */
         .prose [contenteditable="false"] + :empty::before { display: none; }

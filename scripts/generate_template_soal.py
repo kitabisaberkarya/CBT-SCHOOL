@@ -462,82 +462,134 @@ t = make_main_table(doc)
 add_header_row(t)
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# SOAL 1 — PG BIASA (dengan gambar)
+# PG BIASA — 3 contoh (1 dengan gambar, 1 tanpa gambar, 1 dengan URL media)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 add_separator(t, '1 — PG BIASA (Pilihan Ganda)  |  Isi KUNCI = V pada satu jawaban yang benar')
+
+# Soal 1 — PG dengan gambar
 img1 = make_photo_placeholder(320, 160, 'Gambar Soal Pertanyaan 1')
 add_soal_row(t, 1,
     'Perhatikan gambar di samping. Proses yang ditunjukkan gambar tersebut disebut ...',
     'PG', '93C5FD', with_image=True, image_buf=img1)
-options1 = [('A','Fotosintesis',False),('B','Respirasi',False),('C','Transpirasi',True),('D','Fermentasi',False),('E','Katabolisme',False)]
-for opsi, jwb, correct in options1:
+for opsi, jwb, correct in [('A','Fotosintesis',False),('B','Respirasi',False),('C','Transpirasi',True),('D','Fermentasi',False),('E','Katabolisme',False)]:
     add_option_row(t, 1, opsi, jwb, 'V' if correct else '', is_correct=correct)
 
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# SOAL 2 — PG BIASA (tanpa gambar)
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Soal 2 — PG tanpa gambar
 add_soal_row(t, 2,
     'Negara Indonesia memproklamasikan kemerdekaannya pada tanggal ...',
     'PG', '93C5FD')
-options2 = [('A','17 Agustus 1945',True),('B','1 Juni 1945',False),('C','28 Oktober 1928',False),('D','22 Juni 1945',False)]
-for opsi, jwb, correct in options2:
+for opsi, jwb, correct in [('A','17 Agustus 1945',True),('B','1 Juni 1945',False),('C','28 Oktober 1928',False),('D','22 Juni 1945',False)]:
     add_option_row(t, 2, opsi, jwb, 'V' if correct else '', is_correct=correct)
 
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# SOAL 3 — PG KOMPLEKS (lebih dari 1 jawaban benar)
-# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-add_separator(t, '2 — PG KOMPLEKS (Pilihan Ganda)  |  Bisa lebih dari 1 jawaban benar  |  KUNCI = V pada semua yang benar')
+# Soal 3 — PG dengan URL media audio (tulis URL di teks soal)
+img_audio = make_photo_placeholder(320, 100, 'Audio: Dengarkan rekaman')
 add_soal_row(t, 3,
-    'Manakah pernyataan berikut yang BENAR mengenai sel? (Pilih semua yang benar)',
-    'PG+', 'C4B5FD')
-options3 = [('A','Sel adalah unit terkecil kehidupan',True),('B','Semua sel memiliki dinding sel',False),('C','Sel memiliki membran plasma',True),('D','Virus tergolong sel prokariot',False),('E','Mitokondria adalah organel sel eukariot',True)]
-for opsi, jwb, correct in options3:
+    'Dengarkan rekaman audio berikut!\nMEDIA: https://example.com/audio/soal3.mp3\nAlat musik apakah yang paling dominan terdengar dalam rekaman tersebut?',
+    'PG', '93C5FD', with_image=True, image_buf=img_audio)
+for opsi, jwb, correct in [('A','Gitar akustik',False),('B','Piano',False),('C','Biola',True),('D','Suling bambu',False),('E','Drum',False)]:
     add_option_row(t, 3, opsi, jwb, 'V' if correct else '', is_correct=correct)
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# SOAL 4 — BENAR / SALAH
+# PG KOMPLEKS — 3 contoh (1 biasa, 1 dengan gambar, 1 biasa)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+add_separator(t, '2 — PG KOMPLEKS (Pilihan Ganda)  |  Bisa lebih dari 1 jawaban benar  |  KUNCI = V pada semua yang benar')
+
+# Soal 4 — PG Kompleks biasa
+add_soal_row(t, 4,
+    'Manakah pernyataan berikut yang BENAR mengenai sel? (Pilih semua yang benar)',
+    'PG+', 'C4B5FD')
+for opsi, jwb, correct in [('A','Sel adalah unit terkecil kehidupan',True),('B','Semua sel memiliki dinding sel',False),('C','Sel memiliki membran plasma',True),('D','Virus tergolong sel prokariot',False),('E','Mitokondria adalah organel sel eukariot',True)]:
+    add_option_row(t, 4, opsi, jwb, 'V' if correct else '', is_correct=correct)
+
+# Soal 5 — PG Kompleks dengan gambar
+img5 = make_photo_placeholder(320, 160, 'Gambar Diagram Sistem Tata Surya')
+add_soal_row(t, 5,
+    'Perhatikan gambar sistem tata surya berikut!\nMEDIA: https://example.com/img/tata-surya.jpg\nManakah yang termasuk planet dalam (inner planet)? (Pilih semua yang benar)',
+    'PG+', 'C4B5FD', with_image=True, image_buf=img5)
+for opsi, jwb, correct in [('A','Merkurius',True),('B','Venus',True),('C','Bumi',True),('D','Mars',True),('E','Jupiter',False)]:
+    add_option_row(t, 5, opsi, jwb, 'V' if correct else '', is_correct=correct)
+
+# Soal 6 — PG Kompleks biasa
+add_soal_row(t, 6,
+    'Pernyataan manakah yang BENAR tentang Hukum Newton? (Pilih semua yang benar)',
+    'PG+', 'C4B5FD')
+for opsi, jwb, correct in [('A','Hukum I: Benda diam tetap diam jika tidak ada gaya luar',True),('B','Hukum II: F = m x a',True),('C','Hukum III: Aksi = Reaksi dengan arah yang SAMA',False),('D','Hukum II: F = m / a',False),('E','Hukum I disebut Hukum Kelembaman',True)]:
+    add_option_row(t, 6, opsi, jwb, 'V' if correct else '', is_correct=correct)
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# BENAR / SALAH — 3 contoh
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 add_separator(t, '3 — BENAR / SALAH  |  Isi KUNCI = V pada kolom BENAR atau SALAH yang benar')
-add_tf_row(t, 4, 'Matahari terbit dari arah timur.', 'B')
-add_tf_row(t, 5, 'Bumi berputar mengelilingi bulan.', 'S')
-add_tf_row(t, 6, 'Air mendidih pada suhu 100°C pada tekanan normal.', 'B')
+add_tf_row(t, 7,  'Matahari terbit dari arah timur.', 'B')
+add_tf_row(t, 8,  'Bumi berputar mengelilingi bulan.', 'S')
+add_tf_row(t, 9,  'Air mendidih pada suhu 100°C pada tekanan normal di permukaan laut.', 'B')
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# SOAL 5 — MENJODOHKAN
+# MENJODOHKAN — 3 contoh set
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-add_separator(t, '4 — MENJODOHKAN  |  Kolom KUNCI diisi huruf pasangan yang sesuai (A, B, C, ...)')
-pasangan = [
-    ('A', 'Soekarno',      'Presiden pertama RI'),
+add_separator(t, '4 — MENJODOHKAN  |  Kolom JAWABAN = item kiri, Kolom KUNCI = pasangan kanan yang sesuai')
+
+# Set 10 — Menjodohkan pahlawan nasional
+for i, (opsi, kiri, kanan) in enumerate([
+    ('A', 'Soekarno',           'Presiden pertama RI'),
     ('B', 'Ki Hajar Dewantara', 'Bapak Pendidikan Nasional'),
-    ('C', 'R.A. Kartini',  'Pahlawan emansipasi wanita'),
-    ('D', 'Imam Bonjol',   'Pahlawan dari Sumatera Barat'),
-]
-for i, (opsi, kiri, kanan) in enumerate(pasangan):
-    add_matching_pair(t, str(7), kiri, kanan, opsi, is_first=(i==0))
+    ('C', 'R.A. Kartini',       'Pahlawan emansipasi wanita'),
+    ('D', 'Imam Bonjol',        'Pahlawan dari Sumatera Barat'),
+]):
+    add_matching_pair(t, '10', kiri, kanan, opsi, is_first=(i==0))
+
+# Set 11 — Menjodohkan rumus fisika dan nama hukumnya
+for i, (opsi, kiri, kanan) in enumerate([
+    ('A', 'F = m x a',    'Hukum Newton II'),
+    ('B', 'E = mc2',      'Teori Relativitas Einstein'),
+    ('C', 'PV = nRT',     'Hukum Gas Ideal'),
+    ('D', 'a2+b2 = c2',   'Teorema Pythagoras'),
+]):
+    add_matching_pair(t, '11', kiri, kanan, opsi, is_first=(i == 0))
+
+# Set 12 — Menjodohkan negara dan ibu kota
+for i, (opsi, kiri, kanan) in enumerate([
+    ('A', 'Indonesia',        'Jakarta'),
+    ('B', 'Jepang',           'Tokyo'),
+    ('C', 'Amerika Serikat',  'Washington D.C.'),
+    ('D', 'Australia',        'Canberra'),
+    ('E', 'Brazil',           'Brasilia'),
+]):
+    add_matching_pair(t, '12', kiri, kanan, opsi, is_first=(i==0))
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# SOAL 6 — ESAI
+# ESAI / URAIAN — 3 contoh
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 add_separator(t, '5 — ESAI / URAIAN  |  Kolom JAWABAN = rubrik/kunci jawaban. Kolom KUNCI = skor maksimum (angka)')
-add_essay_row(t, 8,
-    'Jelaskan pengertian Pancasila dan sebutkan 5 silanya!',
+
+add_essay_row(t, 13,
+    'Jelaskan pengertian Pancasila dan sebutkan 5 silanya beserta lambangnya!',
     'ESAI', 'FEF3C7',
-    'Pancasila adalah dasar negara Indonesia yang terdiri dari 5 sila:\n'
-    '1. Ketuhanan YME\n2. Kemanusiaan\n3. Persatuan\n4. Kerakyatan\n5. Keadilan Sosial.\n'
-    '(Skor: 2 poin per sila + 2 poin definisi)')
-add_essay_row(t, 9,
-    'Hitunglah luas persegi panjang dengan panjang 12 cm dan lebar 8 cm, serta jelaskan caranya!',
+    'Pancasila adalah dasar negara Indonesia. 5 sila:\n'
+    '1. Ketuhanan YME (bintang)\n2. Kemanusiaan yang adil (rantai)\n'
+    '3. Persatuan Indonesia (pohon beringin)\n4. Kerakyatan (kepala banteng)\n5. Keadilan Sosial (padi & kapas).\n'
+    'Rubrik: definisi (2), masing-masing sila+lambang (8).')
+
+add_essay_row(t, 14,
+    'Tonton video eksperimen berikut, kemudian analisislah permasalahan yang terjadi!\nMEDIA: https://example.com/video/eksperimen-kimia.mp4',
     'ESAI', 'FEF3C7',
-    'L = p × l = 12 × 8 = 96 cm².\nRubrik: rumus benar (4), perhitungan benar (4), satuan benar (2).')
+    'Rubrik penilaian:\n- Identifikasi masalah (3 poin)\n- Analisis penyebab (3 poin)\n- Solusi yang tepat (4 poin)\nTotal: 10 poin')
+
+add_essay_row(t, 15,
+    'Hitunglah luas persegi panjang dengan panjang 12 cm dan lebar 8 cm, serta jelaskan caranya step by step!',
+    'ESAI', 'FEF3C7',
+    'L = p × l = 12 × 8 = 96 cm².\nRubrik: penulisan rumus benar (3), substitusi nilai (3), hasil & satuan benar (4).')
 
 # ─── CATATAN BAWAH ────────────────────────────────────────────────────────────
 fn = doc.add_paragraph()
 pspacing(fn, 120, 0)
 fn.alignment = WD_ALIGN_PARAGRAPH.LEFT
 run_text(fn,
-    'CATATAN:  Kolom JENIS otomatis terdeteksi saat import. '
-    'Nilai di kolom KUNCI: V = benar (PG), huruf pasangan (Menjodohkan), angka skor (Esai). '
-    'Hapus baris CONTOH di atas dan ganti dengan soal Anda sendiri.',
+    'CATATAN:  Template ini berisi 15 contoh soal (3 per jenis). '
+    'Hapus semua baris contoh dan ganti dengan soal Anda. '
+    'Untuk soal bergambar: sisipkan gambar langsung di sel SOAL. '
+    'Untuk soal audio/video: tulis URL media di teks soal dengan format  MEDIA: https://... '
+    'Nilai KUNCI: V = benar (PG/B-S), teks pasangan (Menjodohkan), angka skor (Esai).',
     'Calibri', 8, False, True, hx('64748B'))
 
 # ─── SIMPAN ───────────────────────────────────────────────────────────────────

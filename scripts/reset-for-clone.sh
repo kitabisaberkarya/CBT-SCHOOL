@@ -172,6 +172,22 @@ fi
 rm -rf /tmp/cbt-auto-updater-* /tmp/cbt-updater* 2>/dev/null || true
 log "Temp files dibersihkan."
 
+# ── 8. RESET FIRST-BOOT MARKER (WAJIB untuk credentials unik per sekolah) ────
+sep
+info "8. Reset first-boot marker agar setiap sekolah mendapat credentials unik..."
+
+# Hapus marker — agar cbt-first-boot.service jalan di setiap salinan VDI
+rm -f /opt/cbt-enterprise/.vhd-initialized 2>/dev/null && \
+  log "Marker first-boot dihapus. Setiap salinan VDI akan generate credentials unik saat pertama nyala." || \
+  log "Marker tidak ada (sudah bersih)."
+
+# Hapus credentials lama milik mesin ini agar tidak ikut tersalin ke VDI sekolah
+rm -f /root/.cbt-credentials.txt 2>/dev/null && \
+  log "File credentials lama dihapus." || true
+
+# Hapus log first-boot lama
+truncate -s 0 /var/log/cbt-first-boot.log 2>/dev/null || true
+
 # ── RINGKASAN ─────────────────────────────────────────────────
 echo ""
 sep
@@ -188,6 +204,8 @@ echo "  4. Jika sudah tampil halaman aktivasi → VHD aman untuk dikloning"
 echo ""
 echo -e "${BLUE}Setelah clone ke sekolah:${NC}"
 echo "  - Ubah IP VHD di pengaturan VirtualBox sesuai jaringan sekolah"
+echo "  - Saat VDI pertama kali dinyalakan → credentials DB unik otomatis digenerate"
+echo "  - Admin sekolah bisa lihat credentials di: /root/.cbt-credentials.txt"
 echo "  - Aktifkan lisensi sekolah via panel admin"
 echo "  - Auto-updater akan cek update otomatis setiap 6 jam"
 echo ""

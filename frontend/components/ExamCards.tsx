@@ -1,7 +1,8 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { User, AppConfig } from '../types';
-import html2pdf from 'html2pdf.js';
+import html2canvas from 'html2canvas';
+import jsPDF from 'jspdf';
 
 interface ExamCardsProps {
   users: User[];
@@ -35,6 +36,7 @@ const ExamCards: React.FC<ExamCardsProps> = ({ users, config }) => {
   const [rowsPerPage, setRowsPerPage] = useState(12); 
 
   const printRef = useRef<HTMLDivElement>(null);
+  const pdfRenderRef = useRef<HTMLDivElement>(null);
 
   const studentUsers = useMemo(() => {
     if (!users) return [];
@@ -84,87 +86,170 @@ const ExamCards: React.FC<ExamCardsProps> = ({ users, config }) => {
       return `${year - 1}/${year}`;
   }, [safeConfig.academicYear]);
 
+  const renderCard = (user: User) => (
+    <div key={user.id} className="page-break-inside-avoid card-item" style={{ width: '100%', height: '70mm', border: '1px solid #000', position: 'relative', overflow: 'hidden', display: 'flex', flexDirection: 'column', fontFamily: 'sans-serif', backgroundColor: '#fff', margin: '0 auto' }}>
+      <div style={{ position: 'absolute', top: '0', right: '0', width: '40%', height: '8px', backgroundColor: '#1e3a8a' }}></div>
+      <div style={{ position: 'absolute', top: '0', right: '0', width: '8px', height: '40%', backgroundColor: '#1e3a8a' }}></div>
+      <div style={{ position: 'absolute', bottom: '0', left: '0', width: '40%', height: '8px', backgroundColor: '#dc2626' }}></div>
+      <div style={{ position: 'absolute', bottom: '0', left: '0', width: '8px', height: '40%', backgroundColor: '#dc2626' }}></div>
+      <div style={{ position: 'absolute', left: '0', top: '15%', bottom: '15%', width: '2px', backgroundColor: '#dc2626' }}></div>
+      <div style={{ position: 'absolute', right: '0', top: '15%', bottom: '15%', width: '2px', backgroundColor: '#1e3a8a' }}></div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 6px 2px 6px', borderBottom: '1px solid #000', width: '100%', boxSizing: 'border-box', position: 'relative', zIndex: 2, backgroundColor: '#fff' }}>
+        <div style={{ width: '32px', height: '32px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          {safeConfig.leftLogoUrl && (<img src={safeConfig.leftLogoUrl} alt="Kab" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />)}
+        </div>
+        <div style={{ textAlign: 'center', flex: 1, minWidth: 0, padding: '0 2px', overflow: 'hidden' }}>
+          <div style={{ fontSize: '5.5px', fontWeight: 'bold', textTransform: 'uppercase', lineHeight: '1.2', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{safeConfig.kopHeader1}</div>
+          <div style={{ fontSize: '5.5px', fontWeight: 'bold', textTransform: 'uppercase', lineHeight: '1.2', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{safeConfig.kopHeader2}</div>
+          <div style={{ fontSize: '6.5px', fontWeight: '900', textTransform: 'uppercase', color: '#000', marginTop: '1px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{safeConfig.schoolName}</div>
+          <div style={{ fontSize: '5px', fontWeight: 'bold', marginTop: '1px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{safeConfig.currentExamEvent}</div>
+        </div>
+        <div style={{ width: '32px', height: '32px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          {safeConfig.logoUrl ? (<img src={safeConfig.logoUrl} alt="Sekolah" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />) : (<div style={{fontSize:'6px', fontWeight:'bold'}}>LOGO</div>)}
+        </div>
+      </div>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', marginTop: '2px', marginBottom: '2px' }}>
+        <div style={{ border: '2px solid black', padding: '2px', backgroundColor: 'white', width: '55px', height: '55px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <img src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=cbtauth::student::${user.nisn}::${user.password_text || user.nisn}&qzone=0`} alt="QR" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+        </div>
+        <div style={{ color: '#1e3a8a', fontWeight: '900', fontSize: '9px', marginTop: '3px', textTransform: 'uppercase', maxWidth: '90%', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textAlign: 'center' }}>{user.fullName}</div>
+        <div style={{ backgroundColor: '#dc2626', color: 'white', padding: '1px 6px', fontWeight: 'bold', fontSize: '7px', borderRadius: '2px', marginTop: '2px' }}>{user.class} | {user.nisn}</div>
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', padding: '0 12px 10px 12px', position: 'relative', zIndex: 3 }}>
+        <div style={{ fontSize: '7px', fontWeight: '700', color: '#000', lineHeight: '1.3', zIndex: 3, position: 'relative' }}>
+          <div>User : <span style={{fontFamily:'monospace'}}>{user.nisn}</span></div>
+          <div>Pass : <span style={{fontFamily:'monospace'}}>{user.password_text || user.nisn}</span></div>
+        </div>
+        <div style={{ textAlign: 'center', fontSize: '6px', width: '45%', position: 'relative', zIndex: 3 }}>
+          <div style={{marginBottom: '2px'}}>{safeConfig.cardIssueDate}</div>
+          <div style={{ fontWeight: 'bold', marginBottom: '2px' }}>Kepala Sekolah,</div>
+          <div style={{height: '36px', position: 'relative', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
+            {safeConfig.stampUrl && (
+              <img src={safeConfig.stampUrl} alt="Stamp" style={{ position: 'absolute', left: '-4px', top: '50%', transform: 'translateY(-50%)', width: '38px', height: '38px', objectFit: 'contain', opacity: 0.85, zIndex: 1 }} />
+            )}
+            {safeConfig.signatureUrl && (
+              <img src={safeConfig.signatureUrl} alt="Sig" style={{ height: '32px', maxWidth: '100%', objectFit: 'contain', position: 'relative', zIndex: 2 }} />
+            )}
+          </div>
+          <div style={{ fontWeight: 'bold', fontSize: '6px', textDecoration: 'underline', marginTop: '1px' }}>{safeConfig.headmasterName}</div>
+          <div style={{ fontSize: '5px' }}>{safeConfig.headmasterNip}</div>
+        </div>
+      </div>
+    </div>
+  );
+
   const handleDownloadPDF = async () => {
-    if (!printRef.current) return;
-    
-    const scrollPos = window.scrollY;
-    window.scrollTo(0, 0); 
+    if (!pdfRenderRef.current) return;
     setIsProcessing(true);
 
+    const sandbox = document.createElement('div');
     try {
-        const A4_WIDTH_PX = 794; 
-        const F4_WIDTH_PX = 816; 
-        const targetWidthPx = paperSize === 'A4' ? A4_WIDTH_PX : F4_WIDTH_PX;
-        
-        const content = printRef.current.cloneNode(true) as HTMLElement;
+      const PAGE_W_MM  = paperSize === 'A4' ? 210 : 215;
+      const PAGE_H_MM  = paperSize === 'A4' ? 297 : 330;
+      const PAD_MM     = 8;
+      const CARD_H_MM  = 70;
+      const GAP_MM     = 4;
+      const SCALE      = 2;
+      const PX_PER_MM  = 3.7795275591;
+      const pageWPx    = Math.round(PAGE_W_MM * PX_PER_MM);
+      const pageHPx    = Math.round(PAGE_H_MM * PX_PER_MM);
 
-        content.style.transform = 'none'; 
-        content.style.width = '100%'; 
-        content.style.margin = '0 auto'; 
-        content.style.padding = '10mm 5mm 5mm 15mm'; 
-        content.style.boxSizing = 'border-box';
-        content.removeAttribute('id'); 
+      // Smart row-boundary constants (canvas pixels after SCALE)
+      const pxPerMM_c  = PX_PER_MM * SCALE;
+      const topPadPx   = PAD_MM    * pxPerMM_c;  // top padding of content
+      const cardHPx    = CARD_H_MM * pxPerMM_c;  // card height in canvas px
+      const gapPx      = GAP_MM    * pxPerMM_c;  // gap between rows
+      const rowPitchPx = cardHPx + gapPx;         // distance from one row start to next
 
-        const gridContainer = content.querySelector('.grid-layout-target') as HTMLElement;
-        if (gridContainer) {
-            gridContainer.style.display = 'grid';
-            gridContainer.style.gridTemplateColumns = 'repeat(3, 1fr)'; 
-            gridContainer.style.gap = '4mm'; 
-            gridContainer.style.width = '100%';
+      // Clone the hidden PDF render target (always has ALL filteredUsers)
+      const content = pdfRenderRef.current.cloneNode(true) as HTMLElement;
+      content.style.cssText = `width:${pageWPx}px;padding:${PAD_MM}mm;margin:0;box-sizing:border-box;background:#fff;font-family:sans-serif;`;
+
+      // Allow overflow so footer text is never clipped by card height constraint
+      content.querySelectorAll<HTMLElement>('.card-item').forEach(card => {
+        card.style.overflow = 'visible';
+      });
+
+      sandbox.style.cssText = `position:fixed;top:-99999px;left:0;width:${pageWPx}px;background:#fff;overflow:visible;`;
+      sandbox.appendChild(content);
+      document.body.appendChild(sandbox);
+
+      await Promise.all(
+        Array.from(sandbox.querySelectorAll('img')).map(img =>
+          img.complete && img.naturalHeight !== 0
+            ? Promise.resolve()
+            : new Promise(res => { img.onload = res; img.onerror = res; })
+        )
+      );
+      await new Promise(res => setTimeout(res, 500));
+
+      const fullCanvas = await html2canvas(content, {
+        scale: SCALE,
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: '#ffffff',
+        width: pageWPx,
+        windowWidth: pageWPx,
+        scrollX: 0,
+        scrollY: 0,
+        logging: false,
+      });
+
+      const totalHPx    = fullCanvas.height;
+      const pageHScaled = pageHPx * SCALE;
+
+      // Build page slices cutting ONLY between card rows (never through a row)
+      // cutAfterRow[n] = topPadPx + n * rowPitchPx + cardHPx (right after row n ends)
+      const pages: Array<{ startY: number; endY: number }> = [];
+      let startY = 0;
+      while (startY < totalHPx) {
+        const idealEnd = startY + pageHScaled;
+        if (idealEnd >= totalHPx) {
+          pages.push({ startY, endY: totalHPx });
+          break;
         }
+        // Max row index whose bottom edge fits within idealEnd
+        const maxN = Math.floor((idealEnd - topPadPx - cardHPx) / rowPitchPx);
+        const cutY = maxN >= 0
+          ? Math.max(startY + 1, topPadPx + maxN * rowPitchPx + cardHPx)
+          : idealEnd;
+        pages.push({ startY, endY: cutY });
+        startY = cutY;
+      }
 
-        const sandbox = document.createElement('div');
-        sandbox.style.position = 'absolute';
-        sandbox.style.top = '-10000px';
-        sandbox.style.left = '0';
-        sandbox.style.width = `${targetWidthPx}px`;
-        sandbox.style.backgroundColor = '#ffffff';
-        sandbox.appendChild(content);
-        document.body.appendChild(sandbox);
+      const pdf = new jsPDF({
+        unit: 'mm',
+        format: paperSize === 'A4' ? 'a4' : [PAGE_W_MM, PAGE_H_MM],
+        orientation: 'portrait',
+        compress: true,
+      });
 
-        const images = Array.from(sandbox.querySelectorAll('img'));
-        await Promise.all(images.map(img => {
-            if (img.complete && img.naturalHeight !== 0) return Promise.resolve();
-            return new Promise((resolve) => {
-                img.onload = resolve;
-                img.onerror = resolve;
-                if (!img.complete) img.src = img.src; 
-            });
-        }));
+      for (let i = 0; i < pages.length; i++) {
+        if (i > 0) pdf.addPage();
+        const { startY: pY, endY: pEnd } = pages[i];
+        const srcH    = pEnd - pY;
+        const destHMM = srcH / SCALE / PX_PER_MM;
 
-        await new Promise(resolve => setTimeout(resolve, 800));
+        const pageCanvas  = document.createElement('canvas');
+        pageCanvas.width  = fullCanvas.width;
+        pageCanvas.height = srcH;
+        const ctx = pageCanvas.getContext('2d')!;
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, pageCanvas.width, srcH);
+        ctx.drawImage(fullCanvas, 0, pY, fullCanvas.width, srcH, 0, 0, fullCanvas.width, srcH);
 
-        const filename = `Kartu_Ujian_${classFilter === 'all' ? 'Semua' : classFilter.replace(/\s+/g, '_')}_Page${currentPage}_${new Date().toISOString().slice(0,10)}.pdf`;
+        pdf.addImage(pageCanvas.toDataURL('image/jpeg', 0.95), 'JPEG', 0, 0, PAGE_W_MM, destHMM);
+      }
 
-        const opt = {
-            margin: [5, 5, 5, 5], 
-            filename: filename,
-            image: { type: 'jpeg', quality: 0.98 },
-            html2canvas: { 
-                scale: 2, 
-                useCORS: true, 
-                width: targetWidthPx,
-                windowWidth: targetWidthPx,
-                scrollX: 0,
-                scrollY: 0,
-            },
-            jsPDF: { 
-                unit: 'mm', 
-                format: paperSize === 'A4' ? 'a4' : [215, 330], 
-                orientation: 'portrait' 
-            },
-            pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
-        };
+      const label = classFilter === 'all' ? 'Semua' : classFilter.replace(/\s+/g, '_');
+      pdf.save(`Kartu_Ujian_${label}_${new Date().toISOString().slice(0, 10)}.pdf`);
 
-        await html2pdf().set(opt).from(content).save();
-        document.body.removeChild(sandbox);
-    
     } catch (err) {
-        console.error("PDF Fail:", err);
-        alert("Gagal membuat PDF. Gunakan fitur Print Browser sebagai alternatif.");
+      console.error('PDF Fail:', err);
+      alert('Gagal membuat PDF. Gunakan fitur Print Browser sebagai alternatif.');
     } finally {
-        window.scrollTo(0, scrollPos);
-        setIsProcessing(false);
+      if (sandbox.parentNode) document.body.removeChild(sandbox);
+      setIsProcessing(false);
     }
   };
 
@@ -250,7 +335,7 @@ const ExamCards: React.FC<ExamCardsProps> = ({ users, config }) => {
                         <option value="F4">F4</option>
                     </select>
                 </div>
-                <button onClick={handleDownloadPDF} disabled={displayedUsers.length === 0 || isProcessing} className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-5 rounded-lg shadow-md transition-all disabled:opacity-50"><span>PDF</span></button>
+                <button onClick={handleDownloadPDF} disabled={filteredUsers.length === 0 || isProcessing} className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-5 rounded-lg shadow-md transition-all disabled:opacity-50"><span>PDF</span></button>
                 <button onClick={handlePrint} disabled={displayedUsers.length === 0} className="flex items-center gap-2 bg-white border border-slate-300 text-slate-700 font-bold py-2 px-4 rounded-lg hover:bg-slate-50 transition-all shadow-sm"><span>Print</span></button>
             </div>
         </div>
@@ -289,99 +374,7 @@ const ExamCards: React.FC<ExamCardsProps> = ({ users, config }) => {
             <div id="print-content" ref={printRef} className="print-container" style={{ width: '100%' }}>
                 {displayedUsers.length > 0 ? (
                     <div className="grid-layout-target" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '4mm', width: '100%', boxSizing: 'border-box' }}>
-                        {displayedUsers.map((user) => (
-                            <div key={user.id} className="page-break-inside-avoid card-item" style={{ width: '100%', height: '70mm', border: '1px solid #000', position: 'relative', overflow: 'hidden', display: 'flex', flexDirection: 'column', fontFamily: 'sans-serif', backgroundColor: '#fff', margin: '0 auto' }}>
-                                {/* Decorative Headers */}
-                                <div style={{ position: 'absolute', top: '0', right: '0', width: '40%', height: '8px', backgroundColor: '#1e3a8a' }}></div>
-                                <div style={{ position: 'absolute', top: '0', right: '0', width: '8px', height: '40%', backgroundColor: '#1e3a8a' }}></div>
-                                <div style={{ position: 'absolute', bottom: '0', left: '0', width: '40%', height: '8px', backgroundColor: '#dc2626' }}></div>
-                                <div style={{ position: 'absolute', bottom: '0', left: '0', width: '8px', height: '40%', backgroundColor: '#dc2626' }}></div>
-                                <div style={{ position: 'absolute', left: '0', top: '15%', bottom: '15%', width: '2px', backgroundColor: '#dc2626' }}></div>
-                                <div style={{ position: 'absolute', right: '0', top: '15%', bottom: '15%', width: '2px', backgroundColor: '#1e3a8a' }}></div>
-
-                                {/* HEADER KOP MINI DUAL LOGO */}
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 8px 2px 8px', borderBottom: '1px solid #000' }}>
-                                    {/* Logo Kiri (Kabupaten) */}
-                                    <div style={{ width: '35px', height: '35px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                         {safeConfig.leftLogoUrl && (<img src={safeConfig.leftLogoUrl} alt="Kab" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />)}
-                                    </div>
-                                    
-                                    {/* Teks Tengah */}
-                                    <div style={{ textAlign: 'center', flex: 1, padding: '0 2px' }}>
-                                        <div style={{ fontSize: '6px', fontWeight: 'bold', textTransform: 'uppercase', lineHeight: '1.1' }}>{safeConfig.kopHeader1}</div>
-                                        <div style={{ fontSize: '6px', fontWeight: 'bold', textTransform: 'uppercase', lineHeight: '1.1' }}>{safeConfig.kopHeader2}</div>
-                                        <div style={{ fontSize: '7px', fontWeight: '900', textTransform: 'uppercase', color: '#000', marginTop: '1px' }}>{safeConfig.schoolName}</div>
-                                        <div style={{ fontSize: '5px', fontWeight: 'bold', marginTop: '1px' }}>{safeConfig.currentExamEvent}</div>
-                                    </div>
-
-                                    {/* Logo Kanan (Sekolah) */}
-                                    <div style={{ width: '35px', height: '35px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                         {safeConfig.logoUrl ? (<img src={safeConfig.logoUrl} alt="Sekolah" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />) : (<div style={{fontSize:'6px', fontWeight:'bold'}}>LOGO</div>)}
-                                    </div>
-                                </div>
-
-                                {/* QR Code & Info */}
-                                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', marginTop: '2px', marginBottom: '2px' }}>
-                                    <div style={{ border: '2px solid black', padding: '2px', backgroundColor: 'white', width: '55px', height: '55px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                        <img src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=cbtauth::student::${user.nisn}::${user.password_text || user.nisn}&qzone=0`} alt="QR" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-                                    </div>
-                                    <div style={{ color: '#1e3a8a', fontWeight: '900', fontSize: '9px', marginTop: '3px', textTransform: 'uppercase', maxWidth: '90%', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', textAlign: 'center' }}>{user.fullName}</div>
-                                    <div style={{ backgroundColor: '#dc2626', color: 'white', padding: '1px 6px', fontWeight: 'bold', fontSize: '7px', borderRadius: '2px', marginTop: '2px' }}>{user.class} | {user.nisn}</div>
-                                </div>
-
-                                {/* Footer Info */}
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', padding: '0 12px 6px 12px', position: 'relative', zIndex: 2 }}>
-                                    <div style={{ fontSize: '7px', fontWeight: '700', color: '#000', lineHeight: '1.2' }}>
-                                        <div>User : <span style={{fontFamily:'monospace'}}>{user.nisn}</span></div>
-                                        <div>Pass : <span style={{fontFamily:'monospace'}}>{user.password_text || user.nisn}</span></div>
-                                    </div>
-                                    
-                                    {/* SIGNATURE BLOCK */}
-                                    <div style={{ textAlign: 'center', fontSize: '6px', width: '45%', position: 'relative' }}>
-                                        <div style={{marginBottom: '2px'}}>{safeConfig.cardIssueDate}</div>
-                                        <div style={{ fontWeight: 'bold', marginBottom: '2px' }}>Kepala Sekolah,</div>
-                                        
-                                        {/* Signature & Stamp Overlay Container */}
-                                        <div style={{height: '30px', position: 'relative', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
-                                             {/* Stamp (Stempel) - Overlay Left */}
-                                             {safeConfig.stampUrl && (
-                                                <img 
-                                                    src={safeConfig.stampUrl} 
-                                                    alt="Stamp"
-                                                    style={{ 
-                                                        position: 'absolute', 
-                                                        left: '2px', 
-                                                        top: '50%', 
-                                                        transform: 'translateY(-50%)', 
-                                                        height: '25px', 
-                                                        width: 'auto',
-                                                        opacity: 0.85,
-                                                        zIndex: 1
-                                                    }} 
-                                                />
-                                             )}
-                                             {/* Signature (Tanda Tangan) - Center */}
-                                             {safeConfig.signatureUrl && (
-                                                <img 
-                                                    src={safeConfig.signatureUrl} 
-                                                    alt="Sig"
-                                                    style={{ 
-                                                        height: '28px', 
-                                                        maxWidth: '100%', 
-                                                        objectFit: 'contain', 
-                                                        position: 'relative',
-                                                        zIndex: 2 
-                                                    }} 
-                                                />
-                                             )}
-                                        </div>
-                                        
-                                        <div style={{ fontWeight: 'bold', fontSize: '6px', textDecoration: 'underline', marginTop: '1px' }}>{safeConfig.headmasterName}</div>
-                                        <div style={{ fontSize: '5px' }}>{safeConfig.headmasterNip}</div>
-                                    </div>
-                                </div>
-                            </div>
-                        ))}
+                        {displayedUsers.map((user) => renderCard(user))}
                     </div>
                 ) : (
                     <div className="h-full flex flex-col items-center justify-center text-slate-400">
@@ -391,6 +384,17 @@ const ExamCards: React.FC<ExamCardsProps> = ({ users, config }) => {
             </div>
         </div>
       </div>
+      {/* Hidden PDF render target — always renders ALL filteredUsers for PDF export */}
+      <div
+        ref={pdfRenderRef}
+        aria-hidden="true"
+        style={{ position: 'fixed', left: '-99999px', top: 0, width: paperSize === 'A4' ? '794px' : '813px', padding: '8mm', margin: 0, boxSizing: 'border-box', background: '#fff', fontFamily: 'sans-serif', pointerEvents: 'none' }}
+      >
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '4mm', width: '100%', boxSizing: 'border-box' }}>
+          {filteredUsers.map((user) => renderCard(user))}
+        </div>
+      </div>
+
       <style>{`@media print { .grid-layout-target { display: grid !important; grid-template-columns: repeat(3, 1fr) !important; gap: 4mm !important; page-break-inside: auto; } .card-item { break-inside: avoid; page-break-inside: avoid; margin-bottom: 0 !important; border: 1px solid black !important; } }`}</style>
     </div>
   );

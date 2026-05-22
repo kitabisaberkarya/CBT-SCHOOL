@@ -11,13 +11,13 @@ import BiodataScreen from './screens/BiodataScreen';
 import AdminDashboard from './screens/AdminDashboard';
 import TeacherDashboard from './screens/TeacherDashboard'; // Import Dashboard Guru
 import ProfileErrorScreen from './screens/ProfileErrorScreen';
-import DeviceMismatchModal from './components/DeviceMismatchModal'; 
+import DeviceMismatchModal from './components/DeviceMismatchModal';
 import CopyrightModal from './components/CopyrightModal';
+import LoadingScreen from './components/LoadingScreen';
 import { AppState, Test, User, AppConfig, AvailableExam } from './types';
-import { DEFAULT_PROFILE_IMAGES } from './constants';
+import { DEFAULT_PROFILE_IMAGES, DEFAULT_LOGO_URL } from './constants';
 import { getDeviceId, getDeviceInfo } from './utils/device'; 
 import { useCbtschoolLicense } from './src/hooks/useCbtschoolLicense';
-import UpdateNotification from './src/components/UpdateNotification';
 
 // --- OFFLINE FALLBACK CREDENTIALS (dibaca dari .env.local per VHD instance) ---
 // Sesuaikan .env.local per deployment sekolah. Lihat .env.example untuk panduan.
@@ -30,7 +30,7 @@ const OFFLINE_STUDENT_PASSWORD = import.meta.env.VITE_OFFLINE_STUDENT_PASSWORD |
 
 const DEFAULT_CONFIG: AppConfig = {
   schoolName: 'SEKOLAH KITA BISA BERKARYA',
-  logoUrl: '/storage/v1/object/public/avatars/kemendikbud.png',
+  logoUrl: DEFAULT_LOGO_URL,
   primaryColor: '#2563eb', 
   enableAntiCheat: true,
   antiCheatViolationLimit: 3,
@@ -46,6 +46,7 @@ const DEFAULT_CONFIG: AppConfig = {
   emailDomain: '@namasekolah.sch.id', // Reverted to original to match Auth accounts
   academicYear: '2026/2027',
   timezone: 'Asia/Jakarta', // WIB default
+  examNetworkMode: 'offline', // Default: blokir internet saat ujian
 };
 
 // Helper: pastikan admin/teacher tidak mendapat foto siswa (boy.png / girl.png)
@@ -167,6 +168,10 @@ const App: React.FC = () => {
         if (adminSession) {
             const user: User = JSON.parse(adminSession);
             if (user.role === 'admin') {
+                // Pastikan tidak ada sesi Supabase Auth lama yang memiliki role kosong
+                supabase.auth.signOut({ scope: 'local' }).catch(() => {});
+                // Re-resolve foto admin (cegah foto siswa muncul untuk admin)
+                user.photoUrl = resolveAdminPhoto(user.photoUrl, DEFAULT_PROFILE_IMAGES.ADMIN);
                 setCurrentUser(user);
                 setAppState(AppState.ADMIN_DASHBOARD);
                 setIsAuthLoading(false);
@@ -183,6 +188,9 @@ const App: React.FC = () => {
         if (teacherSession) {
             const user: User = JSON.parse(teacherSession);
             if (user.role === 'teacher') {
+                supabase.auth.signOut({ scope: 'local' }).catch(() => {});
+                // Re-resolve foto guru (cegah foto siswa muncul untuk guru)
+                user.photoUrl = resolveAdminPhoto(user.photoUrl, DEFAULT_PROFILE_IMAGES.TEACHER);
                 setCurrentUser(user);
                 setAppState(AppState.TEACHER_DASHBOARD);
                 setIsAuthLoading(false);
@@ -400,6 +408,7 @@ const App: React.FC = () => {
       school_domain: newConfig.schoolDomain,
       timezone: newConfig.timezone || 'Asia/Jakarta',
       server_ip: newConfig.serverIp || null,
+      exam_network_mode: newConfig.examNetworkMode || 'offline',
     };
 
     try {
@@ -585,7 +594,8 @@ const App: React.FC = () => {
                   return "Password salah. Coba lagi atau hubungi administrator.";
               }
 
-              // Sukses — buat manual session guru
+              // Sukses — buat manual session guru, hapus sesi Auth lama
+              await supabase.auth.signOut({ scope: 'local' });
               const teacherUser: User = {
                   id: dbTeacher.id,
                   username: dbTeacher.username,
@@ -605,6 +615,42 @@ const App: React.FC = () => {
               return "";
           }
       } catch(e: any) {
+          // DB tidak tersedia — lanjut ke Supabase Auth
+      }
+
+      // ADMIN: Coba lookup DB dulu (untuk mendukung qr_login_password)
+      try {
+          const { data: dbAdmin } = await supabase
+              .from('users')
+              .select('*')
+              .eq('username', email.toLowerCase().trim())
+              .eq('role', 'admin')
+              .maybeSingle();
+
+          if (dbAdmin) {
+              const qrPass = dbAdmin.qr_login_password || dbAdmin.password_text;
+              if (qrPass && password.trim() === qrPass) {
+                  // Hapus sesi Supabase Auth lama dari localStorage agar tidak dipakai untuk DB request
+                  await supabase.auth.signOut({ scope: 'local' });
+                  const adminUser: User = {
+                      id: dbAdmin.id,
+                      username: dbAdmin.username,
+                      fullName: dbAdmin.full_name || 'Administrator',
+                      nisn: dbAdmin.nisn || 'admin',
+                      class: 'Admin', major: 'System',
+                      religion: dbAdmin.religion || 'Islam',
+                      gender: dbAdmin.gender || 'Laki-laki',
+                      role: 'admin',
+                      photoUrl: resolveAdminPhoto(dbAdmin.photo_url, DEFAULT_PROFILE_IMAGES.ADMIN),
+                  };
+                  sessionStorage.setItem('cbt_admin_session', JSON.stringify(adminUser));
+                  setCurrentUser(adminUser);
+                  setAppState(AppState.ADMIN_DASHBOARD);
+                  setIsAuthLoading(false);
+                  return "";
+              }
+          }
+      } catch(e) {
           // DB tidak tersedia — lanjut ke Supabase Auth
       }
 
@@ -666,13 +712,13 @@ const App: React.FC = () => {
 
   if (isConfigLoading || isAuthLoading) {
     return (
-        <div className="h-screen w-full flex flex-col items-center justify-center text-gray-600 bg-gray-50 p-4 text-center">
-            <svg className="animate-spin h-10 w-10 text-blue-600 mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
-            <p className="animate-pulse text-lg mb-4">Sedang memuat aplikasi ujian...</p>
-        </div>
+      <LoadingScreen
+        message="Memuat aplikasi ujian..."
+        subMessage="Menyiapkan sistem CBT"
+        logoUrl={config?.logoUrl}
+        primaryColor={config?.primaryColor || '#2563eb'}
+        schoolName={config?.schoolName}
+      />
     );
   }
   
@@ -680,7 +726,6 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen w-full antialiased flex flex-col">
-      <UpdateNotification />
       <main className="flex-grow flex flex-col">
         {(() => {
           // Safety fallback: Jika config belum siap (sangat jarang karena ada spinner), jangan render

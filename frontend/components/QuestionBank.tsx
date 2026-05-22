@@ -190,8 +190,10 @@ const QuestionBank: React.FC<QuestionBankProps> = ({ tests, onAddQuestion, onUpd
               <div className="min-w-[200px] flex gap-2">
                   <select value={filterExamType} onChange={(e) => setFilterExamType(e.target.value)} className="w-full pl-3 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white shadow-sm">
                       <option value="all">Semua Kategori</option>
-                      <option value="Umum">Umum</option>
-                      {EXAM_EVENT_TYPES.map(type => (<option key={type} value={type}>{type}</option>))}
+                      {(examTypes && examTypes.length > 0
+                        ? examTypes.map(et => <option key={et.id} value={et.name}>{et.name}</option>)
+                        : EXAM_EVENT_TYPES.map(type => <option key={type} value={type}>{type}</option>)
+                      )}
                   </select>
                   <select value={testSortOrder} onChange={(e) => setTestSortOrder(e.target.value as any)} className="w-full pl-3 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white shadow-sm"><option value="default">Terbaru</option><option value="az">A-Z</option><option value="za">Z-A</option></select>
               </div>

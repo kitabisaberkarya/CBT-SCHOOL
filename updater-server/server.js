@@ -175,14 +175,30 @@ async function applyUpdate(res, { download_url, version, release_notes, sql_migr
 
     // ── 5. TERAPKAN ────────────────────────────────────────────────────
     send('applying', 85, 'Menerapkan update ke server...');
-    let srcDir = extractDir;
-    if (fs.existsSync(path.join(extractDir, 'dist'))) srcDir = path.join(extractDir, 'dist');
 
-    // Validasi: srcDir harus mengandung index.html (agar tidak deploy file yang salah)
-    if (!fs.existsSync(path.join(srcDir, 'index.html'))) {
+    // Deteksi srcDir secara otomatis — cari folder yang mengandung index.html
+    // Mendukung berbagai struktur ZIP:
+    //   dist/index.html           (dari release.sh — standard)
+    //   frontend/dist/index.html  (dibungkus dari root project)
+    //   index.html                (flat — langsung di root ZIP)
+    const candidatePaths = [
+      path.join(extractDir, 'dist'),
+      path.join(extractDir, 'frontend', 'dist'),
+      extractDir,
+    ];
+    let srcDir = null;
+    for (const candidate of candidatePaths) {
+      if (fs.existsSync(path.join(candidate, 'index.html'))) {
+        srcDir = candidate;
+        break;
+      }
+    }
+
+    if (!srcDir) {
       throw new Error(
-        `Paket update tidak valid: index.html tidak ditemukan di "${srcDir}". ` +
-        `Pastikan download_url mengarah ke file release (bukan vendor-package).`
+        `Paket update tidak valid: index.html tidak ditemukan di ZIP. ` +
+        `Lokasi yang dicari: dist/, frontend/dist/, atau root ZIP. ` +
+        `Pastikan download_url mengarah ke file release yang benar.`
       );
     }
 
@@ -206,11 +222,32 @@ async function applyUpdate(res, { download_url, version, release_notes, sql_migr
       throw new Error('Deploy gagal: index.html tidak ada dan tidak ada backup untuk restore.');
     }
 
-    send('applied', 92, 'File berhasil diterapkan.');
+    send('applied', 89, 'File berhasil diterapkan.');
 
-    // ── 6. SQL MIGRATION ───────────────────────────────────────────────
+    // ── 6. UPDATE UPDATER SERVER (server.js) ───────────────────────────
+    // Jika ZIP mengandung updater-server/server.js, copy dan jadwalkan restart
+    let updaterNeedsRestart = false;
+    const newServerJs = path.join(extractDir, 'updater-server', 'server.js');
+    if (fs.existsSync(newServerJs)) {
+      try {
+        send('updater_update', 91, 'Memperbarui updater server...');
+        const destServerJs = path.join(__dirname, 'server.js');
+        // Backup server.js lama
+        const serverBackup = path.join(BACKUP_DIR, `server_v${getCurrentVersion()}_${Date.now()}.js`);
+        fs.mkdirSync(BACKUP_DIR, { recursive: true });
+        if (fs.existsSync(destServerJs)) fs.copyFileSync(destServerJs, serverBackup);
+        // Copy server.js baru
+        fs.copyFileSync(newServerJs, destServerJs);
+        updaterNeedsRestart = true;
+        send('updater_updated', 92, 'Updater server diperbarui.');
+      } catch (sErr) {
+        send('updater_warn', 92, `Peringatan: Gagal update server.js (${sErr.message.slice(0,60)}). Lanjutkan.`);
+      }
+    }
+
+    // ── 7. SQL MIGRATION ───────────────────────────────────────────────
     if (sql_migration && sql_migration.trim().length > 0) {
-      send('sql_migration', 88, 'Menjalankan migrasi database...');
+      send('sql_migration', 93, 'Menjalankan migrasi database...');
       const sqlPath = path.join(tempDir, 'migration.sql');
       try {
         fs.writeFileSync(sqlPath, sql_migration, 'utf8');
@@ -223,34 +260,42 @@ async function applyUpdate(res, { download_url, version, release_notes, sql_migr
           `PGPASSWORD="${pgPass}" cat "${sqlPath}" | docker exec -i supabase-db psql` +
           ` -U "${pgUser}" -d "${pgDb}" --set ON_ERROR_STOP=0 -q 2>&1 | head -20`
         );
-        send('sql_migrated', 91, 'Migrasi database berhasil.');
+        send('sql_migrated', 95, 'Migrasi database berhasil.');
       } catch (sqlErr) {
         // Non-fatal: update tetap dilanjutkan, hanya log peringatan
-        send('sql_warning', 91,
+        send('sql_warning', 95,
           `Peringatan: Migrasi SQL tidak dapat dijalankan (${sqlErr.message.slice(0, 80)}). ` +
           'Frontend tetap diupdate.'
         );
       }
     } else {
-      send('sql_skip', 91, 'Tidak ada migrasi database untuk versi ini.');
+      send('sql_skip', 95, 'Tidak ada migrasi database untuk versi ini.');
     }
 
-    // ── 7. TULIS VERSION ───────────────────────────────────────────────
+    // ── 8. TULIS VERSION ───────────────────────────────────────────────
     fs.writeFileSync(path.join(DIST_DIR, 'version.txt'), version, 'utf8');
-    send('versioned', 94, `Versi ${version} dicatat.`);
+    send('versioned', 97, `Versi ${version} dicatat.`);
 
-    // ── 8. RELOAD NGINX ────────────────────────────────────────────────
-    send('reloading', 97, 'Memuat ulang web server...');
+    // ── 9. RELOAD NGINX ────────────────────────────────────────────────
+    send('reloading', 98, 'Memuat ulang web server...');
     await runCmd('systemctl reload nginx 2>/dev/null || nginx -s reload 2>/dev/null || true');
     send('reloaded', 99, 'Web server siap.');
 
-    // ── 9. CLEANUP ─────────────────────────────────────────────────────
+    // ── 10. CLEANUP ────────────────────────────────────────────────────
     await runCmd(`rm -rf "${tempDir}"`);
     // Pertahankan max 3 backup
     await runCmd(`ls -dt "${BACKUP_DIR}"/dist_v* 2>/dev/null | tail -n +4 | xargs rm -rf 2>/dev/null || true`);
 
     send('done', 100, `Update ke v${version} berhasil!`);
     sendSSE(res, 'complete', { success: true, version });
+
+    // Jadwalkan restart updater server setelah SSE selesai terkirim
+    // (delay 3 detik agar response sudah diterima client sebelum server restart)
+    if (updaterNeedsRestart) {
+      setTimeout(() => {
+        exec('systemctl restart cbt-updater 2>/dev/null || true', () => {});
+      }, 3000);
+    }
 
   } catch (err) {
     // Cleanup temp
@@ -417,6 +462,204 @@ iface enp0s3 inet static
         sendJSON(res, 500, { error: e.message });
       }
     })();
+    return;
+  }
+
+  // ── GET /api/updater/tunnel-status ───────────────────────────────────────
+  if (req.method === 'GET' && pathname === '/api/updater/tunnel-status') {
+    (async () => {
+      try {
+        const isRunning = await runCmd('systemctl is-active cbt-cloudflared').catch(() => 'inactive') === 'active';
+        const hasToken  = fs.existsSync('/etc/cbt-tunnel/token.txt');
+        const mode      = fs.existsSync('/etc/cbt-tunnel/mode.txt')
+          ? fs.readFileSync('/etc/cbt-tunnel/mode.txt', 'utf8').trim() : 'quick';
+
+        // Baca URL dari file cache, atau scan log terbaru untuk quick tunnel
+        let url = null;
+        const urlFile = '/etc/cbt-tunnel/current_url.txt';
+        if (fs.existsSync(urlFile)) {
+          url = fs.readFileSync(urlFile, 'utf8').trim() || null;
+        }
+        // Jika belum ada di file, coba scan log
+        if (!url && mode === 'quick') {
+          try {
+            const log = fs.readFileSync('/var/log/cbt-tunnel.log', 'utf8');
+            const m = log.match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/g);
+            if (m && m.length > 0) {
+              url = m[m.length - 1];
+              fs.writeFileSync(urlFile, url, 'utf8');
+            }
+          } catch {}
+        }
+
+        sendJSON(res, 200, { running: isRunning, url, hasToken, mode });
+      } catch (e) {
+        sendJSON(res, 500, { error: e.message });
+      }
+    })();
+    return;
+  }
+
+  // ── POST /api/updater/tunnel-start ───────────────────────────────────────
+  // Fire-and-forget: langsung return 200, URL diambil via polling tunnel-status
+  if (req.method === 'POST' && pathname === '/api/updater/tunnel-start') {
+    let body = '';
+    req.on('data', (c) => { body += c; });
+    req.on('end', () => {
+      let payload = {};
+      try { payload = JSON.parse(body); } catch {}
+      const token = (payload.token || '').trim();
+
+      const cmd = token
+        ? `cbt-tunnel.sh start-token "${token}"`
+        : 'cbt-tunnel.sh start-quick';
+
+      // Jalankan script, response langsung tanpa tunggu URL
+      // URL akan tersedia via /api/updater/tunnel-status setelah polling
+      exec(cmd, { timeout: 15000 }, (err) => {
+        if (err) console.error('[tunnel-start] error:', err.message);
+      });
+
+      // Langsung response agar UI tidak stuck loading
+      sendJSON(res, 200, { ok: true, mode: token ? 'named' : 'quick', message: 'Tunnel sedang dijalankan...' });
+    });
+    return;
+  }
+
+  // ── POST /api/updater/tunnel-stop ────────────────────────────────────────
+  if (req.method === 'POST' && pathname === '/api/updater/tunnel-stop') {
+    exec('cbt-tunnel.sh stop', () => {
+      sendJSON(res, 200, { ok: true });
+    });
+    return;
+  }
+
+  // ── GET /api/updater/download/zip ─────────────────────────────────────────
+  // Otomatis cari file ZIP versi terbaru di direktori root
+  if (req.method === 'GET' && pathname === '/api/updater/download/zip') {
+    const rootDir = path.join(__dirname, '..');
+    let zipPath = null;
+    let zipName = '';
+    try {
+      const files = fs.readdirSync(rootDir).filter(f => f.startsWith('cbt-enterprise-v') && f.endsWith('.zip'));
+      // Urutkan descending → ambil yang terbaru
+      files.sort((a, b) => b.localeCompare(a));
+      if (files.length > 0) { zipName = files[0]; zipPath = path.join(rootDir, zipName); }
+    } catch {}
+    if (!zipPath || !fs.existsSync(zipPath)) return sendJSON(res, 404, { error: 'File ZIP tidak ditemukan.' });
+    const stat = fs.statSync(zipPath);
+    res.writeHead(200, {
+      'Content-Type': 'application/zip',
+      'Content-Disposition': `attachment; filename="${zipName}"`,
+      'Content-Length': stat.size,
+    });
+    fs.createReadStream(zipPath).pipe(res);
+    return;
+  }
+
+  // ── GET /api/updater/download/sql ─────────────────────────────────────────
+  // Otomatis cari file SQL migration versi terbaru
+  if (req.method === 'GET' && pathname === '/api/updater/download/sql') {
+    const rootDir = path.join(__dirname, '..');
+    let sqlPath = null;
+    let sqlName = '';
+    try {
+      const files = fs.readdirSync(rootDir).filter(f => f.startsWith('migration-v') && f.endsWith('.sql'));
+      files.sort((a, b) => b.localeCompare(a));
+      if (files.length > 0) { sqlName = files[0]; sqlPath = path.join(rootDir, sqlName); }
+    } catch {}
+    if (!sqlPath || !fs.existsSync(sqlPath)) return sendJSON(res, 404, { error: 'File SQL tidak ditemukan.' });
+    const stat = fs.statSync(sqlPath);
+    res.writeHead(200, {
+      'Content-Type': 'application/octet-stream',
+      'Content-Disposition': `attachment; filename="${sqlName}"`,
+      'Content-Length': stat.size,
+    });
+    fs.createReadStream(sqlPath).pipe(res);
+    return;
+  }
+
+  // ── GET /api/updater/autobot-status ─────────────────────────────────────
+  // Status robot Python auto-updater (baca STATUS_FILE + tail log)
+  if (req.method === 'GET' && pathname === '/api/updater/autobot-status') {
+    (async () => {
+      try {
+        const statusFile = '/var/run/cbt-auto-updater.json';
+        const logFile    = '/var/log/cbt-auto-updater.log';
+        let status = {};
+        let lastLog = '';
+
+        if (fs.existsSync(statusFile)) {
+          try { status = JSON.parse(fs.readFileSync(statusFile, 'utf8')); } catch {}
+        }
+
+        if (fs.existsSync(logFile)) {
+          const content = fs.readFileSync(logFile, 'utf8');
+          const lines   = content.split('\n').filter(l => l.trim());
+          lastLog = lines.slice(-30).join('\n');
+        }
+
+        // Cek apakah timer aktif
+        let timerActive = false;
+        let nextRun = '';
+        try {
+          const timerOut = await runCmd(
+            'systemctl show cbt-auto-updater.timer --property=ActiveState,NextElapseUSecRealtime --no-pager 2>/dev/null || true'
+          );
+          timerActive = timerOut.includes('ActiveState=active');
+          const m = timerOut.match(/NextElapseUSecRealtime=(\d+)/);
+          if (m) {
+            const ms = parseInt(m[1]) / 1000;
+            nextRun = new Date(ms).toISOString();
+          }
+        } catch {}
+
+        // Cek apakah proses sedang berjalan (lock file)
+        const isRunning = fs.existsSync('/var/run/cbt-auto-updater.lock');
+
+        sendJSON(res, 200, { ...status, lastLog, timerActive, nextRun, isRunning });
+      } catch (e) {
+        sendJSON(res, 500, { error: e.message });
+      }
+    })();
+    return;
+  }
+
+  // ── POST /api/updater/autobot-run ────────────────────────────────────────
+  // Jalankan robot Python auto-updater sekarang, stream output via SSE
+  if (req.method === 'POST' && pathname === '/api/updater/autobot-run') {
+    res.writeHead(200, {
+      'Content-Type':  'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection':    'keep-alive',
+      ...CORS,
+    });
+
+    const sendLog = (line) =>
+      res.write(`event: log\ndata: ${JSON.stringify({ line: line.trim() })}\n\n`);
+
+    const { spawn } = require('child_process');
+    const proc = spawn('python3', [
+      '/opt/cbt-enterprise/auto-updater/auto_updater.py', '--apply'
+    ], { detached: false });
+
+    const onData = (data) =>
+      data.toString().split('\n').forEach(l => { if (l.trim()) sendLog(l); });
+
+    proc.stdout.on('data', onData);
+    proc.stderr.on('data', onData);
+
+    proc.on('close', (code) => {
+      res.write(`event: done\ndata: ${JSON.stringify({ success: code === 0, code })}\n\n`);
+      res.end();
+    });
+
+    proc.on('error', (err) => {
+      res.write(`event: done\ndata: ${JSON.stringify({ success: false, code: -1, error: err.message })}\n\n`);
+      res.end();
+    });
+
+    req.on('close', () => { try { proc.kill(); } catch {} });
     return;
   }
 

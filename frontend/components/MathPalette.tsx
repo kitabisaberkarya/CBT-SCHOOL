@@ -1,5 +1,5 @@
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 
 interface MathPaletteProps {
   onInsert: (text: string) => void;
@@ -128,90 +128,338 @@ const CATEGORIES = [
   },
 ];
 
-// ── CATATAN PENTING UNTUK DEVELOPER ────────────────────────────────────────
-// Semua template math menggunakan pola:
-//   contenteditable="false"  → membuat formula menjadi atom (tidak bisa diedit di dalam)
-//   &#x200B;                 → zero-width space setelah formula agar kursor bisa diposisikan
-//                              tepat SETELAH formula, bukan terjebak di dalam elemen span
-// ── Ini memperbaiki bug: kursor tidak bisa pindah ke samping rumus ──────────
-const TEMPLATES = [
+// ── Escape HTML untuk keamanan input user ───────────────────────────────────
+const esc = (s: string) =>
+  s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+// ── Definisi setiap template beserta field input dan generator HTML ───────────
+interface TemplateField {
+  key: string;
+  label: string;
+  placeholder: string;
+  defaultVal: string;
+  width?: string; // opsional: lebar input ('full' | 'half')
+}
+
+interface TemplateDef {
+  label: string;
+  icon: string;
+  fields: TemplateField[];
+  generateHtml: (v: Record<string, string>) => string;
+}
+
+const TEMPLATES: TemplateDef[] = [
   {
     label: 'Pecahan a/b',
     icon: 'a/b',
-    html: '<span contenteditable="false" style="display:inline-flex;flex-direction:column;align-items:center;vertical-align:middle;line-height:1.3;font-size:0.95em;margin:0 2px;cursor:default"><span style="border-bottom:1.5px solid currentColor;padding:0 4px;text-align:center;min-width:1em">a</span><span style="padding:0 4px;text-align:center;min-width:1em">b</span></span>&#x200B;',
+    fields: [
+      { key: 'num', label: 'Pembilang (atas)', placeholder: 'contoh: 1', defaultVal: 'a' },
+      { key: 'den', label: 'Penyebut (bawah)', placeholder: 'contoh: 4', defaultVal: 'b' },
+    ],
+    generateHtml: (v) => {
+      const num = esc(v.num || 'a');
+      const den = esc(v.den || 'b');
+      return `<span contenteditable="false" style="display:inline-flex;flex-direction:column;align-items:center;vertical-align:middle;line-height:1.3;font-size:0.95em;margin:0 2px;cursor:default"><span style="border-bottom:1.5px solid currentColor;padding:0 4px;text-align:center;min-width:1em">${num}</span><span style="padding:0 4px;text-align:center;min-width:1em">${den}</span></span>&#x200B;`;
+    },
   },
   {
     label: 'Akar √',
     icon: '√x',
-    html: '<span contenteditable="false" style="white-space:nowrap;font-size:0.95em;cursor:default">√<span style="border-top:1.5px solid currentColor;padding-left:2px;padding-right:2px">x</span></span>&#x200B;',
+    fields: [
+      { key: 'val', label: 'Nilai dalam akar', placeholder: 'contoh: 16', defaultVal: 'x' },
+    ],
+    generateHtml: (v) => {
+      const val = esc(v.val || 'x');
+      return `<span contenteditable="false" style="white-space:nowrap;font-size:0.95em;cursor:default">√<span style="border-top:1.5px solid currentColor;padding-left:2px;padding-right:2px">${val}</span></span>&#x200B;`;
+    },
   },
   {
     label: 'Akar ke-n',
     icon: 'ⁿ√x',
-    html: '<span contenteditable="false" style="white-space:nowrap;font-size:0.95em;cursor:default"><sup style="font-size:0.65em">n</sup>√<span style="border-top:1.5px solid currentColor;padding-left:2px;padding-right:2px">x</span></span>&#x200B;',
+    fields: [
+      { key: 'n', label: 'Derajat akar', placeholder: 'contoh: 3', defaultVal: 'n', width: 'half' },
+      { key: 'val', label: 'Nilai dalam akar', placeholder: 'contoh: 27', defaultVal: 'x', width: 'half' },
+    ],
+    generateHtml: (v) => {
+      const n = esc(v.n || 'n');
+      const val = esc(v.val || 'x');
+      return `<span contenteditable="false" style="white-space:nowrap;font-size:0.95em;cursor:default"><sup style="font-size:0.65em">${n}</sup>√<span style="border-top:1.5px solid currentColor;padding-left:2px;padding-right:2px">${val}</span></span>&#x200B;`;
+    },
   },
   {
     label: 'Pangkat xⁿ',
     icon: 'xⁿ',
-    html: 'x<sup style="font-size:0.75em">n</sup>&#x200B;',
+    fields: [
+      { key: 'base', label: 'Basis', placeholder: 'contoh: 2', defaultVal: 'x', width: 'half' },
+      { key: 'exp', label: 'Pangkat', placeholder: 'contoh: 3', defaultVal: 'n', width: 'half' },
+    ],
+    generateHtml: (v) => {
+      const base = esc(v.base || 'x');
+      const exp = esc(v.exp || 'n');
+      return `${base}<sup style="font-size:0.75em">${exp}</sup>&#x200B;`;
+    },
   },
   {
     label: 'Indeks xₙ',
     icon: 'xₙ',
-    html: 'x<sub style="font-size:0.75em">n</sub>&#x200B;',
+    fields: [
+      { key: 'var', label: 'Variabel', placeholder: 'contoh: a', defaultVal: 'x', width: 'half' },
+      { key: 'idx', label: 'Indeks', placeholder: 'contoh: 1', defaultVal: 'n', width: 'half' },
+    ],
+    generateHtml: (v) => {
+      const varVal = esc(v.var || 'x');
+      const idx = esc(v.idx || 'n');
+      return `${varVal}<sub style="font-size:0.75em">${idx}</sub>&#x200B;`;
+    },
   },
   {
     label: 'Mutlak |x|',
     icon: '|x|',
-    html: '|x|&#x200B;',
+    fields: [
+      { key: 'val', label: 'Nilai', placeholder: 'contoh: -5', defaultVal: 'x' },
+    ],
+    generateHtml: (v) => {
+      const val = esc(v.val || 'x');
+      return `|${val}|&#x200B;`;
+    },
   },
   {
     label: 'log basis',
     icon: 'logₐb',
-    html: 'log<sub style="font-size:0.75em">a</sub>b&#x200B;',
+    fields: [
+      { key: 'base', label: 'Basis log', placeholder: 'contoh: 2', defaultVal: 'a', width: 'half' },
+      { key: 'val', label: 'Nilai', placeholder: 'contoh: 8', defaultVal: 'b', width: 'half' },
+    ],
+    generateHtml: (v) => {
+      const base = esc(v.base || 'a');
+      const val = esc(v.val || 'b');
+      return `log<sub style="font-size:0.75em">${base}</sub>${val}&#x200B;`;
+    },
   },
   {
     label: 'lim',
     icon: 'lim',
-    html: '<span contenteditable="false" style="cursor:default">lim<sub style="font-size:0.75em">x→0</sub>&thinsp;f(x)</span>&#x200B;',
+    fields: [
+      { key: 'var', label: 'Variabel', placeholder: 'contoh: x', defaultVal: 'x', width: 'half' },
+      { key: 'to', label: 'Mendekati', placeholder: 'contoh: 0', defaultVal: '0', width: 'half' },
+      { key: 'expr', label: 'Fungsi', placeholder: 'contoh: f(x)', defaultVal: 'f(x)' },
+    ],
+    generateHtml: (v) => {
+      const varVal = esc(v.var || 'x');
+      const to = esc(v.to || '0');
+      const expr = esc(v.expr || 'f(x)');
+      return `<span contenteditable="false" style="cursor:default">lim<sub style="font-size:0.75em">${varVal}→${to}</sub>&thinsp;${expr}</span>&#x200B;`;
+    },
   },
   {
     label: '∫ integral',
     icon: '∫dx',
-    html: '<span contenteditable="false" style="cursor:default">∫f(x)&thinsp;dx</span>&#x200B;',
+    fields: [
+      { key: 'expr', label: 'Fungsi', placeholder: 'contoh: f(x)', defaultVal: 'f(x)' },
+      { key: 'var', label: 'Variabel integral', placeholder: 'contoh: x', defaultVal: 'x' },
+    ],
+    generateHtml: (v) => {
+      const expr = esc(v.expr || 'f(x)');
+      const varVal = esc(v.var || 'x');
+      return `<span contenteditable="false" style="cursor:default">∫${expr}&thinsp;d${varVal}</span>&#x200B;`;
+    },
   },
   {
     label: 'Σ sigma',
     icon: 'Σᵢ',
-    html: '<span contenteditable="false" style="display:inline-flex;flex-direction:column;align-items:center;vertical-align:middle;font-size:0.85em;margin:0 2px;cursor:default"><span style="font-size:0.75em">n</span><span style="font-size:1.3em">Σ</span><span style="font-size:0.75em">i=1</span></span>&thinsp;aᵢ&#x200B;',
+    fields: [
+      { key: 'from', label: 'Batas bawah', placeholder: 'contoh: i=1', defaultVal: 'i=1', width: 'half' },
+      { key: 'to', label: 'Batas atas', placeholder: 'contoh: n', defaultVal: 'n', width: 'half' },
+      { key: 'expr', label: 'Ekspresi', placeholder: 'contoh: aᵢ', defaultVal: 'aᵢ' },
+    ],
+    generateHtml: (v) => {
+      const from = esc(v.from || 'i=1');
+      const to = esc(v.to || 'n');
+      const expr = esc(v.expr || 'aᵢ');
+      return `<span contenteditable="false" style="display:inline-flex;flex-direction:column;align-items:center;vertical-align:middle;font-size:0.85em;margin:0 2px;cursor:default"><span style="font-size:0.75em">${to}</span><span style="font-size:1.3em">Σ</span><span style="font-size:0.75em">${from}</span></span>&thinsp;${expr}&#x200B;`;
+    },
   },
   {
     label: 'Vektor',
     icon: 'v⃗',
-    html: '<span contenteditable="false" style="display:inline-flex;flex-direction:column;align-items:center;vertical-align:middle;font-size:0.95em;cursor:default"><span style="border-top:1.5px solid currentColor;font-size:0.6em;letter-spacing:0.1em;padding:0 2px">→</span><span>AB</span></span>&#x200B;',
+    fields: [
+      { key: 'from', label: 'Titik awal', placeholder: 'contoh: A', defaultVal: 'A', width: 'half' },
+      { key: 'to', label: 'Titik akhir', placeholder: 'contoh: B', defaultVal: 'B', width: 'half' },
+    ],
+    generateHtml: (v) => {
+      const from = esc(v.from || 'A');
+      const to = esc(v.to || 'B');
+      return `<span contenteditable="false" style="display:inline-flex;flex-direction:column;align-items:center;vertical-align:middle;font-size:0.95em;cursor:default"><span style="border-top:1.5px solid currentColor;font-size:0.6em;letter-spacing:0.1em;padding:0 2px">→</span><span>${from}${to}</span></span>&#x200B;`;
+    },
   },
   {
     label: 'Matriks 2×2',
     icon: '[ab]',
-    html: '<span contenteditable="false" style="display:inline-flex;align-items:center;vertical-align:middle;font-size:0.9em;margin:0 2px;cursor:default"><span style="font-size:1.5em;margin-right:1px">[</span><span style="display:inline-flex;flex-direction:column;line-height:1.6"><span>a &nbsp; b</span><span>c &nbsp; d</span></span><span style="font-size:1.5em;margin-left:1px">]</span></span>&#x200B;',
+    fields: [
+      { key: 'a', label: 'Baris 1 Kol 1', placeholder: 'a', defaultVal: 'a', width: 'half' },
+      { key: 'b', label: 'Baris 1 Kol 2', placeholder: 'b', defaultVal: 'b', width: 'half' },
+      { key: 'c', label: 'Baris 2 Kol 1', placeholder: 'c', defaultVal: 'c', width: 'half' },
+      { key: 'd', label: 'Baris 2 Kol 2', placeholder: 'd', defaultVal: 'd', width: 'half' },
+    ],
+    generateHtml: (v) => {
+      const a = esc(v.a || 'a'); const b = esc(v.b || 'b');
+      const c = esc(v.c || 'c'); const d = esc(v.d || 'd');
+      return `<span contenteditable="false" style="display:inline-flex;align-items:center;vertical-align:middle;font-size:0.9em;margin:0 2px;cursor:default"><span style="font-size:1.5em;margin-right:1px">[</span><span style="display:inline-flex;flex-direction:column;line-height:1.6"><span>${a} &nbsp; ${b}</span><span>${c} &nbsp; ${d}</span></span><span style="font-size:1.5em;margin-left:1px">]</span></span>&#x200B;`;
+    },
   },
   {
     label: 'Kombinasi Cₙ',
     icon: 'Cₙₖ',
-    html: 'C<sub style="font-size:0.7em">n,k</sub>&#x200B;',
+    fields: [
+      { key: 'n', label: 'n', placeholder: 'contoh: 5', defaultVal: 'n', width: 'half' },
+      { key: 'k', label: 'k', placeholder: 'contoh: 2', defaultVal: 'k', width: 'half' },
+    ],
+    generateHtml: (v) => {
+      const n = esc(v.n || 'n'); const k = esc(v.k || 'k');
+      return `C<sub style="font-size:0.7em">${n},${k}</sub>&#x200B;`;
+    },
   },
   {
     label: 'Permutasi Pₙ',
     icon: 'Pₙₖ',
-    html: 'P<sub style="font-size:0.7em">n,k</sub>&#x200B;',
+    fields: [
+      { key: 'n', label: 'n', placeholder: 'contoh: 5', defaultVal: 'n', width: 'half' },
+      { key: 'k', label: 'k', placeholder: 'contoh: 2', defaultVal: 'k', width: 'half' },
+    ],
+    generateHtml: (v) => {
+      const n = esc(v.n || 'n'); const k = esc(v.k || 'k');
+      return `P<sub style="font-size:0.7em">${n},${k}</sub>&#x200B;`;
+    },
   },
 ];
 
+// ── Komponen mini editor rumus (muncul setelah template dipilih) ─────────────
+interface EquationEditorProps {
+  template: TemplateDef;
+  onInsert: (html: string) => void;
+  onBack: () => void;
+}
+
+const EquationEditor: React.FC<EquationEditorProps> = ({ template, onInsert, onBack }) => {
+  const initValues = template.fields.reduce<Record<string, string>>((acc, f) => {
+    acc[f.key] = '';
+    return acc;
+  }, {});
+  const [values, setValues] = useState<Record<string, string>>(initValues);
+
+  const previewHtml = template.generateHtml(
+    template.fields.reduce<Record<string, string>>((acc, f) => {
+      acc[f.key] = values[f.key] || f.defaultVal;
+      return acc;
+    }, {})
+  );
+
+  const handleInsert = () => {
+    onInsert(previewHtml);
+  };
+
+  return (
+    <div className="p-3 space-y-3">
+      {/* Judul + tombol kembali */}
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onMouseDown={(e) => { e.preventDefault(); onBack(); }}
+          className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 font-semibold"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7"/></svg>
+          Kembali
+        </button>
+        <span className="text-xs font-bold text-gray-600">— {template.label}</span>
+      </div>
+
+      {/* Input fields */}
+      <div className="flex flex-wrap gap-2">
+        {template.fields.map((f) => (
+          <div
+            key={f.key}
+            className={f.width === 'half' ? 'w-[calc(50%-4px)]' : 'w-full'}
+          >
+            <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-0.5">
+              {f.label}
+            </label>
+            <input
+              type="text"
+              value={values[f.key]}
+              placeholder={f.placeholder}
+              onChange={(e) => setValues(prev => ({ ...prev, [f.key]: e.target.value }))}
+              onMouseDown={(e) => e.stopPropagation()}
+              className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-purple-400 focus:border-transparent"
+            />
+          </div>
+        ))}
+      </div>
+
+      {/* Preview live */}
+      <div className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-3">
+        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide mb-1.5">Preview Rumus</p>
+        <div
+          className="text-base text-gray-800 min-h-[2rem] flex items-center"
+          dangerouslySetInnerHTML={{ __html: previewHtml }}
+        />
+      </div>
+
+      {/* Tombol sisipkan */}
+      <button
+        type="button"
+        onMouseDown={(e) => { e.preventDefault(); handleInsert(); }}
+        className="w-full py-2 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-lg text-sm transition-colors flex items-center justify-center gap-2"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"/></svg>
+        Sisipkan ke Soal
+      </button>
+    </div>
+  );
+};
+
+// ── Komponen utama MathPalette ───────────────────────────────────────────────
 const MathPalette: React.FC<MathPaletteProps> = ({ onInsert, onInsertHtml, onSuperscript, onSubscript }) => {
   const [activeTab, setActiveTab] = useState('dasar');
   const [isOpen, setIsOpen] = useState(false);
   const [panelStyle, setPanelStyle] = useState<React.CSSProperties>({});
+  const [selectedTemplate, setSelectedTemplate] = useState<TemplateDef | null>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
+
+  // ── Drag state ────────────────────────────────────────────────────────────
+  const popupRef = useRef<HTMLDivElement>(null);
+  const isDragging = useRef(false);
+  const dragOffset = useRef({ x: 0, y: 0 });
+  const [dragPos, setDragPos] = useState<{ x: number | null; y: number | null }>({ x: null, y: null });
+
+  const handleDragStart = useCallback((e: React.MouseEvent) => {
+    // Jangan mulai drag jika klik pada tombol/input dalam header
+    if ((e.target as HTMLElement).closest('button, input, select, a')) return;
+    isDragging.current = true;
+    const rect = popupRef.current!.getBoundingClientRect();
+    dragOffset.current = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    e.preventDefault();
+  }, []);
+
+  const handleDragMove = useCallback((e: MouseEvent) => {
+    if (!isDragging.current) return;
+    setDragPos({
+      x: Math.max(0, Math.min(e.clientX - dragOffset.current.x, window.innerWidth - 100)),
+      y: Math.max(0, Math.min(e.clientY - dragOffset.current.y, window.innerHeight - 60)),
+    });
+  }, []);
+
+  const handleDragEnd = useCallback(() => {
+    isDragging.current = false;
+  }, []);
+
+  useEffect(() => {
+    window.addEventListener('mousemove', handleDragMove);
+    window.addEventListener('mouseup', handleDragEnd);
+    return () => {
+      window.removeEventListener('mousemove', handleDragMove);
+      window.removeEventListener('mouseup', handleDragEnd);
+    };
+  }, [handleDragMove, handleDragEnd]);
 
   const handleToggle = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -222,8 +470,7 @@ const MathPalette: React.FC<MathPaletteProps> = ({ onInsert, onInsertHtml, onSup
       if (left + panelWidth > window.innerWidth) {
         left = Math.max(8, window.innerWidth - panelWidth - 8);
       }
-      // Estimasi tinggi panel agar tidak terpotong di bagian bawah layar
-      const estimatedPanelHeight = 380;
+      const estimatedPanelHeight = 420;
       const spaceBelow = window.innerHeight - rect.bottom - 8;
       const showAbove = spaceBelow < estimatedPanelHeight && rect.top > estimatedPanelHeight;
       const top = showAbove
@@ -238,17 +485,25 @@ const MathPalette: React.FC<MathPaletteProps> = ({ onInsert, onInsertHtml, onSup
           : `calc(100vh - ${top + 8}px)`,
         overflowY: 'auto',
       });
+      // Reset posisi drag setiap kali panel dibuka ulang
+      setDragPos({ x: null, y: null });
     }
     setIsOpen(prev => !prev);
+    setSelectedTemplate(null);
   };
 
   const handleSymbol = (s: string) => {
     onInsert(s);
   };
 
-  const handleTemplate = (html: string) => {
+  const handleTemplateClick = (tpl: TemplateDef) => {
+    setSelectedTemplate(tpl);
+  };
+
+  const handleInsertFromEditor = (html: string) => {
     onInsertHtml(html);
     setIsOpen(false);
+    setSelectedTemplate(null);
   };
 
   const activeCategory = CATEGORIES.find(c => c.id === activeTab);
@@ -266,98 +521,121 @@ const MathPalette: React.FC<MathPaletteProps> = ({ onInsert, onInsertHtml, onSup
         Σ
       </button>
 
-      {/* Palette Panel — fixed so it's not clipped by scrollable parents */}
+      {/* Palette Panel */}
       {isOpen && (
         <div
+          ref={popupRef}
           className="fixed bg-white border border-gray-200 rounded-xl shadow-2xl z-[300]"
-          style={panelStyle}
+          style={
+            dragPos.x !== null
+              ? { position: 'fixed', left: dragPos.x, top: dragPos.y, width: panelStyle.width, maxHeight: panelStyle.maxHeight, overflowY: 'auto', zIndex: 300 }
+              : panelStyle
+          }
           onMouseDown={(e) => e.preventDefault()}
         >
-          {/* Header */}
-          <div className="flex items-center justify-between px-3 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-t-xl">
-            <span className="text-white text-xs font-bold tracking-wider uppercase">Simbol & Rumus Matematika</span>
+          {/* Header — area drag */}
+          <div
+            className="flex items-center justify-between px-3 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 rounded-t-xl select-none"
+            style={{ cursor: 'move' }}
+            onMouseDown={handleDragStart}
+          >
+            <span className="text-white text-xs font-bold tracking-wider uppercase pointer-events-none">
+              {selectedTemplate ? `Editor Rumus — ${selectedTemplate.label}` : 'Simbol & Rumus Matematika'}
+            </span>
             <button
               type="button"
-              onClick={() => setIsOpen(false)}
+              onClick={() => { setIsOpen(false); setSelectedTemplate(null); }}
               className="text-white/70 hover:text-white text-lg leading-none"
+              style={{ cursor: 'pointer' }}
             >
               ×
             </button>
           </div>
 
-          {/* Quick Actions: Superscript / Subscript */}
-          <div className="flex items-center gap-1 px-3 py-2 bg-blue-50 border-b border-blue-100">
-            <span className="text-[10px] text-blue-500 font-bold uppercase mr-1">Teks:</span>
-            <button
-              type="button"
-              onMouseDown={(e) => { e.preventDefault(); onSuperscript(); }}
-              className="px-2 py-0.5 bg-white border border-blue-200 rounded text-xs font-bold text-blue-700 hover:bg-blue-50 transition-colors"
-              title="Superscript (pangkat)"
-            >
-              x<sup>n</sup>
-            </button>
-            <button
-              type="button"
-              onMouseDown={(e) => { e.preventDefault(); onSubscript(); }}
-              className="px-2 py-0.5 bg-white border border-blue-200 rounded text-xs font-bold text-blue-700 hover:bg-blue-50 transition-colors"
-              title="Subscript (indeks)"
-            >
-              x<sub>n</sub>
-            </button>
-            <span className="text-[10px] text-blue-500 font-bold uppercase mx-1">Template:</span>
-            <div className="flex flex-wrap gap-1">
-              {TEMPLATES.map((t) => (
+          {/* ── Mode: Editor Rumus (setelah template dipilih) ── */}
+          {selectedTemplate ? (
+            <EquationEditor
+              template={selectedTemplate}
+              onInsert={handleInsertFromEditor}
+              onBack={() => setSelectedTemplate(null)}
+            />
+          ) : (
+            <>
+              {/* Quick Actions: Superscript / Subscript */}
+              <div className="flex items-center gap-1 px-3 py-2 bg-blue-50 border-b border-blue-100">
+                <span className="text-[10px] text-blue-500 font-bold uppercase mr-1">Teks:</span>
                 <button
-                  key={t.label}
                   type="button"
-                  onMouseDown={(e) => { e.preventDefault(); handleTemplate(t.html); }}
-                  className="px-1.5 py-0.5 bg-white border border-purple-200 rounded text-xs font-mono text-purple-700 hover:bg-purple-50 transition-colors"
-                  title={t.label}
+                  onMouseDown={(e) => { e.preventDefault(); onSuperscript(); }}
+                  className="px-2 py-0.5 bg-white border border-blue-200 rounded text-xs font-bold text-blue-700 hover:bg-blue-50 transition-colors"
+                  title="Superscript (pangkat)"
                 >
-                  {t.icon}
+                  x<sup>n</sup>
                 </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Tabs */}
-          <div className="flex overflow-x-auto border-b border-gray-100 bg-gray-50">
-            {CATEGORIES.map(cat => (
-              <button
-                key={cat.id}
-                type="button"
-                onMouseDown={(e) => { e.preventDefault(); setActiveTab(cat.id); }}
-                className={`flex-shrink-0 px-3 py-2 text-[11px] font-semibold transition-colors border-b-2 ${
-                  activeTab === cat.id
-                    ? 'border-blue-500 text-blue-700 bg-white'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-100'
-                }`}
-              >
-                {cat.label}
-              </button>
-            ))}
-          </div>
-
-          {/* Symbol Grid */}
-          <div className="p-2 max-h-48 overflow-y-auto">
-            <div className="flex flex-wrap gap-1">
-              {activeCategory?.symbols.map((sym) => (
                 <button
-                  key={sym.s}
                   type="button"
-                  onMouseDown={(e) => { e.preventDefault(); handleSymbol(sym.s); }}
-                  className="w-9 h-9 flex items-center justify-center bg-gray-50 hover:bg-blue-50 hover:text-blue-700 border border-gray-200 hover:border-blue-300 rounded text-base font-mono transition-colors"
-                  title={sym.t}
+                  onMouseDown={(e) => { e.preventDefault(); onSubscript(); }}
+                  className="px-2 py-0.5 bg-white border border-blue-200 rounded text-xs font-bold text-blue-700 hover:bg-blue-50 transition-colors"
+                  title="Subscript (indeks)"
                 >
-                  {sym.s}
+                  x<sub>n</sub>
                 </button>
-              ))}
-            </div>
-          </div>
+                <span className="text-[10px] text-blue-500 font-bold uppercase mx-1">Template:</span>
+                <div className="flex flex-wrap gap-1">
+                  {TEMPLATES.map((t) => (
+                    <button
+                      key={t.label}
+                      type="button"
+                      onMouseDown={(e) => { e.preventDefault(); handleTemplateClick(t); }}
+                      className="px-1.5 py-0.5 bg-white border border-purple-200 rounded text-xs font-mono text-purple-700 hover:bg-purple-100 hover:border-purple-400 transition-colors"
+                      title={`${t.label} — klik untuk isi nilai`}
+                    >
+                      {t.icon}
+                    </button>
+                  ))}
+                </div>
+              </div>
 
-          <div className="px-3 py-1.5 bg-gray-50 rounded-b-xl border-t border-gray-100">
-            <p className="text-[10px] text-gray-400">Klik simbol untuk menyisipkan. Gunakan Superscript/Subscript untuk pangkat & indeks.</p>
-          </div>
+              {/* Tabs */}
+              <div className="flex overflow-x-auto border-b border-gray-100 bg-gray-50">
+                {CATEGORIES.map(cat => (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    onMouseDown={(e) => { e.preventDefault(); setActiveTab(cat.id); }}
+                    className={`flex-shrink-0 px-3 py-2 text-[11px] font-semibold transition-colors border-b-2 ${
+                      activeTab === cat.id
+                        ? 'border-blue-500 text-blue-700 bg-white'
+                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+                    }`}
+                  >
+                    {cat.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Symbol Grid */}
+              <div className="p-2 max-h-48 overflow-y-auto">
+                <div className="flex flex-wrap gap-1">
+                  {activeCategory?.symbols.map((sym) => (
+                    <button
+                      key={sym.s}
+                      type="button"
+                      onMouseDown={(e) => { e.preventDefault(); handleSymbol(sym.s); }}
+                      className="w-9 h-9 flex items-center justify-center bg-gray-50 hover:bg-blue-50 hover:text-blue-700 border border-gray-200 hover:border-blue-300 rounded text-base font-mono transition-colors"
+                      title={sym.t}
+                    >
+                      {sym.s}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="px-3 py-1.5 bg-gray-50 rounded-b-xl border-t border-gray-100">
+                <p className="text-[10px] text-gray-400">Klik simbol untuk sisipkan langsung. Klik template rumus untuk mengisi nilainya terlebih dahulu.</p>
+              </div>
+            </>
+          )}
         </div>
       )}
     </div>

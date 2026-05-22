@@ -8,6 +8,8 @@ import {
   Table, TableRow, TableCell, WidthType, AlignmentType, VerticalAlign,
   BorderStyle, ShadingType,
 } from 'docx';
+import { patchDocxMath, injectLatexIntoHtml, makeEquationPlaceholderPng } from '../utils/docxMathPatch';
+import { renderMathInText, containsMath, sanitizeMathHtml } from '../utils/renderMath';
 
 interface WordQuestionImportModalProps {
   testToken: string;
@@ -137,7 +139,36 @@ function buildQRows(q: {
   });
 }
 
-function buildGridFromTable(tableEl: Element): { textGrid: string[][]; imgGrid: (string | null)[][] } {
+/**
+ * Sanitize cell innerHTML from mammoth output to preserve formatting tags.
+ * Converts block-level elements (p, div, li) to <br> line breaks.
+ * Keeps: strong, b, em, i, u, sub, sup.
+ * Strips everything else (spans, classes, links, etc.).
+ */
+function sanitizeCellHtml(html: string): string {
+  // Convert block endings and <br> to a sentinel first
+  let s = html
+    .replace(/<\/p\s*>/gi, '\n')
+    .replace(/<\/div\s*>/gi, '\n')
+    .replace(/<\/li\s*>/gi, '\n')
+    .replace(/<br\s*\/?>/gi, '\n');
+
+  // Strip all tags except allowed formatting tags (keep opening and closing)
+  s = s.replace(/<(?!\/?(?:strong|b|em|i|u|sub|sup)\b)[^>]*>/gi, '');
+
+  // Convert sentinels to <br>
+  s = s.replace(/\n/g, '<br>');
+
+  // Collapse 3+ consecutive <br> to max 2
+  s = s.replace(/(<br\s*\/?>\s*){3,}/gi, '<br><br>');
+
+  // Strip leading/trailing <br>
+  s = s.replace(/^(<br\s*\/?>\s*)+|(\s*<br\s*\/?>)+$/gi, '').trim();
+
+  return s;
+}
+
+function buildGridFromTable(tableEl: Element): { textGrid: string[][]; imgGrid: (string | null)[][]; htmlGrid: string[][] } {
   const rows = Array.from(tableEl.querySelectorAll('tr'));
   const numRows = rows.length;
 
@@ -152,6 +183,7 @@ function buildGridFromTable(tableEl: Element): { textGrid: string[][]; imgGrid: 
   if (maxCols === 0) maxCols = 6;
 
   const textGrid: string[][] = Array.from({ length: numRows }, () => Array(maxCols).fill(''));
+  const htmlGrid: string[][] = Array.from({ length: numRows }, () => Array(maxCols).fill(''));
   const imgGrid: (string | null)[][] = Array.from({ length: numRows }, () => Array(maxCols).fill(null));
   const occupied: boolean[][] = Array.from({ length: numRows }, () => Array(maxCols).fill(false));
 
@@ -162,12 +194,14 @@ function buildGridFromTable(tableEl: Element): { textGrid: string[][]; imgGrid: 
       const rs = parseInt((td as HTMLElement).getAttribute('rowspan') || '1', 10);
       const cs = parseInt((td as HTMLElement).getAttribute('colspan') || '1', 10);
       const text = ((td as HTMLElement).textContent || '').trim();
+      const richHtml = sanitizeCellHtml((td as HTMLElement).innerHTML || '');
       const img = (td as HTMLElement).querySelector('img');
       const imgSrc = img ? img.getAttribute('src') : null;
 
       for (let r = rIdx; r < Math.min(rIdx + rs, numRows); r++) {
         for (let c = cIdx; c < Math.min(cIdx + cs, maxCols); c++) {
           textGrid[r][c] = text;
+          htmlGrid[r][c] = richHtml;
           imgGrid[r][c] = imgSrc;
           occupied[r][c] = true;
         }
@@ -176,7 +210,7 @@ function buildGridFromTable(tableEl: Element): { textGrid: string[][]; imgGrid: 
     });
   });
 
-  return { textGrid, imgGrid };
+  return { textGrid, imgGrid, htmlGrid };
 }
 
 // ── Main Component ────────────────────────────────────────────────────────────
@@ -184,16 +218,536 @@ const WordQuestionImportModal: React.FC<WordQuestionImportModalProps> = ({ testT
   const [previewData, setPreviewData] = useState<any[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [errorLog, setErrorLog] = useState<string[]>([]);
+  const [mathWarning, setMathWarning] = useState<{ ole: number; omml: number } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // ── DOWNLOAD STATIC TEMPLATE (dihasilkan oleh scripts/generate_template_soal.py) ──
-  const handleDownloadTemplate = () => {
-    const link = document.createElement('a');
-    link.href = '/TEMPLATE_SOAL_CBT.docx';
-    link.download = 'TEMPLATE BANK SOAL CBT SCHOOL.docx';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  // ── DOWNLOAD TEMPLATE WORD DINAMIS (modern redesign) ──────────────
+  const handleDownloadTemplate = async () => {
+    try {
+      // ── Placeholder images ──
+      const imgSoal  = await makePng(220, 90, '#E3F2FD', '#1565C0', '📷 Sisipkan Gambar Soal di Sini');
+      const imgJaw   = await makePng(160, 70, '#F3E5F5', '#6A1B9A', '📷 Gambar Jawaban');
+      const imgMedia = await makePng(220, 80, '#FCE4EC', '#B71C1C', '🎵 Audio/Video — tulis URL di teks');
+
+      // ── Color palette per tipe ──
+      const C = {
+        hdr:   { bg: '1A237E', fg: 'FFFFFF' },
+        pg:    { row: 'EBF5FB', sec: 'D6EAF8', accent: '1565C0' },
+        pgk:   { row: 'F5EEF8', sec: 'E8DAEF', accent: '6A1B9A' },
+        mat:   { row: 'EAFAF1', sec: 'D5F5E3', accent: '1E8449' },
+        tf:    { row: 'FEF9E7', sec: 'FCF3CF', accent: 'B7770D' },
+        ess:   { row: 'FDEDEC', sec: 'FADBD8', accent: 'B71C1C' },
+        info:  { bg: 'ECEFF1', fg: '263238' },
+        kunci: { v: '1B5E20', b: '0D47A1', s: 'B71C1C' },
+      };
+
+      // ── Helper: section separator (colspan 6) ──
+      const secRow = (label: string, fillBg: string, textColor: string) =>
+        new TableRow({
+          children: [new TableCell({
+            columnSpan: 6,
+            width: { size: 9026, type: WidthType.DXA },
+            shading: { type: ShadingType.CLEAR, fill: fillBg },
+            borders: TABLE_BORDER,
+            children: [new Paragraph({
+              alignment: AlignmentType.CENTER,
+              spacing: { before: 50, after: 50 },
+              children: [new TextRun({ text: label, bold: true, color: textColor, size: 19 })],
+            })],
+          })],
+        });
+
+      // ── Helper: colored cell ──
+      const cc = (text: string, width: number, fill: string, opts: { bold?: boolean; center?: boolean; color?: string; size?: number; rowSpan?: number } = {}) =>
+        cell(text, width, { ...opts, fill });
+
+      // ── Helper: colored cellWithImg ──
+      const cci = (text: string, img: Uint8Array | null, width: number, fill: string, opts: { bold?: boolean; center?: boolean; rowSpan?: number } = {}) =>
+        cellWithImg(text, img, width, { ...opts, fill });
+
+      // ── Build colored rows per question ──
+      const buildColoredRows = (
+        q: { no: number; soal: string; jenis: string; rows: TRow[]; soalImg?: Uint8Array },
+        pal: { row: string; accent: string },
+      ): TableRow[] => {
+        const n = q.rows.length;
+        return q.rows.map((r, i) => {
+          const isFirst = i === 0;
+          const kunciColor =
+            r.kunci === 'V' ? C.kunci.v :
+            r.kunci === 'B' ? C.kunci.b :
+            r.kunci === 'S' ? C.kunci.s :
+            r.kunci !== '' ? pal.accent : '555555';
+          const children: TableCell[] = [];
+          if (isFirst) {
+            children.push(cc(String(q.no), COL.NO, 'F2F3F4', { bold: true, center: true, rowSpan: n, color: '1A1A2E' }));
+            children.push(cci(q.soal, q.soalImg ?? null, COL.SOAL, pal.row, { rowSpan: n }));
+            children.push(cc(q.jenis, COL.JENIS, pal.row, { bold: true, center: true, rowSpan: n, color: pal.accent }));
+          }
+          children.push(cc(r.opsi, COL.OPSI, i % 2 === 0 ? pal.row : 'FFFFFF', { center: true, bold: true, color: '444444' }));
+          children.push(cci(r.jawaban, r.jawImg ?? null, COL.JAWABAN, i % 2 === 0 ? pal.row : 'FFFFFF'));
+          children.push(cc(r.kunci, COL.KUNCI, i % 2 === 0 ? pal.row : 'FFFFFF', { center: true, bold: true, color: kunciColor }));
+          return new TableRow({ children });
+        });
+      };
+
+      // ── Header row ──
+      const hdrRow = new TableRow({
+        tableHeader: true,
+        children: [
+          cell('NO',              COL.NO,      { bold: true, center: true, fill: C.hdr.bg, color: C.hdr.fg, size: 18 }),
+          cell('SOAL / PERTANYAAN', COL.SOAL,  { bold: true, center: true, fill: C.hdr.bg, color: C.hdr.fg, size: 18 }),
+          cell('JENIS',           COL.JENIS,   { bold: true, center: true, fill: C.hdr.bg, color: C.hdr.fg, size: 18 }),
+          cell('OPSI',            COL.OPSI,    { bold: true, center: true, fill: C.hdr.bg, color: C.hdr.fg, size: 18 }),
+          cell('JAWABAN / OPSI TEKS', COL.JAWABAN, { bold: true, center: true, fill: C.hdr.bg, color: C.hdr.fg, size: 18 }),
+          cell('KUNCI JAWABAN',   COL.KUNCI,   { bold: true, center: true, fill: C.hdr.bg, color: C.hdr.fg, size: 18 }),
+        ],
+      });
+
+      const allRows: TableRow[] = [hdrRow];
+
+      // ════════════ JENIS 1 — PG BIASA (5 opsi A-E) ════════════
+      allRows.push(secRow('📝  JENIS 1 — PILIHAN GANDA BIASA  (KUNCI: tulis V pada 1 opsi benar)', C.pg.sec, C.pg.accent));
+      buildColoredRows({ no: 1, jenis: '1', soal: 'Siapakah proklamator kemerdekaan Republik Indonesia?', rows: [
+        { opsi: 'A', jawaban: 'Soeharto', kunci: '' },
+        { opsi: 'B', jawaban: 'B.J. Habibie', kunci: '' },
+        { opsi: 'C', jawaban: 'Soekarno dan Hatta', kunci: 'V' },
+        { opsi: 'D', jawaban: 'Megawati Soekarnoputri', kunci: '' },
+        { opsi: 'E', jawaban: 'Susilo Bambang Yudhoyono', kunci: '' },
+      ]}, C.pg).forEach(r => allRows.push(r));
+      buildColoredRows({ no: 2, jenis: '1', soal: 'Perhatikan gambar planet di bawah ini!\nPlanet manakah yang paling dekat dengan Matahari?', soalImg: imgSoal, rows: [
+        { opsi: 'A', jawaban: 'Venus', kunci: '' },
+        { opsi: 'B', jawaban: 'Merkurius', kunci: 'V' },
+        { opsi: 'C', jawaban: 'Bumi', kunci: '' },
+        { opsi: 'D', jawaban: 'Mars', kunci: '' },
+        { opsi: 'E', jawaban: 'Jupiter', kunci: '' },
+      ]}, C.pg).forEach(r => allRows.push(r));
+
+      // ════════════ JENIS 2 — PG KOMPLEKS ════════════
+      allRows.push(secRow('📝  JENIS 2 — PG KOMPLEKS  (KUNCI: tulis V pada SEMUA opsi yang benar, boleh lebih dari satu)', C.pgk.sec, C.pgk.accent));
+      buildColoredRows({ no: 3, jenis: '2', soal: 'Manakah yang termasuk bilangan prima? (Pilih SEMUA yang benar)', rows: [
+        { opsi: 'A', jawaban: '2', kunci: 'V' },
+        { opsi: 'B', jawaban: '3', kunci: 'V' },
+        { opsi: 'C', jawaban: '4', kunci: '' },
+        { opsi: 'D', jawaban: '5', kunci: 'V' },
+        { opsi: 'E', jawaban: '9', kunci: '' },
+      ]}, C.pgk).forEach(r => allRows.push(r));
+      buildColoredRows({ no: 4, jenis: '2', soal: 'Dengarkan audio berikut!\nURL: https://contoh.com/audio.mp3\nAlat musik yang terdengar? (Pilih SEMUA yang benar)', soalImg: imgMedia, rows: [
+        { opsi: 'A', jawaban: 'Gitar', kunci: 'V' },
+        { opsi: 'B', jawaban: 'Piano', kunci: '' },
+        { opsi: 'C', jawaban: 'Drum', kunci: 'V' },
+        { opsi: 'D', jawaban: 'Suling', kunci: '' },
+        { opsi: 'E', jawaban: 'Biola', kunci: 'V' },
+      ]}, C.pgk).forEach(r => allRows.push(r));
+
+      // ════════════ JENIS 3 — MENJODOHKAN ════════════
+      allRows.push(secRow('🔗  JENIS 3 — MENJODOHKAN  (JAWABAN = item kiri | KUNCI = pasangan yang benar)', C.mat.sec, C.mat.accent));
+      buildColoredRows({ no: 5, jenis: '3', soal: 'Jodohkan nama negara dengan ibu kotanya!', rows: [
+        { opsi: '1', jawaban: 'Indonesia', kunci: 'Jakarta' },
+        { opsi: '2', jawaban: 'Jepang', kunci: 'Tokyo' },
+        { opsi: '3', jawaban: 'Amerika Serikat', kunci: 'Washington DC' },
+        { opsi: '4', jawaban: 'Australia', kunci: 'Canberra' },
+      ]}, C.mat).forEach(r => allRows.push(r));
+      buildColoredRows({ no: 6, jenis: '3', soal: 'Jodohkan ilmuwan dengan penemuannya!', soalImg: imgSoal, rows: [
+        { opsi: '1', jawaban: 'Isaac Newton', jawImg: imgJaw, kunci: 'Hukum Gravitasi' },
+        { opsi: '2', jawaban: 'Albert Einstein', kunci: 'Teori Relativitas' },
+        { opsi: '3', jawaban: 'Thomas Edison', kunci: 'Lampu Pijar' },
+        { opsi: '4', jawaban: 'Marie Curie', kunci: 'Radioaktivitas' },
+      ]}, C.mat).forEach(r => allRows.push(r));
+
+      // ════════════ JENIS 4 — BENAR / SALAH ════════════
+      allRows.push(secRow('✔✘  JENIS 4 — BENAR / SALAH  (KUNCI: B = Benar  |  S = Salah)', C.tf.sec, C.tf.accent));
+      buildColoredRows({ no: 7, jenis: '4', soal: 'Tentukan pernyataan berikut BENAR (B) atau SALAH (S)!', rows: [
+        { opsi: '1', jawaban: 'Matahari terbit dari arah timur', kunci: 'B' },
+        { opsi: '2', jawaban: 'Bumi berbentuk datar', kunci: 'S' },
+        { opsi: '3', jawaban: 'Air mendidih pada 100°C di permukaan laut', kunci: 'B' },
+        { opsi: '4', jawaban: 'Fotosintesis menghasilkan karbondioksida', kunci: 'S' },
+      ]}, C.tf).forEach(r => allRows.push(r));
+      buildColoredRows({ no: 8, jenis: '4', soal: 'Perhatikan peta berikut!\nTentukan pernyataan geografis berikut BENAR atau SALAH!', soalImg: imgSoal, rows: [
+        { opsi: '1', jawaban: 'Pulau Jawa berada di selatan Kalimantan', kunci: 'B' },
+        { opsi: '2', jawaban: 'Sumatera adalah pulau terbesar di Indonesia', kunci: 'S' },
+        { opsi: '3', jawaban: 'Papua berbatasan langsung dengan Papua Nugini', kunci: 'B' },
+      ]}, C.tf).forEach(r => allRows.push(r));
+
+      // ════════════ JENIS 5 — ESSAY ════════════
+      allRows.push(secRow('✏️  JENIS 5 — ESSAY / URAIAN  (JAWABAN = kunci/rubrik penilaian, KUNCI = kosong)', C.ess.sec, C.ess.accent));
+      buildColoredRows({ no: 9, jenis: '5', soal: 'Jelaskan proses fotosintesis dan tuliskan persamaan reaksi kimianya!', rows: [{
+        opsi: '', jawaban: 'Rubrik: Definisi (2 poin) + Proses lengkap (4 poin) + Reaksi kimia benar: 6CO₂+6H₂O+cahaya→C₆H₁₂O₆+6O₂ (4 poin)', kunci: '',
+      }]}, C.ess).forEach(r => allRows.push(r));
+      buildColoredRows({ no: 10, jenis: '5', soal: 'Tonton video berikut!\nURL: https://contoh.com/video.mp4\nAnalisislah permasalahan dan berikan solusi!', soalImg: imgMedia, rows: [{
+        opsi: '', jawaban: 'Rubrik: Identifikasi masalah (3 poin) + Analisis (3 poin) + Solusi & kesimpulan (4 poin)', kunci: '',
+      }]}, C.ess).forEach(r => allRows.push(r));
+
+      // ── Info/tips row at bottom ──
+      allRows.push(secRow(
+        '★  HAPUS semua baris contoh (No.1–10) sebelum mengisi soal Anda  |  Pertahankan baris HEADER  |  Untuk gambar: sisipkan langsung di sel SOAL atau JAWABAN',
+        'FFF9C4', 'B71C1C',
+      ));
+
+      // ── Susun dokumen ──
+      const table = new Table({
+        width: { size: 9026, type: WidthType.DXA },
+        borders: TABLE_BORDER,
+        rows: allRows,
+      });
+
+      const doc = new Document({
+        sections: [{
+          properties: { page: { margin: { top: 600, right: 620, bottom: 600, left: 620 } } },
+          children: [
+            new Paragraph({
+              alignment: AlignmentType.CENTER, spacing: { after: 40 },
+              children: [new TextRun({ text: 'TEMPLATE BANK SOAL', bold: true, size: 32, color: '1A237E' })],
+            }),
+            new Paragraph({
+              alignment: AlignmentType.CENTER, spacing: { after: 20 },
+              children: [new TextRun({ text: 'CBT SCHOOL ENTERPRISE  —  All Question Types + Image Support', bold: true, size: 20, color: '3949AB' })],
+            }),
+            new Paragraph({
+              alignment: AlignmentType.CENTER, spacing: { after: 160 },
+              children: [new TextRun({ text: 'Format Tabel 6 Kolom: NO | SOAL | JENIS | OPSI | JAWABAN | KUNCI', italics: true, size: 16, color: '555555' })],
+            }),
+            table,
+            new Paragraph({
+              spacing: { before: 140, after: 40 },
+              children: [new TextRun({ bold: true, size: 16, color: '1A237E', text: 'PANDUAN CEPAT:' })],
+            }),
+            new Paragraph({
+              spacing: { after: 20 },
+              children: [new TextRun({ size: 15, color: '333333', text: '• JENIS 1 (PG Biasa): tulis V di kolom KUNCI pada baris jawaban yang benar (hanya 1 V)' })],
+            }),
+            new Paragraph({
+              spacing: { after: 20 },
+              children: [new TextRun({ size: 15, color: '333333', text: '• JENIS 2 (PG Kompleks): tulis V di semua baris jawaban yang benar (bisa lebih dari 1)' })],
+            }),
+            new Paragraph({
+              spacing: { after: 20 },
+              children: [new TextRun({ size: 15, color: '333333', text: '• JENIS 3 (Menjodohkan): kolom JAWABAN = item kiri, kolom KUNCI = teks pasangan yang benar' })],
+            }),
+            new Paragraph({
+              spacing: { after: 20 },
+              children: [new TextRun({ size: 15, color: '333333', text: '• JENIS 4 (Benar/Salah): kolom JAWABAN = pernyataan, kolom KUNCI = B (Benar) atau S (Salah)' })],
+            }),
+            new Paragraph({
+              spacing: { after: 20 },
+              children: [new TextRun({ size: 15, color: '333333', text: '• JENIS 5 (Essay): kolom JAWABAN = kunci jawaban/rubrik penilaian, kolom KUNCI = kosong' })],
+            }),
+            new Paragraph({
+              spacing: { after: 20 },
+              children: [new TextRun({ size: 15, color: '333333', text: '• GAMBAR: sisipkan gambar langsung di dalam sel SOAL atau JAWABAN menggunakan Insert → Picture di Word' })],
+            }),
+            new Paragraph({
+              spacing: { after: 20 },
+              children: [new TextRun({ size: 15, color: '333333', text: '• AUDIO/VIDEO: tulis URL media di baris pertama teks soal dengan format  URL: https://link-media.com/file.mp3' })],
+            }),
+            new Paragraph({
+              spacing: { after: 0 },
+              children: [new TextRun({ bold: true, size: 15, color: 'B71C1C', text: '⚠ Simpan file sebagai format .docx (Word 2007 ke atas). Jangan gunakan format .doc lama.' })],
+            }),
+          ],
+        }],
+      });
+
+      const blob = await Packer.toBlob(doc);
+      const url  = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'TEMPLATE BANK SOAL CBT SCHOOL.docx';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error('Gagal generate template:', e);
+      alert('Gagal membuat template Word. Silakan coba lagi.');
+    }
+  };
+
+  // ── GENERATE TEMPLATE WORD DINAMIS (tidak digunakan) ──────────────
+  const _handleDownloadTemplateDynamic = async () => {
+    try {
+      // Placeholder images untuk soal/jawaban yang mengandung media
+      const imgSoalBlue   = await makePng(200, 85, '#E3F2FD', '#1565C0', '[ Gambar Soal ]');
+      const imgSoalGreen  = await makePng(200, 85, '#E8F5E9', '#2E7D32', '[ Gambar / Peta ]');
+      const imgSoalYellow = await makePng(200, 85, '#FFF8E1', '#F57F17', '[ Gambar Tokoh ]');
+      const imgMedia      = await makePng(200, 70, '#FCE4EC', '#C62828', '[ Audio / Video ]');
+      const imgJaw        = await makePng(155, 65, '#F3E5F5', '#6A1B9A', '[ Gambar Jawaban ]');
+
+      const hdrRow = new TableRow({
+        tableHeader: true,
+        children: [
+          cell('NO',      COL.NO,      { bold: true, center: true, fill: '1E3A5F', color: 'FFFFFF', size: 17 }),
+          cell('SOAL',    COL.SOAL,    { bold: true, center: true, fill: '1E3A5F', color: 'FFFFFF', size: 17 }),
+          cell('JENIS',   COL.JENIS,   { bold: true, center: true, fill: '1E3A5F', color: 'FFFFFF', size: 17 }),
+          cell('OPSI',    COL.OPSI,    { bold: true, center: true, fill: '1E3A5F', color: 'FFFFFF', size: 17 }),
+          cell('JAWABAN', COL.JAWABAN, { bold: true, center: true, fill: '1E3A5F', color: 'FFFFFF', size: 17 }),
+          cell('KUNCI',   COL.KUNCI,   { bold: true, center: true, fill: '1E3A5F', color: 'FFFFFF', size: 17 }),
+        ],
+      });
+
+      const allRows: TableRow[] = [hdrRow];
+
+      // ════════════════════════════════════════════════════════════════
+      // JENIS 1 — PG BIASA  (3 contoh)
+      // ════════════════════════════════════════════════════════════════
+
+      // Soal 1 — PG biasa tanpa media
+      buildQRows({
+        no: 1, jenis: '1',
+        soal: 'Siapakah presiden pertama Republik Indonesia?',
+        rows: [
+          { opsi: 'A', jawaban: 'Soeharto', kunci: '' },
+          { opsi: 'B', jawaban: 'B.J. Habibie', kunci: '' },
+          { opsi: 'C', jawaban: 'Soekarno', kunci: 'V' },
+          { opsi: 'D', jawaban: 'Megawati', kunci: '' },
+          { opsi: 'E', jawaban: 'Susilo Bambang Yudhoyono', kunci: '' },
+        ],
+      }).forEach(r => allRows.push(r));
+
+      // Soal 2 — PG biasa dengan GAMBAR SOAL
+      buildQRows({
+        no: 2, jenis: '1',
+        soal: 'Perhatikan gambar berikut! Planet manakah yang paling dekat dengan Matahari?',
+        soalImg: imgSoalBlue,
+        rows: [
+          { opsi: 'A', jawaban: 'Venus', kunci: '' },
+          { opsi: 'B', jawaban: 'Merkurius', kunci: 'V' },
+          { opsi: 'C', jawaban: 'Bumi', kunci: '' },
+          { opsi: 'D', jawaban: 'Mars', kunci: '' },
+        ],
+      }).forEach(r => allRows.push(r));
+
+      // Soal 3 — PG biasa biasa
+      buildQRows({
+        no: 3, jenis: '1',
+        soal: 'Perpindahan panas tanpa melalui zat perantara disebut...',
+        rows: [
+          { opsi: 'A', jawaban: 'Konduksi', kunci: '' },
+          { opsi: 'B', jawaban: 'Konveksi', kunci: '' },
+          { opsi: 'C', jawaban: 'Radiasi', kunci: 'V' },
+          { opsi: 'D', jawaban: 'Evaporasi', kunci: '' },
+        ],
+      }).forEach(r => allRows.push(r));
+
+      // ════════════════════════════════════════════════════════════════
+      // JENIS 2 — PG KOMPLEKS  (3 contoh)
+      // ════════════════════════════════════════════════════════════════
+
+      // Soal 4 — PG Kompleks tanpa media
+      buildQRows({
+        no: 4, jenis: '2',
+        soal: 'Manakah yang termasuk bilangan prima? (Pilih SEMUA yang benar)',
+        rows: [
+          { opsi: 'A', jawaban: '2', kunci: 'V' },
+          { opsi: 'B', jawaban: '3', kunci: 'V' },
+          { opsi: 'C', jawaban: '4', kunci: '' },
+          { opsi: 'D', jawaban: '5', kunci: 'V' },
+          { opsi: 'E', jawaban: '9', kunci: '' },
+        ],
+      }).forEach(r => allRows.push(r));
+
+      // Soal 5 — PG Kompleks dengan AUDIO (URL di teks soal + placeholder gambar)
+      buildQRows({
+        no: 5, jenis: '2',
+        soal: 'Dengarkan rekaman audio berikut!\nURL: soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3\nAlat musik mana yang terdengar? (Pilih SEMUA yang benar)',
+        soalImg: imgMedia,
+        rows: [
+          { opsi: 'A', jawaban: 'Gitar', kunci: 'V' },
+          { opsi: 'B', jawaban: 'Piano', kunci: '' },
+          { opsi: 'C', jawaban: 'Drum', kunci: 'V' },
+          { opsi: 'D', jawaban: 'Suling', kunci: '' },
+          { opsi: 'E', jawaban: 'Biola', kunci: 'V' },
+        ],
+      }).forEach(r => allRows.push(r));
+
+      // Soal 6 — PG Kompleks biasa
+      buildQRows({
+        no: 6, jenis: '2',
+        soal: 'Pernyataan manakah yang BENAR tentang Hukum Newton? (Pilih SEMUA yang benar)',
+        rows: [
+          { opsi: 'A', jawaban: 'Hukum I: Benda diam tetap diam jika tidak ada gaya luar', kunci: 'V' },
+          { opsi: 'B', jawaban: 'Hukum II: F = m x a', kunci: 'V' },
+          { opsi: 'C', jawaban: 'Hukum III: Aksi = Reaksi dengan arah yang SAMA', kunci: '' },
+          { opsi: 'D', jawaban: 'Hukum II: F = m / a', kunci: '' },
+        ],
+      }).forEach(r => allRows.push(r));
+
+      // ════════════════════════════════════════════════════════════════
+      // JENIS 3 — MENJODOHKAN  (3 contoh)
+      // ════════════════════════════════════════════════════════════════
+
+      // Soal 7 — Menjodohkan tanpa media
+      buildQRows({
+        no: 7, jenis: '3',
+        soal: 'Jodohkan nama negara dengan ibu kotanya!\n[JAWABAN = negara | KUNCI = ibu kota]',
+        rows: [
+          { opsi: '1', jawaban: 'Indonesia', kunci: 'Jakarta' },
+          { opsi: '2', jawaban: 'Jepang', kunci: 'Tokyo' },
+          { opsi: '3', jawaban: 'Amerika Serikat', kunci: 'Washington DC' },
+          { opsi: '4', jawaban: 'Australia', kunci: 'Canberra' },
+        ],
+      }).forEach(r => allRows.push(r));
+
+      // Soal 8 — Menjodohkan dengan GAMBAR SOAL + GAMBAR JAWABAN
+      buildQRows({
+        no: 8, jenis: '3',
+        soal: 'Perhatikan gambar tokoh ilmuwan berikut!\nJodohkan dengan bidang penemuan mereka!',
+        soalImg: imgSoalYellow,
+        rows: [
+          { opsi: '1', jawaban: 'Isaac Newton', jawImg: imgJaw, kunci: 'Hukum Gravitasi' },
+          { opsi: '2', jawaban: 'Albert Einstein', kunci: 'Teori Relativitas' },
+          { opsi: '3', jawaban: 'Thomas Edison', kunci: 'Lampu Pijar' },
+          { opsi: '4', jawaban: 'Marie Curie', kunci: 'Radioaktivitas' },
+        ],
+      }).forEach(r => allRows.push(r));
+
+      // Soal 9 — Menjodohkan biasa
+      buildQRows({
+        no: 9, jenis: '3',
+        soal: 'Jodohkan rumus fisika dengan nama hukumnya!',
+        rows: [
+          { opsi: '1', jawaban: 'F = m x a', kunci: 'Hukum Newton II' },
+          { opsi: '2', jawaban: 'E = mc2', kunci: 'Teori Relativitas Einstein' },
+          { opsi: '3', jawaban: 'PV = nRT', kunci: 'Hukum Gas Ideal' },
+          { opsi: '4', jawaban: 'a2 + b2 = c2', kunci: 'Teorema Pythagoras' },
+        ],
+      }).forEach(r => allRows.push(r));
+
+      // ════════════════════════════════════════════════════════════════
+      // JENIS 4 — BENAR / SALAH  (3 contoh)
+      // ════════════════════════════════════════════════════════════════
+
+      // Soal 10 — B/S tanpa media
+      buildQRows({
+        no: 10, jenis: '4',
+        soal: 'Tentukan pernyataan berikut BENAR (B) atau SALAH (S)!',
+        rows: [
+          { opsi: '1', jawaban: 'Matahari terbit dari arah timur', kunci: 'B' },
+          { opsi: '2', jawaban: 'Bumi berbentuk datar', kunci: 'S' },
+          { opsi: '3', jawaban: 'Air mendidih pada suhu 100 derajat Celsius di permukaan laut', kunci: 'B' },
+          { opsi: '4', jawaban: 'Fotosintesis menghasilkan oksigen', kunci: 'B' },
+        ],
+      }).forEach(r => allRows.push(r));
+
+      // Soal 11 — B/S dengan GAMBAR SOAL (peta)
+      buildQRows({
+        no: 11, jenis: '4',
+        soal: 'Perhatikan peta berikut!\nTentukan pernyataan geografis di bawah ini BENAR (B) atau SALAH (S)!',
+        soalImg: imgSoalGreen,
+        rows: [
+          { opsi: '1', jawaban: 'Pulau Jawa berada di selatan Kalimantan', kunci: 'B' },
+          { opsi: '2', jawaban: 'Sumatera adalah pulau terbesar di Indonesia', kunci: 'S' },
+          { opsi: '3', jawaban: 'Papua berbatasan langsung dengan Papua Nugini', kunci: 'B' },
+        ],
+      }).forEach(r => allRows.push(r));
+
+      // Soal 12 — B/S biasa
+      buildQRows({
+        no: 12, jenis: '4',
+        soal: 'Tentukan BENAR atau SALAH pernyataan tentang sistem pemerintahan Indonesia!',
+        rows: [
+          { opsi: '1', jawaban: 'Indonesia menganut sistem presidensial', kunci: 'B' },
+          { opsi: '2', jawaban: 'MPR berwenang memilih presiden secara langsung', kunci: 'S' },
+          { opsi: '3', jawaban: 'UUD 1945 adalah konstitusi tertinggi Indonesia', kunci: 'B' },
+          { opsi: '4', jawaban: 'Kekuasaan legislatif dipegang oleh presiden', kunci: 'S' },
+        ],
+      }).forEach(r => allRows.push(r));
+
+      // ════════════════════════════════════════════════════════════════
+      // JENIS 5 — ESSAY  (3 contoh)
+      // ════════════════════════════════════════════════════════════════
+
+      // Soal 13 — Essay biasa
+      buildQRows({
+        no: 13, jenis: '5',
+        soal: 'Jelaskan secara lengkap proses fotosintesis beserta persamaan reaksi kimianya!',
+        rows: [{
+          opsi: '',
+          jawaban: 'Fotosintesis adalah proses pembuatan makanan oleh tumbuhan menggunakan cahaya matahari. Reaksi: 6CO2 + 6H2O + cahaya -> C6H12O6 + 6O2',
+          kunci: '',
+        }],
+      }).forEach(r => allRows.push(r));
+
+      // Soal 14 — Essay dengan VIDEO (URL di teks soal + placeholder)
+      buildQRows({
+        no: 14, jenis: '5',
+        soal: 'Tonton video eksperimen berikut!\nURL: www.w3schools.com/html/mov_bbb.mp4\nAnalisislah permasalahan yang terjadi dan berikan solusi yang tepat!',
+        soalImg: imgMedia,
+        rows: [{
+          opsi: '',
+          jawaban: 'Rubrik: Identifikasi masalah (3 poin) + Analisis penyebab (3 poin) + Solusi dan kesimpulan (4 poin)',
+          kunci: '',
+        }],
+      }).forEach(r => allRows.push(r));
+
+      // Soal 15 — Essay biasa
+      buildQRows({
+        no: 15, jenis: '5',
+        soal: 'Uraikan perbedaan demokrasi langsung dan demokrasi perwakilan disertai contoh negara yang menganutnya!',
+        rows: [{
+          opsi: '',
+          jawaban: 'Rubrik: Definisi masing-masing (2 poin) + Perbedaan utama (4 poin) + Contoh negara (4 poin)',
+          kunci: '',
+        }],
+      }).forEach(r => allRows.push(r));
+
+      // ── Susun dokumen ──────────────────────────────────────────────
+      const table = new Table({
+        width: { size: 9026, type: WidthType.DXA },
+        borders: TABLE_BORDER,
+        rows: allRows,
+      });
+
+      const doc = new Document({
+        sections: [{
+          properties: {
+            page: { margin: { top: 680, right: 680, bottom: 680, left: 680 } },
+          },
+          children: [
+            new Paragraph({
+              alignment: AlignmentType.CENTER,
+              spacing: { after: 80 },
+              children: [new TextRun({ text: 'TEMPLATE BANK SOAL CBT SCHOOL — SEMUA TIPE + MEDIA', bold: true, size: 26 })],
+            }),
+            new Paragraph({
+              spacing: { after: 140 },
+              children: [new TextRun({
+                italics: true, size: 15, color: '444444',
+                text: 'Petunjuk: '
+                  + 'JENIS → 1=PG Biasa | 2=PG Kompleks | 3=Menjodohkan | 4=Benar/Salah | 5=Essay. '
+                  + 'KUNCI PG → tulis V pada baris jawaban yang benar. '
+                  + 'KUNCI B/S → tulis B (Benar) atau S (Salah). '
+                  + 'KUNCI Menjodohkan → tulis teks pasangan yang benar. '
+                  + 'Media → sisipkan gambar langsung di sel SOAL atau JAWABAN; untuk audio/video tulis URL-nya di teks soal.',
+              })],
+            }),
+            table,
+            new Paragraph({
+              spacing: { before: 180 },
+              children: [new TextRun({
+                bold: true, color: 'C62828', size: 15,
+                text: '★ HAPUS SEMUA BARIS CONTOH (No. 1–15) sebelum mengisi soal Anda. '
+                  + 'Pertahankan baris HEADER (NO | SOAL | JENIS | OPSI | JAWABAN | KUNCI). '
+                  + 'Untuk soal bergarbar: sisipkan gambar langsung di dalam sel SOAL atau JAWABAN.',
+              })],
+            }),
+          ],
+        }],
+      });
+
+      const blob = await Packer.toBlob(doc);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'TEMPLATE BANK SOAL CBT SCHOOL.docx';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error('Gagal generate template:', e);
+      alert('Gagal membuat template Word. Silakan coba lagi.');
+    }
   };
 
   // ── GENERATE TEMPLATE WORD LEGACY (kept for reference, not used) ─────────
@@ -397,7 +951,7 @@ const WordQuestionImportModal: React.FC<WordQuestionImportModalProps> = ({ testT
 
     // ── Proses setiap tabel soal ───────────────────────────────────────────
     for (const tableEl of questionTables) {
-      const { textGrid, imgGrid } = buildGridFromTable(tableEl);
+      const { textGrid, imgGrid, htmlGrid } = buildGridFromTable(tableEl);
       if (textGrid.length <= 1) continue;
 
       // Auto-detect indeks kolom dari baris header
@@ -438,7 +992,8 @@ const WordQuestionImportModal: React.FC<WordQuestionImportModalProps> = ({ testT
 
       groups.forEach((rowIndices, qIdx) => {
         const f = rowIndices[0];
-        const soalText = (textGrid[f][COL_SOAL] ?? '').trim();
+        const soalText = (textGrid[f][COL_SOAL] ?? '').trim();   // plain text — for comparisons only
+        const soalHtml = (htmlGrid[f][COL_SOAL] ?? '').trim();   // rich HTML — stored in DB
         const soalImg  = imgGrid[f][COL_SOAL];
 
         // Ambil JENIS dari baris pertama grup; jika invalid coba baris berikutnya
@@ -484,10 +1039,35 @@ const WordQuestionImportModal: React.FC<WordQuestionImportModalProps> = ({ testT
         }
 
         const soalNo = tableBaseIdx + qIdx + 1;
+
+        // Ekstrak URL media (audio/video) dari teks soal jika ada "URL: ..." pattern
+        const getMediaFieldsWord = (url: string) => {
+          if (!url) return {};
+          const lower = url.toLowerCase().split('?')[0];
+          if (/\.(mp3|wav|ogg|aac|m4a|flac)$/.test(lower)) return { audio_url: url };
+          if (/\.(mp4|webm|mov|avi|mkv)$/.test(lower)) return { video_url: url };
+          return { image_url: url };
+        };
+        const urlPattern = /(?:^|\n)URL:\s*(https?:\/\/\S+|\S+\.\S+)/i;
+        const urlMatch = soalText.match(urlPattern);
+        const extractedMediaUrl = urlMatch ? urlMatch[1].trim() : null;
+        // plain text for URL-stripping reference (not stored)
+        const cleanedSoalText = extractedMediaUrl
+          ? soalText.replace(urlPattern, '').replace(/\n{2,}/g, '\n').trim()
+          : soalText;
+        void cleanedSoalText; // used only for emptiness guard above
+        // rich HTML stored in DB — strip the URL: line if present
+        const cleanedSoalHtml = extractedMediaUrl
+          ? soalHtml.replace(/(?:<br>)*URL:\s*\S+(<br>)*/gi, '').replace(/(<br>\s*){3,}/gi, '<br>').trim()
+          : soalHtml;
+        const mediaFields = extractedMediaUrl
+          ? getMediaFieldsWord(extractedMediaUrl)
+          : soalImg ? { image_url: soalImg } : {};
+
         const qObj: any = {
           type: typeMap[jenis],
-          question: soalText,
-          ...(soalImg ? { image_url: soalImg } : {}),
+          question: cleanedSoalHtml,
+          ...mediaFields,
           options: [],
           matching_right_options: [],
           answer_key: null,
@@ -505,11 +1085,12 @@ const WordQuestionImportModal: React.FC<WordQuestionImportModalProps> = ({ testT
             k === 'V' || k === '✓' || k === '√' || k === '✔' || k === '☑' || k === '✅';
 
           rowIndices.forEach((r) => {
-            const jawaban = (textGrid[r][COL_JAWABAN] ?? '').trim();
+            const jawabanText = (textGrid[r][COL_JAWABAN] ?? '').trim();   // plain — for non-empty check
+            const jawabanHtml = (htmlGrid[r][COL_JAWABAN] ?? '').trim();   // rich — stored in DB
             const kunci = (textGrid[r][COL_KUNCI] ?? '').trim().toUpperCase();
-            if (jawaban) {
+            if (jawabanText) {
               const optIdx = opts.length; // indeks SEBELUM push
-              opts.push(jawaban);
+              opts.push(jawabanHtml || jawabanText);
               if (isCorrectMark(kunci)) correct.push(optIdx);
             }
           });
@@ -593,12 +1174,16 @@ const WordQuestionImportModal: React.FC<WordQuestionImportModalProps> = ({ testT
           const right: string[] = [];
           const pairs: Record<string, string> = {};
           rowIndices.forEach((r, i) => {
-            const col1 = (textGrid[r][COL_JAWABAN] ?? '').trim();
-            const col2 = (textGrid[r][COL_KUNCI] ?? '').trim();
-            const colOpsi = COL_OPSI < (textGrid[r]?.length ?? 0) ? (textGrid[r][COL_OPSI] ?? '').trim() : '';
-            const leftItem = col1 || colOpsi;
-            const rightItem = col2 || `Pasangan ${i + 1}`;
-            if (leftItem) {
+            const col1Text = (textGrid[r][COL_JAWABAN] ?? '').trim();
+            const col1Html = (htmlGrid[r][COL_JAWABAN] ?? '').trim();
+            const col2Text = (textGrid[r][COL_KUNCI] ?? '').trim();
+            const col2Html = (htmlGrid[r][COL_KUNCI] ?? '').trim();
+            const colOpsiText = COL_OPSI < (textGrid[r]?.length ?? 0) ? (textGrid[r][COL_OPSI] ?? '').trim() : '';
+            const colOpsiHtml = COL_OPSI < (htmlGrid[r]?.length ?? 0) ? (htmlGrid[r][COL_OPSI] ?? '').trim() : '';
+            const leftItem = col1Html || col1Text || colOpsiHtml || colOpsiText;
+            const leftEmpty = !(col1Text || colOpsiText);
+            const rightItem = col2Html || col2Text || `Pasangan ${i + 1}`;
+            if (!leftEmpty) {
               left.push(leftItem);
               right.push(rightItem);
               pairs[`L${i + 1}`] = `R${i + 1}`;
@@ -618,22 +1203,22 @@ const WordQuestionImportModal: React.FC<WordQuestionImportModalProps> = ({ testT
           const isTrueMark = (k: string) => k === 'B' || k === 'BENAR' || k === 'TRUE' || k === 'T' || k === '1';
           let stmtIdx = 0;
           rowIndices.forEach((r) => {
-            const jawaban = (textGrid[r][COL_JAWABAN] ?? '').trim();
+            const jawabanText = (textGrid[r][COL_JAWABAN] ?? '').trim();
+            const jawabanHtml = (htmlGrid[r][COL_JAWABAN] ?? '').trim();
             const kunci = (textGrid[r][COL_KUNCI] ?? '').trim().toUpperCase();
-            if (jawaban) {
-              stmts.push(jawaban);
+            if (jawabanText) {
+              stmts.push(jawabanHtml || jawabanText);
               tfKey[String(stmtIdx++)] = isTrueMark(kunci);
             }
           });
           // Fallback: jika JAWABAN kosong, gunakan SOAL sebagai satu pernyataan
-          // (format pengguna: tiap baris = 1 pernyataan, SOAL = teks pernyataan, KUNCI = B/S)
           if (stmts.length === 0 && soalText) {
             const firstKunci = rowIndices
               .map(r => (textGrid[r][COL_KUNCI] ?? '').trim().toUpperCase())
               .find(k => k === 'B' || k === 'S' || k === 'BENAR' || k === 'SALAH' ||
                          k === 'TRUE' || k === 'FALSE' || k === 'T' || k === 'F' || k === '1' || k === '0');
             if (firstKunci !== undefined) {
-              stmts.push(soalText);
+              stmts.push(soalHtml || soalText);
               tfKey['0'] = isTrueMark(firstKunci);
               qObj._isSingleStatement = true; // tandai untuk penggabungan post-process
             }
@@ -641,9 +1226,12 @@ const WordQuestionImportModal: React.FC<WordQuestionImportModalProps> = ({ testT
           qObj.options = stmts;
           qObj.answer_key = tfKey;
         } else if (jenis === 5) {
-          // Essay: JAWABAN=kunci/rubrik penilaian
+          // Essay: JAWABAN=kunci/rubrik penilaian (preserve rich HTML)
           qObj.options = [];
-          const jawabanEssay = rowIndices.map(r => (textGrid[r][COL_JAWABAN] ?? '').trim()).filter(Boolean).join(' ');
+          const jawabanEssay = rowIndices
+            .map(r => (htmlGrid[r][COL_JAWABAN] ?? '').trim() || (textGrid[r][COL_JAWABAN] ?? '').trim())
+            .filter(Boolean)
+            .join('<br>');
           qObj.answer_key = { text: jawabanEssay };
         }
 
@@ -779,24 +1367,55 @@ const WordQuestionImportModal: React.FC<WordQuestionImportModalProps> = ({ testT
     setIsProcessing(true);
     setErrorLog([]);
     setPreviewData([]);
+    setMathWarning(null);
 
     try {
       const arrayBuffer = await file.arrayBuffer();
 
-      // Try table format first (new CONTOH template format)
-      const htmlResult = await mammoth.convertToHtml({ arrayBuffer }, {
-        convertImage: mammoth.images.imgElement((image: any) =>
-          image.read('base64').then((data: string) => ({
-            src: `data:${image.contentType};base64,${data}`,
-          }))
-        ),
+      // ── OPSI A + B: Pre-process docx untuk math equations ────────────────
+      // 1. Patch OMML (m:oMath) → marker teks + build LaTeX map
+      // 2. Deteksi OLE Equation.3 untuk warning
+      const { patchedBuffer, latexMap, oleEquationCount, ommlCount } =
+        await patchDocxMath(arrayBuffer);
+
+      // Tampilkan warning jika ada equation
+      if (oleEquationCount > 0 || ommlCount > 0) {
+        setMathWarning({ ole: oleEquationCount, omml: ommlCount });
+      }
+
+      // ── OPSI A: Handler untuk WMF/OLE equation images ────────────────────
+      // mammoth mengekstrak WMF preview dari w:object (Equation.3)
+      // Kita konversi ke placeholder PNG agar tampil di browser
+      const convertImage = mammoth.images.imgElement(async (image: any) => {
+        const contentType: string = image.contentType || '';
+        // Deteksi WMF (OLE Equation.3 preview images)
+        if (contentType.includes('wmf') || contentType.includes('x-wmf') ||
+            contentType.includes('emf') || contentType.includes('x-emf')) {
+          // Buat placeholder PNG bergambar "📐 Rumus"
+          const placeholderDataUrl = await makeEquationPlaceholderPng('📐 Rumus');
+          return { src: placeholderDataUrl };
+        }
+        // Gambar biasa: embed sebagai base64
+        const data: string = await image.read('base64');
+        return { src: `data:${contentType};base64,${data}` };
       });
 
-      if (htmlResult.value.includes('<table')) {
-        parseTableHtml(htmlResult.value);
+      // Try table format first (new CONTOH template format)
+      const htmlResult = await mammoth.convertToHtml(
+        { arrayBuffer: patchedBuffer },
+        { convertImage }
+      );
+
+      // ── OPSI B: Inject LaTeX dari map ke HTML hasil mammoth ──────────────
+      const patchedHtml = latexMap.size > 0
+        ? injectLatexIntoHtml(htmlResult.value, latexMap)
+        : htmlResult.value;
+
+      if (patchedHtml.includes('<table')) {
+        parseTableHtml(patchedHtml);
       } else {
         // Fallback: legacy ===== text format
-        const textResult = await mammoth.extractRawText({ arrayBuffer });
+        const textResult = await mammoth.extractRawText({ arrayBuffer: patchedBuffer });
         parseRawText(textResult.value);
       }
     } catch (err: any) {
@@ -891,6 +1510,31 @@ const WordQuestionImportModal: React.FC<WordQuestionImportModalProps> = ({ testT
             </button>
           </div>
 
+          {/* Math Equation Warning Banner */}
+          {mathWarning && (
+            <div className="mb-4 bg-amber-50 border border-amber-300 rounded-xl p-3">
+              <div className="flex items-start gap-2">
+                <span className="text-lg">📐</span>
+                <div>
+                  <p className="font-bold text-amber-800 text-xs mb-1">Rumus Matematika Terdeteksi</p>
+                  <div className="text-xs text-amber-700 space-y-0.5">
+                    {mathWarning.omml > 0 && (
+                      <p>✅ <strong>{mathWarning.omml} rumus OMML</strong> (Word modern) → dikonversi ke LaTeX otomatis</p>
+                    )}
+                    {mathWarning.ole > 0 && (
+                      <p>⚠️ <strong>{mathWarning.ole} rumus Equation.3</strong> (legacy OLE) → ditampilkan sebagai gambar placeholder</p>
+                    )}
+                    {mathWarning.ole > 0 && (
+                      <p className="mt-1 text-amber-600 italic">
+                        Untuk rumus Equation.3 terbaca penuh: gunakan <strong>Insert → Equation</strong> (ribbon Word modern), bukan Insert → Object.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Error Log */}
           {errorLog.length > 0 && (
             <div className="mb-6 bg-red-50 border border-red-200 rounded-xl p-4">
@@ -912,13 +1556,23 @@ const WordQuestionImportModal: React.FC<WordQuestionImportModalProps> = ({ testT
                 {previewData.map((row, idx) => (
                   <div key={idx} className="bg-white border border-gray-200 p-3 rounded-lg flex items-start gap-3">
                     <span className="bg-gray-100 text-gray-600 font-mono text-xs px-2 py-1 rounded">{idx + 1}</span>
-                    <div className="flex-grow">
-                      <div className="flex gap-2 mb-1">
+                    <div className="flex-grow min-w-0">
+                      <div className="flex flex-wrap gap-1.5 mb-1">
                         <span className="text-[10px] font-bold bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded uppercase">{row.type}</span>
                         <span className="text-[10px] font-bold bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded uppercase">{row.difficulty}</span>
                         {row.image_url && <span className="text-[10px] font-bold bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded">+Gambar</span>}
+                        {containsMath(row.question) && <span className="text-[10px] font-bold bg-green-100 text-green-700 px-1.5 py-0.5 rounded">∑ Math</span>}
                       </div>
-                      <p className="text-xs text-gray-800 line-clamp-2 font-medium">{row.question}</p>
+                      {containsMath(row.question) ? (
+                        <div
+                          className="text-xs text-gray-800 line-clamp-3 font-medium katex-preview"
+                          dangerouslySetInnerHTML={{
+                            __html: sanitizeMathHtml(renderMathInText(row.question))
+                          }}
+                        />
+                      ) : (
+                        <p className="text-xs text-gray-800 line-clamp-2 font-medium">{row.question}</p>
+                      )}
                       <p className="text-[10px] text-gray-500 mt-1">
                         Kunci: <span className="font-mono bg-gray-100 px-1 rounded">{JSON.stringify(row.answer_key)}</span> | Opsi: {row.options.length}
                       </p>

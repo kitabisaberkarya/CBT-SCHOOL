@@ -12,6 +12,7 @@ const DAY_NAMES = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
 const CustomDateTimePicker: React.FC<CustomDateTimePickerProps> = ({ value, onChange }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [viewDate, setViewDate] = useState(value || new Date());
+  const [popupAlign, setPopupAlign] = useState<'left' | 'right'>('left');
   const wrapperRef = useRef<HTMLDivElement>(null);
 
   const hours = value.getHours();
@@ -28,6 +29,15 @@ const CustomDateTimePicker: React.FC<CustomDateTimePickerProps> = ({ value, onCh
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [wrapperRef]);
+
+  // Auto-detect apakah popup harus muncul ke kanan atau ke kiri
+  useEffect(() => {
+    if (isOpen && wrapperRef.current) {
+      const rect = wrapperRef.current.getBoundingClientRect();
+      const spaceRight = window.innerWidth - rect.left;
+      setPopupAlign(spaceRight < 340 ? 'right' : 'left');
+    }
+  }, [isOpen]);
 
   const changeMonth = (amount: number) => {
     setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() + amount, 1));
@@ -118,7 +128,7 @@ const CustomDateTimePicker: React.FC<CustomDateTimePickerProps> = ({ value, onCh
       </div>
 
       {isOpen && (
-        <div className="absolute top-full left-0 mt-2 bg-white rounded-lg shadow-2xl z-10 border p-4 w-80">
+        <div className={`absolute top-full mt-2 bg-white rounded-lg shadow-2xl z-50 border p-4 w-80 ${popupAlign === 'right' ? 'right-0' : 'left-0'}`}>
           {/* Calendar */}
           <div className="flex items-center justify-between mb-2">
             <button type="button" onClick={() => changeMonth(-1)} className="p-1 rounded-full hover:bg-gray-100">&lt;</button>

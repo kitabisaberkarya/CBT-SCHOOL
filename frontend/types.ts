@@ -81,6 +81,7 @@ export interface AppConfig {
   npsn?: string; // Added for License System
   timezone?: string; // Zona waktu: Asia/Jakarta (WIB) | Asia/Makassar (WITA) | Asia/Jayapura (WIT)
   serverIp?: string; // IP Address server LAN manual (agar siswa tahu URL akses)
+  examNetworkMode?: 'offline' | 'online'; // Mode jaringan ujian: offline = blokir internet, online = izinkan internet
 }
 
 export interface User {
@@ -132,8 +133,9 @@ export interface Question {
 }
 
 export interface Answer {
-  value: any; 
+  value: any;
   unsure: boolean;
+  manual_score?: number | null;
 }
 
 export interface TestDetails {
@@ -217,6 +219,7 @@ export interface Schedule {
   assignedTo: string[];
   sessionName?: string;
   sessionNumber?: number;
+  participantIds?: string[]; // null/undefined = semua siswa di kelas terpilih; isi = hanya siswa ini
 }
 
 export enum ImportStatus {

@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <!-- Latar belakang -->
+  <circle cx="100" cy="100" r="100" fill="#003580"/>
+  <!-- Garuda stilisasi — bentuk bintang/sayap -->
+  <polygon points="100,20 115,70 165,70 125,100 140,150 100,120 60,150 75,100 35,70 85,70" fill="#FFD700" opacity="0.95"/>
+  <!-- Perisai merah putih di tengah -->
+  <rect x="85" y="78" width="30" height="36" rx="3" fill="white"/>
+  <rect x="85" y="78" width="30" height="18" rx="3" fill="#CC0000"/>
+  <!-- Teks Kemendikbud -->
+  <text x="100" y="175" text-anchor="middle" font-family="Arial,sans-serif" font-size="12" font-weight="bold" fill="white" letter-spacing="0.5">KEMENDIKBUD</text>
+  <text x="100" y="190" text-anchor="middle" font-family="Arial,sans-serif" font-size="8" fill="#FFD700" letter-spacing="0.3">REPUBLIK INDONESIA</text>
+</svg>

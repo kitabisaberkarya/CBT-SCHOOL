@@ -98,6 +98,12 @@ ZIP_PATH="${RELEASES_DIR}/${ZIP_NAME}"
 # Hapus ZIP lama jika ada
 [ -f "${ZIP_PATH}" ] && rm -f "${ZIP_PATH}"
 
+# Tulis version.txt ke dist/ agar VHD tahu versi berapa setelah update
+# (Tanpa ini, VHD fallback ke package.json yang tidak ikut di-update)
+log_info "Menulis version.txt → dist/version.txt..."
+echo "${CURRENT_VERSION}" > "${FRONTEND_DIR}/dist/version.txt"
+log_success "version.txt: $(cat "${FRONTEND_DIR}/dist/version.txt")"
+
 log_info "Membuat ZIP dari dist/..."
 cd "${FRONTEND_DIR}"
 zip -r "${ZIP_PATH}" dist/ -x "*.DS_Store" "*.map" 2>/dev/null
@@ -138,7 +144,7 @@ cat <<SQL
 -- Nonaktifkan versi lama
 UPDATE app_versions
 SET is_active = false
-WHERE application_id = 'cbt_pro';
+WHERE application_id = 'cbtschool';
 
 -- Insert versi baru
 INSERT INTO app_versions (
@@ -149,7 +155,7 @@ INSERT INTO app_versions (
   is_active,
   created_at
 ) VALUES (
-  'cbt_pro',
+  'cbtschool',
   '${CURRENT_VERSION}',
   '${GITHUB_URL}',
   '${RELEASE_NOTES}',
@@ -160,7 +166,7 @@ INSERT INTO app_versions (
 -- Verifikasi hasilnya
 SELECT id, version, is_active, created_at, download_url
 FROM app_versions
-WHERE application_id = 'cbt_pro'
+WHERE application_id = 'cbtschool'
 ORDER BY created_at DESC
 LIMIT 5;
 SQL

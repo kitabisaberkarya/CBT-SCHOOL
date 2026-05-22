@@ -20,6 +20,42 @@ const UserSyncModal: React.FC<UserSyncModalProps> = ({ existingUsers, onClose, o
   const [error, setError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const isTeacherMode = activeTab === 'teacher';
+
+  // ── Download template CSV (guru atau siswa) ────────────────────────────
+  const handleDownloadTemplate = () => {
+    let header: string;
+    let examples: string[];
+
+    if (isTeacherMode) {
+      header = 'username,password,nama_lengkap,nip_nuptk,mata_pelajaran,jenis_kelamin,agama,jabatan';
+      examples = [
+        'budi.santoso,guru123,Budi Santoso S.Pd,197801012005011001,Matematika,L,Islam,Guru Tetap',
+        'siti.rahayu,pass456,Dra. Siti Rahayu M.Pd,198503152009012002,Bahasa Indonesia,P,Islam,Wali Kelas',
+        'ahmad.fauzi,,Ahmad Fauzi S.T,,Teknik Informatika,L,Islam,Guru Tetap',
+        'dewi.kartika,,Dewi Kartika S.Pd,199201202019012005,Biologi,P,Kristen,Guru Honorer',
+      ];
+    } else {
+      header = 'username,password,fullname,nisn,class,major,gender,religion';
+      examples = [
+        'andi.setiawan,,Andi Setiawan,0012345678,X RPL 1,Rekayasa Perangkat Lunak,L,Islam',
+        'sari.dewi,,Sari Dewi Putri,0087654321,X RPL 2,Rekayasa Perangkat Lunak,P,Islam',
+        'budi.pratama,,Budi Pratama,0011223344,XI TKJ 1,Teknik Komputer Jaringan,L,Islam',
+      ];
+    }
+
+    const csv = ['# Template Import ' + (isTeacherMode ? 'Guru' : 'Siswa') + ' — CBT School Enterprise', header, ...examples].join('\n');
+    const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = isTeacherMode ? 'TEMPLATE_GURU_CBT.csv' : 'TEMPLATE_SISWA_CBT.csv';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   // --- PARSING LOGIC ---
   const parseCSVContent = (text: string) => {
       const lines = text.split(/\r\n|\n/).filter(line => line.trim() !== '');
@@ -48,20 +84,50 @@ const UserSyncModal: React.FC<UserSyncModalProps> = ({ existingUsers, onClose, o
       });
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (!file) return;
-      
-      const reader = new FileReader();
-      reader.onload = (evt) => {
-          const text = evt.target?.result as string;
-          const parsedRows = parseCSVContent(text);
-          setCsvData(parsedRows);
-          setImportType('csv');
-          setMode('preview');
-      };
-      reader.readAsText(file);
-      e.target.value = ''; 
+      e.target.value = '';
+
+      const isExcel = file.name.endsWith('.xlsx') || file.name.endsWith('.xls');
+
+      if (isExcel) {
+          setError('');
+          try {
+              const ExcelJS = (await import('exceljs')).default;
+              const wb = new ExcelJS.Workbook();
+              const buf = await file.arrayBuffer();
+              await wb.xlsx.load(buf);
+              const ws = wb.worksheets[0];
+              const raw: string[][] = [];
+              ws.eachRow((row) => {
+                  const cells: string[] = [];
+                  row.eachCell({ includeEmpty: true }, (cell) => {
+                      const v = cell.value;
+                      if (v === null || v === undefined) cells.push('');
+                      else if (typeof v === 'object' && 'richText' in (v as any)) {
+                          cells.push((v as any).richText.map((rt: any) => rt.text).join(''));
+                      } else cells.push(String(v));
+                  });
+                  raw.push(cells);
+              });
+              setCsvData(raw);
+              setImportType('csv');
+              setMode('preview');
+          } catch (err: any) {
+              setError('Gagal membaca file Excel: ' + err.message);
+          }
+      } else {
+          const reader = new FileReader();
+          reader.onload = (evt) => {
+              const text = evt.target?.result as string;
+              const parsedRows = parseCSVContent(text);
+              setCsvData(parsedRows);
+              setImportType('csv');
+              setMode('preview');
+          };
+          reader.readAsText(file);
+      }
   };
 
   const handleFetchSheet = async () => {
@@ -101,60 +167,83 @@ const UserSyncModal: React.FC<UserSyncModalProps> = ({ existingUsers, onClose, o
         return clean.toLowerCase();
     });
 
-    const requiredColumns = ['fullname', 'nisn', 'class', 'major', 'gender'];
+    // Kolom wajib berbeda berdasarkan mode (guru vs siswa)
+    const isTeacherMode = activeTab === 'teacher';
+    const requiredColumns = isTeacherMode
+      ? ['fullname', 'major', 'gender']           // guru: nisn/class opsional
+      : ['fullname', 'nisn', 'class', 'major', 'gender']; // siswa: semua wajib
+
     const columnMap: { [key: string]: number } = {};
-    
+
     cleanedHeader.forEach((col, index) => {
         if (col === 'username' || col === 'email') columnMap['username'] = index;
-        else if (col === 'password' || col === 'pass') columnMap['password'] = index;
-        else if (col === 'fullname' || col === 'nama lengkap' || col === 'full_name' || col === 'nama') columnMap['fullname'] = index;
-        else if (col === 'nisn') columnMap['nisn'] = index;
-        else if (col === 'class' || col === 'kelas') columnMap['class'] = index;
-        else if (col === 'major' || col === 'jurusan') columnMap['major'] = index;
-        else if (col === 'gender' || col === 'jenis kelamin' || col === 'jk') columnMap['gender'] = index;
-        else if (col === 'religion' || col === 'agama') columnMap['religion'] = index;
-        else if (col === 'photourl' || col === 'photo_url' || col === 'url_foto' || col === 'foto' || col === 'photo') columnMap['photoUrl'] = index;
+        else if (col === 'password' || col === 'pass' || col === 'sandi') columnMap['password'] = index;
+        else if (['fullname', 'nama lengkap', 'full_name', 'nama', 'nama_lengkap'].includes(col)) columnMap['fullname'] = index;
+        else if (['nisn', 'nip', 'nuptk', 'nip_nuptk', 'nip/nuptk', 'id'].includes(col)) columnMap['nisn'] = index;
+        else if (['class', 'kelas', 'jabatan'].includes(col)) columnMap['class'] = index;
+        else if (['major', 'jurusan', 'mata_pelajaran', 'mata pelajaran', 'mapel', 'pelajaran'].includes(col)) columnMap['major'] = index;
+        else if (['gender', 'jenis kelamin', 'jenis_kelamin', 'jk'].includes(col)) columnMap['gender'] = index;
+        else if (['religion', 'agama'].includes(col)) columnMap['religion'] = index;
+        else if (['photourl', 'photo_url', 'url_foto', 'foto', 'photo'].includes(col)) columnMap['photoUrl'] = index;
         else if (col === 'role') columnMap['role'] = index;
     });
 
     const missingColumns = requiredColumns.filter(col => columnMap[col] === undefined);
     if (missingColumns.length > 0) {
-      return { validatedData: [], headerError: `Header tidak valid. Kolom berikut tidak ditemukan: ${missingColumns.join(', ')}.` };
+      const labelMap: Record<string, string> = {
+        fullname: 'nama_lengkap', nisn: 'nip_nuptk', class: 'jabatan',
+        major: 'mata_pelajaran', gender: 'jenis_kelamin',
+      };
+      const humanMissing = missingColumns.map(c => labelMap[c] || c);
+      return { validatedData: [], headerError: `Header tidak valid. Kolom berikut tidak ditemukan: ${humanMissing.join(', ')}.` };
     }
 
     const dataRows = contentRows.slice(1);
     const existingUsernamesClean = new Set(existingUsers.map(u => u.username.toLowerCase()));
     const usernamesInFileClean = new Set<string>();
-    
+
     const validatedRows = dataRows.map((row, index): ValidatedUserRow => {
       const rowNumber = index + 2;
 
-      let username = row[columnMap['username']]?.trim();
+      let username   = row[columnMap['username']]?.trim();
       const password = columnMap['password'] !== undefined ? row[columnMap['password']]?.trim() : undefined;
       const fullName = row[columnMap['fullname']]?.trim();
-      const nisn = row[columnMap['nisn']]?.trim();
-      const className = row[columnMap['class']]?.trim();
-      const major = row[columnMap['major']]?.trim();
+      const nisn     = columnMap['nisn']  !== undefined ? row[columnMap['nisn']]?.trim()  : '';
+      const major    = row[columnMap['major']]?.trim();
       const genderRaw = row[columnMap['gender']]?.trim();
-      const religion = columnMap['religion'] !== undefined ? row[columnMap['religion']]?.trim() : 'Islam';
-      let photoUrl = columnMap['photoUrl'] !== undefined ? row[columnMap['photoUrl']]?.trim() : undefined;
-      let roleRaw = columnMap['role'] !== undefined ? row[columnMap['role']]?.trim() : undefined;
+      const religion = columnMap['religion'] !== undefined ? (row[columnMap['religion']]?.trim() || 'Islam') : 'Islam';
+      let photoUrl   = columnMap['photoUrl'] !== undefined ? row[columnMap['photoUrl']]?.trim() : undefined;
+      let roleRaw    = columnMap['role'] !== undefined ? row[columnMap['role']]?.trim() : undefined;
 
+      // Untuk guru: class default "STAFF" jika tidak ada kolom class
+      const classRaw = columnMap['class'] !== undefined ? row[columnMap['class']]?.trim() : '';
+      const className = isTeacherMode
+        ? (classRaw || 'STAFF')
+        : classRaw;
+
+      // Username: fallback ke nisn (untuk guru bisa pakai username langsung)
       if (!username && nisn) username = nisn;
-      if (username && /^\d+$/.test(username)) username = `${username}@${config.emailDomain}`;
+      if (!username && fullName) username = fullName.toLowerCase().replace(/\s+/g, '.').replace(/[^a-z0-9.]/g, '');
 
-      if (!username || !fullName || !nisn || !className || !major || !genderRaw) {
+      // Validasi field wajib (beda antara guru & siswa)
+      const missingField = isTeacherMode
+        ? (!username || !fullName || !major || !genderRaw)
+        : (!username || !fullName || !nisn || !className || !major || !genderRaw);
+
+      if (missingField) {
         return { rowNumber, status: ImportStatus.INVALID_MISSING_FIELDS, message: 'Kolom wajib tidak boleh kosong.' };
       }
-      
+
       let gender: 'Laki-laki' | 'Perempuan';
-      const genderLower = genderRaw.toLowerCase();
-      if (genderLower === 'l' || genderLower === 'laki-laki' || genderLower === 'laki') gender = 'Laki-laki';
-      else if (genderLower === 'p' || genderLower === 'perempuan') gender = 'Perempuan';
-      else return { rowNumber, username, status: ImportStatus.INVALID_MISSING_FIELDS, message: "Gender harus L/P." };
-      
+      const genderLower = (genderRaw || '').toLowerCase();
+      if (['l', 'laki-laki', 'laki', 'male', 'pria'].includes(genderLower)) gender = 'Laki-laki';
+      else if (['p', 'perempuan', 'female', 'wanita'].includes(genderLower)) gender = 'Perempuan';
+      else return { rowNumber, username, status: ImportStatus.INVALID_MISSING_FIELDS, message: 'Jenis kelamin harus L atau P.' };
+
       if (!photoUrl) {
-          photoUrl = gender === 'Laki-laki' ? DEFAULT_PROFILE_IMAGES.STUDENT_MALE : DEFAULT_PROFILE_IMAGES.STUDENT_FEMALE;
+        photoUrl = isTeacherMode
+          ? DEFAULT_PROFILE_IMAGES.TEACHER
+          : (gender === 'Laki-laki' ? DEFAULT_PROFILE_IMAGES.STUDENT_MALE : DEFAULT_PROFILE_IMAGES.STUDENT_FEMALE);
       }
 
       // Role Logic
@@ -162,14 +251,19 @@ const UserSyncModal: React.FC<UserSyncModalProps> = ({ existingUsers, onClose, o
       if (activeTab === 'teacher') finalRole = 'teacher';
       else if (activeTab === 'admin') finalRole = 'admin';
       if (className.toUpperCase().includes('STAFF') || className.toUpperCase().includes('GURU')) finalRole = 'teacher';
-      
+
       const cleanUsername = username.toLowerCase();
       if (usernamesInFileClean.has(cleanUsername)) {
         return { username, rowNumber, status: ImportStatus.INVALID_DUPLICATE_IN_FILE, message: 'Username duplikat di file.' };
       }
       usernamesInFileClean.add(cleanUsername);
-      
-      const userObject = { username, password: password || nisn, fullName, nisn, class: className, major, gender, religion, photoUrl, role: finalRole };
+
+      const effectiveNisn = nisn || username;
+      const userObject = {
+        username, password: password || effectiveNisn || '123456',
+        fullName, nisn: effectiveNisn, class: className,
+        major, gender, religion, photoUrl, role: finalRole,
+      };
       const isUpdating = existingUsernamesClean.has(cleanUsername);
 
       if (isUpdating) return { ...userObject, rowNumber, status: ImportStatus.VALID_UPDATE, message: 'Akan diperbarui.' };
@@ -216,24 +310,81 @@ const UserSyncModal: React.FC<UserSyncModalProps> = ({ existingUsers, onClose, o
     }
   };
 
+  const IMPORT_CHUNK_SIZE = 100;
+  const MAX_RETRY = 3;
+  const [importProgress, setImportProgress] = useState({ done: 0, total: 0, batch: 0, totalBatch: 0 });
+
+  const rpcWithRetry = async (fn: string, args: object, batchLabel: string) => {
+    for (let attempt = 1; attempt <= MAX_RETRY; attempt++) {
+      const { data, error } = await (supabase.rpc as any)(fn, args);
+      if (!error) return data;
+      // Jangan retry jika server constraint violation (data bermasalah, bukan timeout)
+      const isConstraint = error.message?.includes('constraint') || error.message?.includes('unique');
+      if (attempt < MAX_RETRY && !isConstraint) {
+        await new Promise(r => setTimeout(r, 1500 * attempt));
+      } else {
+        throw new Error(`${batchLabel} gagal: ${error.message}`);
+      }
+    }
+  };
+
   const handleConfirm = async () => {
     setMode('importing');
     const validRows = validatedData.filter(row => row.status === ImportStatus.VALID_NEW || row.status === ImportStatus.VALID_UPDATE);
-    
+
+    const sanitizedRows = validRows.map(row => ({
+      ...row,
+      role: activeTab === 'teacher' ? 'teacher'
+          : activeTab === 'admin'   ? 'admin'
+          : (row.role || 'student'),
+      class: activeTab === 'teacher' ? (row.class || 'STAFF') : row.class,
+    }));
+
     try {
-        if (importType === 'sheet') {
-            // Sheet Sync uses sync_all_users (deletes missing)
-            const { data, error } = await supabase.rpc('sync_all_users', { users_data: validRows });
-            if (error) throw error;
-            alert(`Sinkronisasi selesai: ${data.inserted} ditambah, ${data.updated} diperbarui, ${data.deleted} dihapus.`);
+        if (importType === 'sheet' && activeTab === 'student') {
+            // 2-PHASE SYNC — mencegah data terhapus saat chunking:
+            // Fase 1: insert/update semua siswa (chunked, tidak ada delete)
+            // Fase 2: hapus siswa yang tidak ada di spreadsheet (sekali, di akhir)
+            const chunks: typeof sanitizedRows[] = [];
+            for (let i = 0; i < sanitizedRows.length; i += IMPORT_CHUNK_SIZE) {
+                chunks.push(sanitizedRows.slice(i, i + IMPORT_CHUNK_SIZE));
+            }
+            // Tampilkan total batch = chunks + 1 (fase delete terakhir)
+            setImportProgress({ done: 0, total: sanitizedRows.length, batch: 0, totalBatch: chunks.length + 1 });
+
+            // Fase 1: insert/update semua chunks via admin_import_users (tidak menghapus)
+            for (let i = 0; i < chunks.length; i++) {
+                setImportProgress({ done: i * IMPORT_CHUNK_SIZE, total: sanitizedRows.length, batch: i + 1, totalBatch: chunks.length + 1 });
+                await rpcWithRetry('admin_import_users', { users_data: chunks[i] }, `Batch ${i + 1}/${chunks.length}`);
+            }
+
+            // Fase 2: hapus siswa lama yang tidak ada di spreadsheet (satu panggilan)
+            setImportProgress({ done: sanitizedRows.length, total: sanitizedRows.length, batch: chunks.length + 1, totalBatch: chunks.length + 1 });
+            const allNisns: string[] = sanitizedRows.map((r: any) => r.nisn).filter(Boolean);
+            const deleteResult = await rpcWithRetry('sync_delete_removed_students', { valid_nisns: allNisns }, 'Fase hapus siswa lama');
+
+            setImportProgress({ done: sanitizedRows.length, total: sanitizedRows.length, batch: chunks.length + 1, totalBatch: chunks.length + 1 });
+            const deletedCount = deleteResult?.deleted ?? 0;
+            alert(`Sinkronisasi selesai: ${sanitizedRows.length} ditambah/diperbarui, ${deletedCount} dihapus.`);
         } else {
-            // CSV Import uses admin_import_users (upsert only)
-            const { error } = await supabase.rpc('admin_import_users', { users_data: validRows });
-            if (error) throw error;
-            alert(`Berhasil mengimpor ${validRows.length} pengguna!`);
+            const chunks: typeof sanitizedRows[] = [];
+            for (let i = 0; i < sanitizedRows.length; i += IMPORT_CHUNK_SIZE) {
+                chunks.push(sanitizedRows.slice(i, i + IMPORT_CHUNK_SIZE));
+            }
+            setImportProgress({ done: 0, total: sanitizedRows.length, batch: 0, totalBatch: chunks.length });
+
+            for (let i = 0; i < chunks.length; i++) {
+                setImportProgress({ done: i * IMPORT_CHUNK_SIZE, total: sanitizedRows.length, batch: i + 1, totalBatch: chunks.length });
+                await rpcWithRetry('admin_import_users', { users_data: chunks[i] }, `Batch ${i + 1}/${chunks.length}`);
+            }
+            setImportProgress({ done: sanitizedRows.length, total: sanitizedRows.length, batch: chunks.length, totalBatch: chunks.length });
+
+            if (activeTab === 'teacher') {
+                try { await supabase.rpc('repair_teacher_logins'); } catch { /* non-critical */ }
+            }
+            alert(`Import selesai! ${sanitizedRows.length} data diproses.`);
         }
-        // Auto-buat folder kelas & jurusan di Data Master
-        await autoSyncMasterData(validRows);
+        await autoSyncMasterData(sanitizedRows);
         onSuccess();
         onClose();
     } catch (err: any) {
@@ -277,35 +428,97 @@ const UserSyncModal: React.FC<UserSyncModalProps> = ({ existingUsers, onClose, o
                           <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>
                       </div>
                       <h4 className="text-lg font-bold text-gray-800 mb-2">Upload File CSV</h4>
-                      <p className="text-sm text-gray-500 mb-4">Tambahkan atau perbarui data menggunakan file CSV. Data yang sudah ada tidak akan dihapus.</p>
-                      <span className="inline-block bg-blue-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Pilih File</span>
-                      <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept=".csv" className="hidden" />
+                      <p className="text-sm text-gray-500 mb-4">Tambahkan atau perbarui data menggunakan file CSV atau Excel. Data yang sudah ada tidak akan dihapus.</p>
+                      <span className="inline-block bg-blue-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Pilih File (CSV/Excel)</span>
+                      <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept=".csv,.xlsx,.xls" className="hidden" />
                   </div>
 
                   {/* Option 2: Google Sheet */}
-                  <div className="border-2 border-gray-200 rounded-xl p-8 text-center hover:border-emerald-500 transition-all flex flex-col justify-between">
-                      <div>
-                          <div className="bg-emerald-100 text-emerald-600 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <div className="border-2 border-gray-200 rounded-xl p-6 hover:border-emerald-500 transition-all flex flex-col gap-4">
+                      <div className="text-center">
+                          <div className="bg-emerald-100 text-emerald-600 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-3">
                               <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
                           </div>
-                          <h4 className="text-lg font-bold text-gray-800 mb-2">Sinkronisasi Google Sheet</h4>
-                          <p className="text-sm text-gray-500 mb-4">Tarik data langsung dari URL Google Sheet. <strong className="text-red-500">Perhatian: Data siswa yang tidak ada di Sheet akan dihapus!</strong></p>
-                          
-                          <input 
-                              type="url" 
-                              value={sheetUrl}
-                              onChange={(e) => setSheetUrl(e.target.value)}
-                              placeholder="https://docs.google.com/spreadsheets/d/.../pub?output=csv"
-                              className="w-full p-2 border border-gray-300 rounded-md mb-4 text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none"
-                          />
+                          <h4 className="text-lg font-bold text-gray-800 mb-1">Sinkronisasi Google Sheet</h4>
+                          <p className="text-xs text-gray-500 mb-1">
+                              Tarik data dari URL Google Sheet yang sudah dipublikasikan sebagai CSV.
+                          </p>
+                          {activeTab !== 'teacher' && (
+                            <p className="text-xs font-semibold text-red-500">Perhatian: Data yang tidak ada di Sheet akan dihapus!</p>
+                          )}
                       </div>
-                      
-                      {error && <div className="text-red-600 text-xs mb-4 bg-red-50 p-2 rounded">{error}</div>}
-                      
-                      <button 
+
+                      {/* Panduan kolom */}
+                      <div className={`rounded-lg p-3 text-xs ${isTeacherMode ? 'bg-purple-50 border border-purple-200' : 'bg-blue-50 border border-blue-200'}`}>
+                          <p className={`font-bold mb-1.5 ${isTeacherMode ? 'text-purple-700' : 'text-blue-700'}`}>
+                              Kolom template {isTeacherMode ? 'GURU' : 'SISWA'}:
+                          </p>
+                          {isTeacherMode ? (
+                            <div className="grid grid-cols-2 gap-1">
+                              {[
+                                {c:'username', w:false, n:'Login username'},
+                                {c:'password', w:false, n:'Default: 123456'},
+                                {c:'nama_lengkap', w:true, n:'Nama + gelar'},
+                                {c:'nip_nuptk', w:false, n:'NIP/NUPTK guru'},
+                                {c:'mata_pelajaran', w:true, n:'Mapel yang diajar'},
+                                {c:'jenis_kelamin', w:true, n:'L atau P'},
+                                {c:'agama', w:false, n:'Default: Islam'},
+                                {c:'jabatan', w:false, n:'Misal: Guru Tetap'},
+                              ].map(col => (
+                                <div key={col.c} className={`px-1.5 py-1 rounded ${col.w ? 'bg-red-50 border border-red-200' : 'bg-white border border-gray-200'}`}>
+                                  <span className={`font-mono text-xs font-bold ${col.w ? 'text-red-600' : 'text-gray-500'}`}>{col.c}</span>
+                                  <span className="text-gray-400 ml-1">{col.w ? '★' : ''}</span>
+                                  <div className="text-gray-400" style={{fontSize:'10px'}}>{col.n}</div>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <code className="text-blue-700 block leading-relaxed">
+                              username, password, fullname★, nisn★, class★, major★, gender★, religion
+                            </code>
+                          )}
+                          <p className="text-gray-400 mt-1.5" style={{fontSize:'10px'}}>★ = wajib diisi</p>
+                      </div>
+
+                      {/* Download template */}
+                      <button
+                          onClick={handleDownloadTemplate}
+                          className={`w-full text-sm font-semibold py-2 px-4 rounded-lg border transition-colors flex items-center justify-center gap-2 ${
+                            isTeacherMode
+                              ? 'border-purple-300 text-purple-700 bg-purple-50 hover:bg-purple-100'
+                              : 'border-blue-300 text-blue-700 bg-blue-50 hover:bg-blue-100'
+                          }`}
+                      >
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                          </svg>
+                          Download Template CSV {isTeacherMode ? 'Guru' : 'Siswa'}
+                      </button>
+
+                      {/* Panduan singkat */}
+                      <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-700 space-y-0.5">
+                          <p className="font-bold">Cara publish CSV dari Google Sheets:</p>
+                          <p>1. Upload template ke Google Sheets</p>
+                          <p>2. File → Bagikan → <strong>Publikasikan ke web</strong></p>
+                          <p>3. Pilih sheet → format <strong>CSV</strong> → Publikasikan</p>
+                          <p>4. Salin link → tempel di kotak URL di bawah</p>
+                      </div>
+
+                      {/* Input URL */}
+                      <input
+                          type="url"
+                          value={sheetUrl}
+                          onChange={(e) => setSheetUrl(e.target.value)}
+                          placeholder="https://docs.google.com/spreadsheets/d/.../pub?output=csv"
+                          className="w-full p-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none"
+                      />
+
+                      {error && <div className="text-red-600 text-xs bg-red-50 p-2 rounded-lg">{error}</div>}
+
+                      <button
                           onClick={handleFetchSheet}
                           disabled={isFetchingSheet || !sheetUrl}
-                          className="w-full bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg font-semibold text-sm flex items-center justify-center gap-2 disabled:opacity-50"
+                          className="w-full bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-lg font-semibold text-sm flex items-center justify-center gap-2 disabled:opacity-50 transition-colors"
                       >
                           {isFetchingSheet ? (
                               <><svg className="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Menarik Data...</>
@@ -388,10 +601,55 @@ const UserSyncModal: React.FC<UserSyncModalProps> = ({ existingUsers, onClose, o
           )}
 
           {mode === 'importing' && (
-              <div className="flex flex-col items-center justify-center py-20">
-                  <svg className="animate-spin h-12 w-12 text-blue-600 mb-4" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                  <h3 className="text-xl font-bold text-gray-800">Memproses Data...</h3>
-                  <p className="text-gray-500 mt-2">Mohon tunggu, jangan tutup jendela ini.</p>
+              <div className="flex flex-col items-center justify-center py-16 px-8">
+                <div className="w-full max-w-md">
+                  {/* Ikon + judul */}
+                  <div className="flex flex-col items-center mb-8">
+                    <div className="relative h-20 w-20 mb-4">
+                      <svg className="animate-spin h-20 w-20 text-blue-100" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2.5" fill="none"/></svg>
+                      <svg className="animate-spin h-20 w-20 text-blue-600 absolute inset-0" style={{animationDuration:'1.2s'}} viewBox="0 0 24 24"><path fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                      </div>
+                    </div>
+                    <h3 className="text-xl font-bold text-gray-800">Mengimpor Data...</h3>
+                    <p className="text-gray-400 text-sm mt-1">Jangan tutup atau refresh halaman ini</p>
+                  </div>
+
+                  {/* Progress bar */}
+                  {importProgress.total > 0 && (
+                    <div className="space-y-3">
+                      <div className="flex justify-between text-sm font-semibold">
+                        <span className="text-gray-600">
+                          Batch <span className="text-blue-600">{importProgress.batch}</span> / {importProgress.totalBatch}
+                        </span>
+                        <span className="text-gray-800">
+                          {Math.min(importProgress.done + IMPORT_CHUNK_SIZE, importProgress.total).toLocaleString()} / {importProgress.total.toLocaleString()} data
+                        </span>
+                      </div>
+                      <div className="relative h-4 bg-gray-100 rounded-full overflow-hidden shadow-inner">
+                        <div
+                          className="absolute inset-y-0 left-0 bg-gradient-to-r from-blue-500 to-indigo-500 rounded-full transition-all duration-500"
+                          style={{ width: `${Math.round((Math.min(importProgress.done + IMPORT_CHUNK_SIZE, importProgress.total) / importProgress.total) * 100)}%` }}
+                        />
+                        <div className="absolute inset-0 flex items-center justify-center text-[10px] font-black text-white drop-shadow">
+                          {Math.round((Math.min(importProgress.done + IMPORT_CHUNK_SIZE, importProgress.total) / importProgress.total) * 100)}%
+                        </div>
+                      </div>
+                      <p className="text-center text-xs text-gray-400">
+                        Mengirim <strong className="text-gray-600">{Math.min(IMPORT_CHUNK_SIZE, importProgress.total - importProgress.done)} data</strong> ke server...
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Info chunking */}
+                  {importProgress.totalBatch > 1 && (
+                    <div className="mt-6 bg-blue-50 border border-blue-100 rounded-xl p-3 text-xs text-blue-700 flex items-start gap-2">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 flex-shrink-0 mt-0.5 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                      Data dibagi menjadi <strong>{importProgress.totalBatch} batch</strong> × {IMPORT_CHUNK_SIZE} data agar tidak timeout. Proses otomatis berlanjut hingga semua selesai.
+                    </div>
+                  )}
+                </div>
               </div>
           )}
         </div>

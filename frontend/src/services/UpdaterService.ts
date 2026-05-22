@@ -29,6 +29,44 @@ export interface UpdateInfo {
   created_at:     string;
 }
 
+// ── Utilitas: normalisasi versi vendor → string bersih ────────────────────
+function normalizeVersion(raw: string): string {
+  return (raw || '0.0.0').replace(/^v\.?/i, '').trim();
+}
+
+// ── Utilitas: bandingkan dua versi (support semver extended 4.1.5a.090526.0743) ──
+// Return true jika vA BENAR-BENAR lebih baru dari vB
+// Logic: coerce ke semver → jika beda, pakai semver; jika sama, bandingkan suffix dengan aturan:
+//   "4.1.5" < "4.1.5a" < "4.1.5a.090526" < "4.1.5a.090526.0743" < "4.1.5b" < "4.1.6"
+function isVersionNewer(vA: string, vB: string): boolean {
+  if (vA === vB) return false;
+
+  const cA = semver.coerce(vA);
+  const cB = semver.coerce(vB);
+
+  // Jika coerce gagal untuk salah satu, tidak bisa bandingkan
+  if (!cA || !cB) return false;
+
+  // Jika base semver berbeda, gunakan semver murni
+  if (!semver.eq(cA, cB)) return semver.gt(cA, cB);
+
+  // Base semver sama → bandingkan suffix: ekstrak bagian setelah MAJOR.MINOR.PATCH
+  // Contoh: "4.1.5a.090526.0743" → suffix = "a.090526.0743"
+  //         "4.1.5"              → suffix = "" (tidak ada suffix)
+  const basePat = /^\d+\.\d+\.\d+/;
+  const suffixA = vA.replace(basePat, ''); // e.g. "a.090526.0743" atau ""
+  const suffixB = vB.replace(basePat, '');
+
+  // Tidak ada suffix vs ada suffix: tidak ada suffix = versi awal (lebih lama)
+  if (suffixA === '' && suffixB === '') return false;
+  if (suffixA === '' && suffixB !== '') return false; // 4.1.5 < 4.1.5a
+  if (suffixA !== '' && suffixB === '') return true;  // 4.1.5a > 4.1.5
+
+  // Keduanya punya suffix → bandingkan suffix letter dulu, lalu build number
+  // Suffix format: [a-z][.MMDDYY][.HHMM] — bandingkan lexicographic sudah cukup akurat
+  return suffixA > suffixB;
+}
+
 class UpdaterService {
   private static instance: UpdaterService;
 
@@ -39,6 +77,86 @@ class UpdaterService {
       UpdaterService.instance = new UpdaterService();
     }
     return UpdaterService.instance;
+  }
+
+  // ── Baca versi live dari version.txt (di disk, bukan dari bundle) ──────
+  public async getLiveVersion(): Promise<string> {
+    let ver = currentVersion;
+    try {
+      const r = await fetch('/api/updater/status');
+      if (r.ok) {
+        const d = await r.json();
+        if (d.currentVersion) ver = d.currentVersion;
+      }
+    } catch { /* fallback */ }
+    return ver;
+  }
+
+  /**
+   * Ambil SEMUA versi yang harus diinstall secara berurutan (ascending).
+   * Digunakan oleh SequentialUpdatePanel untuk membangun update queue.
+   *
+   * @returns array UpdateInfo diurutkan dari versi terlama ke terbaru (ascending)
+   */
+  public async checkUpdateQueue(): Promise<UpdateInfo[]> {
+    if (typeof navigator !== 'undefined' && !navigator.onLine) return [];
+
+    const localVersion = await this.getLiveVersion();
+
+    try {
+      const controller = new AbortController();
+      const timeoutId  = setTimeout(() => controller.abort(), CHECK_TIMEOUT_MS);
+
+      const response = await axios.get(`${VENDOR_SUPABASE_URL}/rest/v1/app_versions`, {
+        params: {
+          application_id: `eq.${APP_ID}`,
+          is_active:       'eq.true',
+          select:          '*',
+          order:           'created_at.asc', // ascending: terlama dulu
+        },
+        headers: {
+          'apikey':        VENDOR_SUPABASE_KEY,
+          'Authorization': `Bearer ${VENDOR_SUPABASE_KEY}`,
+        },
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.data || !Array.isArray(response.data)) return [];
+
+      // Semua versi sudah diurutkan ascending oleh vendor (created_at ASC)
+      const allVersions: UpdateInfo[] = response.data.map((raw: any) => ({
+        id:            raw.id,
+        version:       normalizeVersion(raw.version_number ?? raw.version ?? '0.0.0'),
+        download_url:  raw.download_url,
+        release_notes: raw.changelog ?? raw.release_notes ?? '',
+        sql_migration: raw.sql_migration ?? '',
+        created_at:    raw.created_at ?? raw.release_date ?? '',
+      }));
+
+      // Cari posisi versi lokal di dalam daftar vendor berdasarkan kecocokan exact string
+      // Ini lebih andal daripada perbandingan semver untuk format "4.1.5a.090526.0743"
+      const localIdx = allVersions.findIndex(v => v.version === localVersion);
+
+      let queue: UpdateInfo[];
+
+      if (localIdx !== -1) {
+        // Versi lokal ditemukan di vendor → ambil semua yang datang SETELAH localIdx
+        queue = allVersions.slice(localIdx + 1);
+        console.log(`[Updater] Versi lokal ${localVersion} ditemukan di posisi ${localIdx}. Queue: ${queue.length} versi`);
+      } else {
+        // Versi lokal tidak ada di daftar vendor (mungkin custom build) → fallback ke string comparison
+        queue = allVersions.filter(v => isVersionNewer(v.version, localVersion));
+        console.log(`[Updater] Versi lokal ${localVersion} tidak ada di vendor. Fallback string compare. Queue: ${queue.length}`);
+      }
+
+      return queue;
+
+    } catch (err: any) {
+      console.warn('[Updater] checkUpdateQueue error:', err.message);
+      return [];
+    }
   }
 
   /**
@@ -108,9 +226,27 @@ class UpdaterService {
           created_at:    raw.created_at ?? raw.release_date ?? '',
         };
 
-        console.log(`[Updater] Vendor versi: ${latest.version} | Lokal: ${currentVersion}`);
+        console.log(`[Updater] Vendor versi: ${latest.version} | Lokal: ${localVersion}`);
 
-        if (semver.gt(latest.version, localVersion)) {
+        // Coba semver murni dulu, fallback ke semver.coerce jika format non-standard
+        let isNewer = false;
+        try {
+          isNewer = semver.gt(latest.version, localVersion);
+        } catch {
+          // Format non-semver (misal "4.1.4a.080526"): coerce ke semver lalu bandingkan
+          const coercedLatest = semver.coerce(latest.version);
+          const coercedLocal  = semver.coerce(localVersion);
+          if (coercedLatest && coercedLocal) {
+            if (semver.gt(coercedLatest, coercedLocal)) {
+              isNewer = true;
+            } else if (semver.eq(coercedLatest, coercedLocal)) {
+              // Versi numerik sama tapi string berbeda → ada patch/hotfix
+              isNewer = latest.version !== localVersion;
+            }
+          }
+        }
+
+        if (isNewer) {
           console.log(`[Updater] Update tersedia: ${latest.version}`);
           return latest;
         } else {

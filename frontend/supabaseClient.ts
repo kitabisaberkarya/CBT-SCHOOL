@@ -32,8 +32,8 @@ const getDynamicSupabaseUrl = (): string => {
   // WAJIB pakai hostname browser (bukan VITE_SUPABASE_URL) agar selalu cocok dengan IP server aktif.
   const isLanIp = /^(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/.test(hostname);
   if (isLanIp) {
-    const vhdUrl = `http://${hostname}:8000`;
-    console.log(`[Supabase] VHD LAN MODE → ${vhdUrl}`);
+    const vhdUrl = `http://${hostname}`;
+    console.log(`[Supabase] VHD LAN MODE → ${vhdUrl} (via nginx proxy)`);
     return vhdUrl;
   }
 
@@ -52,8 +52,8 @@ const getDynamicSupabaseUrl = (): string => {
   }
 
   // Fallback
-  console.log(`[Supabase] FALLBACK → http://${hostname}:8000`);
-  return `http://${hostname}:8000`;
+  console.log(`[Supabase] FALLBACK → http://${hostname}`);
+  return `http://${hostname}`;
 };
 
 /**
@@ -88,8 +88,8 @@ if (!finalAnonKey) {
 
 export const supabase = createClient(finalSupabaseUrl, finalAnonKey, {
   auth: {
-    persistSession: true,
-    autoRefreshToken: true,
+    persistSession: false,
+    autoRefreshToken: false,
     detectSessionInUrl: true,
     // Workaround untuk Navigator LockManager timeout di iframe/preview environment
     // @ts-ignore
@@ -156,6 +156,7 @@ export const getConfig = async (defaultConfig: AppConfig): Promise<AppConfig> =>
       npsn:                    data.npsn                 || '',
       timezone:                data.timezone             || 'Asia/Jakarta',
       serverIp:                data.server_ip            || '',
+      examNetworkMode:         (data.exam_network_mode as 'offline' | 'online') || 'offline',
     };
   } catch (err) {
     console.warn('[getConfig] Gagal ambil config dari DB, pakai default.', err);
@@ -328,6 +329,7 @@ export const getAvailableExamsForStudent = async (user: User): Promise<Available
         start_time,
         end_time,
         assigned_to,
+        participant_ids,
         session_name,
         session_number,
         tests (
@@ -354,6 +356,11 @@ export const getAvailableExamsForStudent = async (user: User): Promise<Available
       const normalizedTargets: string[] = s.assigned_to.map(normalizeStr);
       const authorized = normalizedTargets.includes(userClassNorm) || normalizedTargets.includes(userMajorNorm);
       if (!authorized) continue;
+
+      // Jika ada filter peserta spesifik, cek apakah siswa ini termasuk
+      if (s.participant_ids && s.participant_ids.length > 0) {
+        if (!s.participant_ids.includes(user.id)) continue;
+      }
 
       const t = s.tests;
       const start = new Date(s.start_time).getTime();

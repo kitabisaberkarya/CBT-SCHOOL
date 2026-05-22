@@ -11,6 +11,7 @@ import StudentAnswerAnalysis from '../components/StudentAnswerAnalysis';
 import ToastNotification from '../components/ToastNotification';
 import BulkImportProgress from '../components/BulkImportProgress';
 import TokenManagement from '../components/TokenManagement';
+import LoadingScreen from '../components/LoadingScreen';
 
 interface TeacherDashboardProps {
   user: User;
@@ -480,10 +481,11 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = (props) => {
 
   if (isDataLoading) {
     return (
-        <div className="h-screen w-full flex flex-col items-center justify-center text-gray-600 bg-slate-50">
-            <div className="animate-spin rounded-full h-12 w-12 border-t-4 border-b-4 border-teal-600 mb-4"></div>
-            <p className="animate-pulse text-lg font-medium text-teal-800">Memuat Ruang Guru...</p>
-        </div>
+      <LoadingScreen
+        message="Memuat Ruang Guru..."
+        subMessage="Menyiapkan data ujian dan soal"
+        primaryColor="#0f766e"
+      />
     );
   }
 

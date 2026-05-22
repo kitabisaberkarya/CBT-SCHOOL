@@ -37,7 +37,8 @@ const UpdateNotification: React.FC = () => {
       body: JSON.stringify({
         download_url:  updateInfo.download_url,
         version:       updateInfo.version,
-        release_notes: updateInfo.release_notes || '',
+        release_notes: updateInfo.release_notes  || '',
+        sql_migration: updateInfo.sql_migration  || '',
       }),
     }).then((res) => {
       if (!res.ok || !res.body) throw new Error(`Server error: ${res.status}`);

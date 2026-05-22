@@ -25,9 +25,9 @@ import TokenManagement from '../components/TokenManagement';
 import { DEFAULT_PROFILE_IMAGES } from '../constants';
 import { useCbtschoolLicense } from '../src/hooks/useCbtschoolLicense';
 import LicenseActivation from '../components/LicenseActivation';
-import UpdateModal from '../src/components/UpdateModal';
-import UpdaterService, { UpdateInfo as AppUpdateInfo } from '../src/services/UpdaterService';
-import { Lock, ShieldCheck, AlertTriangle, RefreshCw, ArrowUpCircle } from 'lucide-react';
+import SequentialUpdatePanel from '../src/components/SequentialUpdatePanel';
+import UpdateNotification from '../src/components/UpdateNotification';
+import { Lock, ShieldCheck, AlertTriangle, RefreshCw, Sparkles, Building2, Hash, Zap, ChevronRight, RotateCcw } from 'lucide-react';
 // @ts-ignore — vite resolves JSON imports
 import { version as APP_VERSION } from '../package.json';
 
@@ -47,8 +47,123 @@ interface NavItem {
   id: AdminView;
   label: string;
   icon: React.ReactNode;
-  isDemoLocked?: boolean; // Tanda fitur terkunci di mode demo
+  isDemoLocked?: boolean;
+  badge?: number;
 }
+
+// ── Komponen Tabel Riwayat Sinkronisasi Update ────────────────────────────────
+const UpdateSyncHistoryTable: React.FC = () => {
+  const [rows, setRows] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await supabase
+          .from('update_audit_log')
+          .select('version, status, message, sql_migrated, started_at, finished_at')
+          .order('started_at', { ascending: false })
+          .limit(10);
+        if (!cancelled) setRows(data ?? []);
+      } catch { /* tabel mungkin belum ada di VHD lama */ }
+      finally { if (!cancelled) setLoading(false); }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const statusBadge = (status: string) => {
+    const map: Record<string, string> = {
+      completed:   'bg-emerald-100 text-emerald-700 border border-emerald-200',
+      failed:      'bg-red-100 text-red-700 border border-red-200',
+      started:     'bg-blue-100 text-blue-700 border border-blue-200',
+      rolled_back: 'bg-amber-100 text-amber-700 border border-amber-200',
+    };
+    const label: Record<string, string> = {
+      completed: 'Berhasil', failed: 'Gagal', started: 'Proses', rolled_back: 'Rollback',
+    };
+    return (
+      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${map[status] ?? 'bg-slate-100 text-slate-600'}`}>
+        {status === 'completed' && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1.5 animate-pulse" />}
+        {status === 'failed'    && <span className="w-1.5 h-1.5 rounded-full bg-red-500 mr-1.5" />}
+        {label[status] ?? status}
+      </span>
+    );
+  };
+
+  const fmtDate = (iso: string) => {
+    if (!iso) return '-';
+    try {
+      return new Date(iso).toLocaleString('id-ID', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' });
+    } catch { return iso; }
+  };
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+        <div className="flex items-center gap-3">
+          <div className="bg-indigo-50 rounded-xl p-2">
+            <svg className="w-4 h-4 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+          </div>
+          <div>
+            <h3 className="text-sm font-bold text-slate-800">Riwayat Sinkronisasi Update</h3>
+            <p className="text-xs text-slate-400">10 aktivitas terbaru</p>
+          </div>
+        </div>
+        <button onClick={() => window.location.reload()} className="text-xs text-indigo-600 hover:text-indigo-800 font-medium flex items-center gap-1">
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+          Refresh
+        </button>
+      </div>
+
+      {/* Table */}
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="bg-slate-50 border-b border-slate-100">
+              <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Versi</th>
+              <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th>
+              <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider hidden md:table-cell">DB Migrasi</th>
+              <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider hidden lg:table-cell">Keterangan</th>
+              <th className="text-right px-5 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">Waktu</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-50">
+            {loading ? (
+              <tr><td colSpan={5} className="text-center py-8 text-slate-400 text-sm">Memuat riwayat...</td></tr>
+            ) : rows.length === 0 ? (
+              <tr><td colSpan={5} className="text-center py-8 text-slate-400 text-sm">Belum ada riwayat sinkronisasi.</td></tr>
+            ) : rows.map((r, i) => (
+              <tr key={i} className="hover:bg-slate-50 transition-colors">
+                <td className="px-5 py-3.5">
+                  <span className="inline-flex items-center gap-1.5 font-mono font-semibold text-slate-800 text-xs bg-slate-100 px-2.5 py-1 rounded-lg">
+                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
+                    v{r.version}
+                  </span>
+                </td>
+                <td className="px-5 py-3.5">{statusBadge(r.status)}</td>
+                <td className="px-5 py-3.5 hidden md:table-cell">
+                  {r.sql_migrated
+                    ? <span className="text-emerald-600 font-semibold text-xs">✓ Dijalankan</span>
+                    : <span className="text-slate-400 text-xs">–</span>}
+                </td>
+                <td className="px-5 py-3.5 hidden lg:table-cell">
+                  <span className="text-xs text-slate-500 line-clamp-1 max-w-xs">{r.message ?? '-'}</span>
+                </td>
+                <td className="px-5 py-3.5 text-right">
+                  <span className="text-xs text-slate-500">{fmtDate(r.finished_at ?? r.started_at)}</span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+};
 
 const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
   const { user, onLogout, config, onUpdateConfig, setIsBatchProcessing, isLocked: propsIsLocked, isDemoMode: propsIsDemoMode = false, licenseProfile: propsLicenseProfile, licenseError: propsLicenseError } = props;
@@ -92,33 +207,16 @@ const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
 
   const [isConfirmResetOpen, setIsConfirmResetOpen] = useState(false); // New State for Confirmation Modal
 
-  // ── Update Modal State ──────────────────────────────────────────────────────
-  const [isUpdateModalOpen,  setIsUpdateModalOpen]  = useState(false);
-  const [updateInfo,         setUpdateInfo]          = useState<AppUpdateInfo | null>(null);
-  const [isCheckingUpdate,   setIsCheckingUpdate]    = useState(false);
-  // Versi live dari /api/updater/status (baca version.txt dari disk — bukan dari bundle)
-  const [liveAppVersion,     setLiveAppVersion]      = useState<string>(APP_VERSION);
+  // ── Versi live dari /api/updater/status (baca version.txt dari disk) ──────
+  const [liveAppVersion, setLiveAppVersion] = useState<string>(APP_VERSION);
+  const [updateBadgeCount, setUpdateBadgeCount] = useState(0);
 
   useEffect(() => {
     fetch('/api/updater/status')
       .then(r => r.json())
       .then((d: any) => { if (d.currentVersion) setLiveAppVersion(d.currentVersion); })
-      .catch(() => {}); // fallback ke APP_VERSION jika updater tidak aktif
+      .catch(() => {});
   }, []);
-
-  const handleCheckUpdate = async () => {
-    setIsCheckingUpdate(true);
-    setUpdateInfo(null);
-    try {
-      const info = await UpdaterService.checkUpdate();
-      setUpdateInfo(info);
-      if (!info) showToast('Aplikasi sudah versi terbaru!', 'success');
-    } catch {
-      showToast('Gagal memeriksa update. Periksa koneksi internet.', 'error');
-    } finally {
-      setIsCheckingUpdate(false);
-    }
-  };
 
   const handleResetLicenseClick = () => {
       setIsConfirmResetOpen(true);
@@ -244,16 +342,82 @@ const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
             supabase.from('master_exam_types').select('*').order('name'),
         ]);
         if (classesError || majorsError) throw new Error('Gagal mengambil data master.');
-        setMasterData({ classes: classesData as MasterDataItem[], majors: majorsData as MasterDataItem[], examTypes: (examTypesData || []) as MasterDataItem[] });
+        const fullMaster = { classes: classesData as MasterDataItem[], majors: majorsData as MasterDataItem[], examTypes: (examTypesData || []) as MasterDataItem[] };
+        setMasterData(fullMaster);
+        try { sessionStorage.setItem('cbt_dashboard_master_cache', JSON.stringify(fullMaster)); } catch (_) {}
     } catch (error: any) {
         showToast(error.message, 'error');
     }
   }, []);
 
+  // Kunci cache sessionStorage
+  const COUNTS_CACHE_KEY      = 'cbt_dashboard_counts_cache';
+  const TESTS_CACHE_KEY       = 'cbt_dashboard_tests_cache';
+  const SCHEDULES_CACHE_KEY_2 = 'cbt_dashboard_schedules_cache';
+  const MASTER_CACHE_KEY      = 'cbt_dashboard_master_cache';
+  const USERS_CACHE_KEY       = 'cbt_dashboard_users_cache';
+
+  // Restore semua cache secara sinkron sebelum fetch (cegah data kosong saat refresh)
+  useEffect(() => {
+    try {
+      const cachedCounts = sessionStorage.getItem(COUNTS_CACHE_KEY);
+      if (cachedCounts) {
+        const { student, teacher, admin, total } = JSON.parse(cachedCounts);
+        if (student > 0) setRealStudentCount(student);
+        if (teacher > 0) setRealTeacherCount(teacher);
+        if (admin > 0)   setRealAdminCount(admin);
+        if (total > 0)   setTotalUserCount(total);
+      }
+    } catch (_) {}
+    try {
+      const cachedTests = sessionStorage.getItem(TESTS_CACHE_KEY);
+      if (cachedTests) {
+        const testsArr: [string, Test][] = JSON.parse(cachedTests);
+        if (testsArr.length > 0) setTests(new Map(testsArr));
+      }
+    } catch (_) {}
+    try {
+      const cachedSchedules = sessionStorage.getItem(SCHEDULES_CACHE_KEY_2);
+      if (cachedSchedules) {
+        const schedArr: Schedule[] = JSON.parse(cachedSchedules);
+        if (schedArr.length > 0) setSchedules(schedArr);
+      }
+    } catch (_) {}
+    try {
+      const cachedMaster = sessionStorage.getItem(MASTER_CACHE_KEY);
+      if (cachedMaster) {
+        const parsed = JSON.parse(cachedMaster);
+        if (parsed.classes?.length > 0 || parsed.majors?.length > 0) setMasterData(parsed);
+      }
+    } catch (_) {}
+    try {
+      const cachedUsers = sessionStorage.getItem(USERS_CACHE_KEY);
+      if (cachedUsers) {
+        const usersArr: User[] = JSON.parse(cachedUsers);
+        if (usersArr.length > 0) setUsers(usersArr);
+      }
+    } catch (_) {}
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // UPDATE: Split fetch into Initial (Critical) and Background (Heavy)
   const fetchData = useCallback(async (isBackgroundRefresh = false) => {
     if (!isBackgroundRefresh) setIsInitialLoad(true);
-    
+
+    // Retry helper: coba ulang hingga 3x jika Supabase/PostgREST belum siap
+    const fetchWithRetry = async (fn: () => Promise<any>, maxRetries = 3, delayMs = 1200) => {
+      for (let attempt = 0; attempt < maxRetries; attempt++) {
+        try {
+          const result = await fn();
+          if (!result.error) return result;
+          if (attempt < maxRetries - 1) await new Promise(r => setTimeout(r, delayMs));
+        } catch (_) {
+          if (attempt < maxRetries - 1) await new Promise(r => setTimeout(r, delayMs));
+        }
+      }
+      return { data: null, count: null, error: new Error('max retries reached') };
+    };
+
     try {
       // 1. CRITICAL DATA (Fast Load)
       const [
@@ -267,33 +431,58 @@ const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
         { count: adminCountData },
         { count: studentCountData },
       ] = await Promise.all([
-        supabase.from('tests').select('*, questions:questions(count)'),
-        supabase.from('master_classes').select('*'),
-        supabase.from('master_majors').select('*'),
-        supabase.from('announcements').select('*').order('created_at', { ascending: false }).limit(5), // Limit announcements
-        supabase.from('schedules').select('*'),
-        supabase.from('users').select('*', { count: 'exact', head: true }),
-        supabase.from('users').select('*', { count: 'exact', head: true }).eq('role', 'teacher'),
-        supabase.from('users').select('*', { count: 'exact', head: true }).eq('role', 'admin'),
-        supabase.from('users').select('*', { count: 'exact', head: true }).eq('role', 'student'),
+        fetchWithRetry(() => supabase.from('tests').select('*, questions:questions(count)')),
+        fetchWithRetry(() => supabase.from('master_classes').select('*')),
+        fetchWithRetry(() => supabase.from('master_majors').select('*')),
+        fetchWithRetry(() => supabase.from('announcements').select('*').order('created_at', { ascending: false }).limit(5)),
+        fetchWithRetry(() => supabase.from('schedules').select('*')),
+        fetchWithRetry(() => supabase.from('users').select('*', { count: 'exact', head: true })),
+        fetchWithRetry(() => supabase.from('users').select('*', { count: 'exact', head: true }).eq('role', 'teacher')),
+        fetchWithRetry(() => supabase.from('users').select('*', { count: 'exact', head: true }).eq('role', 'admin')),
+        fetchWithRetry(() => supabase.from('users').select('*', { count: 'exact', head: true }).eq('role', 'student')),
       ]);
 
       if (testsError || classesError || majorsError || announcementsError || schedulesError) {
-        throw new Error('Gagal mengambil data kritis.');
+        // Jangan throw — biarkan state lama tetap tampil dari cache, hanya stop spinner
+        console.warn('[AdminDashboard] Critical data fetch failed, keeping cached state.');
+        if (!isBackgroundRefresh) setIsInitialLoad(false);
+        return;
       }
 
       if (userCountError) {
           console.error("User Count Error:", userCountError);
       }
 
-      // Process Critical Data
-      setTotalUserCount(userCount || 0); // Set Count Immediately
-      setRealTeacherCount(teacherCountData || 0);
-      setRealAdminCount(adminCountData || 0);
-      setRealStudentCount(studentCountData || 0);
+      // Process Critical Data — only update state/cache when count is NOT null
+      // (null means fetchWithRetry exhausted all retries; keep existing cached values)
+      const sCount = studentCountData;
+      const tCount = teacherCountData;
+      const aCount = adminCountData;
+      const uCount = userCount;
+
+      if (uCount !== null) setTotalUserCount(uCount);
+      if (tCount !== null) setRealTeacherCount(tCount);
+      if (aCount !== null) setRealAdminCount(aCount);
+      if (sCount !== null) setRealStudentCount(sCount);
+
+      // Simpan ke sessionStorage HANYA jika semua count berhasil diambil
+      if (sCount !== null && tCount !== null && aCount !== null && uCount !== null) {
+        try {
+          sessionStorage.setItem(COUNTS_CACHE_KEY, JSON.stringify({
+            student: sCount, teacher: tCount, admin: aCount, total: uCount,
+          }));
+        } catch (_) {}
+      }
       // Fetch exam types in background (non-critical); fallback to empty if table doesn't exist yet
       supabase.from('master_exam_types').select('*').order('name').then(({ data: etData }) => {
-        setMasterData(prev => ({ ...prev, examTypes: (etData || []) as MasterDataItem[] }));
+        const fullMaster = {
+          classes: classesData as MasterDataItem[],
+          majors: majorsData as MasterDataItem[],
+          examTypes: (etData || []) as MasterDataItem[],
+        };
+        setMasterData(fullMaster);
+        // Simpan masterData lengkap (termasuk examTypes) ke sessionStorage
+        try { sessionStorage.setItem(MASTER_CACHE_KEY, JSON.stringify(fullMaster)); } catch (_) {}
       });
       setMasterData({ classes: classesData as MasterDataItem[], majors: majorsData as MasterDataItem[], examTypes: [] });
       setAnnouncements(announcementsData.map(a => ({ ...a, date: a.created_at })) as Announcement[]);
@@ -317,6 +506,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
         });
       });
       setTests(newTestsMap);
+      // Simpan tests ke sessionStorage (tanpa questions array agar tidak terlalu besar)
+      try {
+        sessionStorage.setItem(TESTS_CACHE_KEY, JSON.stringify([...newTestsMap.entries()]));
+      } catch (_) {}
 
       // Map Schedules (Needs tests map, so we do it here or after)
       // We need a temporary map for schedule mapping since state update is async
@@ -329,8 +522,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
         startTime: s.start_time,
         endTime: s.end_time,
         assignedTo: s.assigned_to || [],
+        sessionName: s.session_name ?? undefined,
+        sessionNumber: s.session_number ?? undefined,
+        participantIds: s.participant_ids && s.participant_ids.length > 0 ? s.participant_ids : undefined,
       })).filter(s => s.testToken);
       setSchedules(mappedSchedules);
+      // Simpan schedules ke sessionStorage
+      try {
+        sessionStorage.setItem(SCHEDULES_CACHE_KEY_2, JSON.stringify(mappedSchedules));
+      } catch (_) {}
 
       // Stop Loading Spinner HERE - UI is ready
       if (!isBackgroundRefresh) setIsInitialLoad(false);
@@ -342,8 +542,29 @@ const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
 
       if (!usersError && usersData) {
           const mappedUsers = usersData.map((u: any): User => {
-            const gender = u.gender || 'Laki-laki';
-            const defaultPhoto = gender === 'Perempuan' ? DEFAULT_PROFILE_IMAGES.STUDENT_FEMALE : DEFAULT_PROFILE_IMAGES.STUDENT_MALE;
+            const gender  = u.gender || 'Laki-laki';
+            const role    = u.role   || 'student';
+
+            // Pilih foto default berdasarkan role + gender
+            let defaultPhoto: string;
+            if (role === 'admin') {
+              defaultPhoto = DEFAULT_PROFILE_IMAGES.ADMIN;
+            } else if (role === 'teacher') {
+              defaultPhoto = DEFAULT_PROFILE_IMAGES.TEACHER;
+            } else {
+              // Siswa — deteksi gender
+              defaultPhoto = gender === 'Perempuan'
+                ? DEFAULT_PROFILE_IMAGES.STUDENT_FEMALE
+                : DEFAULT_PROFILE_IMAGES.STUDENT_MALE;
+            }
+
+            // Jangan gunakan foto siswa (boy/girl) untuk admin/guru
+            let resolvedPhoto = u.photo_url || defaultPhoto;
+            if (role === 'admin' || role === 'teacher') {
+              const isStudentPhoto = ['boy.png', 'girl.png'].some(p => (resolvedPhoto || '').includes(p));
+              if (isStudentPhoto) resolvedPhoto = defaultPhoto;
+            }
+
             return {
               id: u.id,
               username: u.username,
@@ -354,13 +575,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
               major: u.major,
               gender: gender,
               religion: u.religion,
-              photoUrl: u.photo_url || defaultPhoto,
+              photoUrl: resolvedPhoto,
               updated_at: u.updated_at,
               password_text: u.password_text,
-              role: u.role,
+              role: role,
             };
           });
           setUsers(mappedUsers);
+          // Simpan users ke sessionStorage agar Cetak Kartu & menu lain tetap terisi saat refresh
+          try { sessionStorage.setItem(USERS_CACHE_KEY, JSON.stringify(mappedUsers)); } catch (_) {}
       }
 
       if (!sessionsError && sessionsData) {
@@ -435,15 +658,19 @@ const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
         test_id: testData.id, 
         type: q.type, // PENTING: Kirim tipe soal
         question: q.question, 
-        image_url: q.image, 
-        options: q.options, 
+        image_url: q.image,
+        audio_url: q.audio,
+        video_url: q.video,
+        options: q.options,
         option_images: q.optionImages,
-        correct_answer_index: q.type === 'multiple_choice' ? (q.answerKey?.index || 0) : 0, // FIX: Manual Save Logic
-        answer_key: q.answerKey, // PENTING: Kirim struktur jawaban baru (Fix: use answerKey from object)
+        correct_answer_index: q.type === 'multiple_choice'
+          ? (typeof q.correctAnswerIndex === 'number' ? q.correctAnswerIndex : (q.answerKey?.index ?? 0))
+          : 0,
+        answer_key: q.answerKey,
         matching_right_options: q.matchingRightOptions,
-        metadata: q.metadata,    // PENTING: Kirim metadata (misal: soal menjodohkan)
-        weight: q.weight,        // PENTING: Kirim bobot
-        difficulty: q.difficulty, 
+        metadata: q.metadata,
+        weight: q.weight,
+        difficulty: q.difficulty,
         topic: q.topic
       }));
       const { error: qError } = await supabase.from('questions').insert(questionsToInsert);
@@ -520,8 +747,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
     const testId = tests.get(token)?.details.id;
     if(!testId) return false;
     
-    // FIX: Extract integer index for legacy column
-    const correctIdx = q.type === 'multiple_choice' ? (q.answerKey?.index || 0) : 0;
+    // FIX: Gunakan correctAnswerIndex sebagai sumber utama, fallback ke answerKey.index
+    const correctIdx = q.type === 'multiple_choice'
+      ? (typeof q.correctAnswerIndex === 'number' ? q.correctAnswerIndex : (q.answerKey?.index ?? 0))
+      : 0;
 
     const { error = null } = await supabase.from('questions').insert({
       test_id: testId,
@@ -550,8 +779,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
   };
 
   const handleUpdateQuestion = async (token: string, q: Question) => {
-    // FIX: Extract integer index for legacy column during update
-    const correctIdx = q.type === 'multiple_choice' ? (q.answerKey?.index || 0) : 0;
+    // FIX: Gunakan correctAnswerIndex sebagai sumber utama, fallback ke answerKey.index
+    const correctIdx = q.type === 'multiple_choice'
+      ? (typeof q.correctAnswerIndex === 'number' ? q.correctAnswerIndex : (q.answerKey?.index ?? 0))
+      : 0;
 
     const { error } = await supabase.from('questions').update({
       type: q.type,
@@ -607,7 +838,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
         options: q.options,
         matching_right_options: q.matchingRightOptions,
         option_images: q.optionImages,
-        correct_answer_index: q.type === 'multiple_choice' ? (q.answerKey?.index || 0) : 0,
+        correct_answer_index: q.type === 'multiple_choice'
+          ? (typeof q.correctAnswerIndex === 'number' ? q.correctAnswerIndex : (q.answerKey?.index ?? 0))
+          : 0,
         answer_key: q.answerKey,
         metadata: q.metadata,
         weight: q.weight,
@@ -658,6 +891,17 @@ const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
   const masterMajorHandlers = createCrudHandler('master_majors', 'id', fetchMasterDataOnly);
   const masterExamTypeHandlers = createCrudHandler('master_exam_types', 'id', fetchMasterDataOnly);
 
+  // Gabungkan exam types dari DataMaster + currentExamEvent dari Konfigurasi
+  // Sehingga apapun yang diisi di Konfigurasi otomatis muncul di semua dropdown
+  const effectiveExamTypes = useMemo<MasterDataItem[]>(() => {
+    const base = [...masterData.examTypes];
+    const currentEvent = config?.currentExamEvent?.trim();
+    if (currentEvent && !base.some(et => et.name === currentEvent)) {
+      base.unshift({ id: 'config_event', name: currentEvent });
+    }
+    return base;
+  }, [masterData.examTypes, config?.currentExamEvent]);
+
   const handleAddMasterItem = (type: 'classes' | 'majors' | 'examTypes', name: string, kkm?: number) => {
       const payload = type === 'majors' ? { id: uuidv4(), name, kkm: kkm ?? 75 } : { id: uuidv4(), name };
       if (type === 'classes') masterClassHandlers.add(payload);
@@ -691,6 +935,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
       assigned_to: s.assignedTo,
       session_name: s.sessionName ?? null,
       session_number: s.sessionNumber ?? null,
+      participant_ids: s.participantIds && s.participantIds.length > 0 ? s.participantIds : null,
     });
     
     setIsProcessing(false);
@@ -716,6 +961,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
       assigned_to: s.assignedTo,
       session_name: s.sessionName ?? null,
       session_number: s.sessionNumber ?? null,
+      participant_ids: s.participantIds && s.participantIds.length > 0 ? s.participantIds : null,
     }).eq('id', s.id);
 
     setIsProcessing(false);
@@ -800,7 +1046,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
   const studentUsers = useMemo(() => users.filter(u => u.role === 'student'), [users]);
   // const teacherCount = useMemo(() => users.filter(u => u.role === 'teacher').length, [users]); // REPLACED BY REAL COUNT
   // const adminCount = useMemo(() => users.filter(u => u.role === 'admin').length, [users]);     // REPLACED BY REAL COUNT
-  const questionCount = useMemo(() => Array.from(tests.values()).reduce((acc: number, test: Test) => acc + test.questions.length, 0), [tests]);
+  // Gunakan questionCount dari details (sudah diisi saat fetch awal via questions(count))
+  // karena test.questions array sengaja kosong untuk efisiensi loading
+  const questionCount = useMemo(() => Array.from(tests.values()).reduce(
+    (acc: number, test: Test) => acc + (test.details.questionCount || test.questions.length), 0
+  ), [tests]);
   const activeSessionCount = useMemo(() => examSessions.filter(s => s.status === 'Mengerjakan').length, [examSessions]);
   
   // Di mode Demo, semua menu dapat diakses (tidak ada yang dikunci)
@@ -829,9 +1079,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
     { id: AdminView.CONFIG, label: 'Konfigurasi', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.96.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clipRule="evenodd" /></svg> },
     { id: AdminView.CETAK_ADMIN_CARD, label: 'Cetak Kartu Admin', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 2a4 4 0 00-4 4v1H5a1 1 0 00-.994.89l-1 9A1 1 0 004 18h12a1 1 0 001-1.11l-1-9A1 1 0 0015 7h-1V6a4 4 0 00-4-4zm2 5V6a2 2 0 10-4 0v1h4zm-6 3a1 1 0 112 0 1 1 0 01-2 0zm7-1a1 1 0 100 2 1 1 0 000-2z" clipRule="evenodd" /></svg> },
     { id: AdminView.TOKEN, label: 'Token Ujian', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M18 8a6 6 0 01-7.743 5.743L10 14l-1 1-1 1H6v2H2v-4l4.257-4.257A6 6 0 1118 8zm-6-4a1 1 0 100 2 2 2 0 012 2 1 1 0 102 0 4 4 0 00-4-4z" clipRule="evenodd" /></svg> },
-    { id: AdminView.LICENSE, label: 'Info Lisensi', icon: <ShieldCheck className="h-5 w-5" /> }
+    { id: AdminView.LICENSE, label: 'Info Lisensi', icon: <ShieldCheck className="h-5 w-5" />, badge: updateBadgeCount }
   ];
-  }, [isLocked, isDemoMode]);
+  }, [isLocked, isDemoMode, updateBadgeCount]);
 
   // Force License View if Locked
   useEffect(() => {
@@ -906,11 +1156,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
     }
 
     switch (activeView) {
-      case AdminView.HOME: return <DashboardHome adminUser={user} config={config} studentUsers={studentUsers} studentCount={realStudentCount} teacherCount={realTeacherCount} adminCount={realAdminCount} tests={tests} questionCount={questionCount} onNavigate={handleNavigate} activeSessionCount={activeSessionCount} examSessions={examSessions} totalDatabaseRecords={totalUserCount} />;
+      case AdminView.HOME: return <DashboardHome adminUser={user} config={config} studentUsers={studentUsers} studentCount={realStudentCount} teacherCount={realTeacherCount} adminCount={realAdminCount} tests={tests} questionCount={questionCount} scheduleCount={schedules.length} onNavigate={handleNavigate} activeSessionCount={activeSessionCount} examSessions={examSessions} totalDatabaseRecords={totalUserCount} isLoading={isInitialLoad} />;
       case AdminView.DATA_MASTER: return <DataMaster masterData={masterData} users={users} onAddItem={handleAddMasterItem} onUpdateItem={handleUpdateMasterItem} onDeleteItem={handleDeleteMasterItem} onMergeMasterData={() => {}} isDemoMode={isDemoMode} />;
       case AdminView.MANAJEMEN_USER: return <UserManagement isDemoMode={isDemoMode} onRefresh={fetchData} />;
-      case AdminView.JADWAL_UJIAN: return <ExamSchedule schedules={schedules} tests={tests} masterData={masterData} onAddSchedule={handleAddSchedule} onUpdateSchedule={handleUpdateSchedule} onDeleteSchedule={handleDeleteSchedule} isDemoMode={isDemoMode} />;
-      case AdminView.QUESTION_BANK: return <QuestionBank tests={tests} onAddQuestion={handleAddQuestion} onUpdateQuestion={handleUpdateQuestion} onDeleteQuestion={handleDeleteQuestion} onAddTest={handleAddTest} onUpdateTest={handleUpdateTest} onDeleteTest={handleDeleteTest} onBulkAddQuestions={handleBulkAddQuestions} onImportError={(msg) => showToast(msg, 'error')} preselectedToken={preselectedTestToken} onRefresh={() => fetchTestsData()} onFetchQuestions={fetchQuestionsForTest} isFetchingQuestions={isFetchingQuestions} isDemoMode={isDemoMode} examTypes={masterData.examTypes} />;
+      case AdminView.JADWAL_UJIAN: return <ExamSchedule schedules={schedules} tests={tests} masterData={masterData} students={studentUsers} onAddSchedule={handleAddSchedule} onUpdateSchedule={handleUpdateSchedule} onDeleteSchedule={handleDeleteSchedule} isDemoMode={isDemoMode} />;
+      case AdminView.QUESTION_BANK: return <QuestionBank tests={tests} onAddQuestion={handleAddQuestion} onUpdateQuestion={handleUpdateQuestion} onDeleteQuestion={handleDeleteQuestion} onAddTest={handleAddTest} onUpdateTest={handleUpdateTest} onDeleteTest={handleDeleteTest} onBulkAddQuestions={handleBulkAddQuestions} onImportError={(msg) => showToast(msg, 'error')} preselectedToken={preselectedTestToken} onRefresh={() => fetchTestsData()} onFetchQuestions={fetchQuestionsForTest} isFetchingQuestions={isFetchingQuestions} isDemoMode={isDemoMode} examTypes={effectiveExamTypes} />;
       case AdminView.UBK: return <UbkMonitor users={users} tests={tests} />;
       case AdminView.CETAK: return <ExamCards users={studentUsers} config={config} />;
       case AdminView.CETAK_DOKUMEN: return <PrintDocuments users={studentUsers} tests={tests} examSessions={examSessions} config={config} masterData={masterData} />; // New Component
@@ -933,149 +1183,141 @@ const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
             }} loading={isLicenseLoading} globalError={licenseError} />;
         } else {
             return (
-                <div className="p-8 bg-white rounded-xl shadow-sm border border-slate-200">
-                    <h2 className="text-xl font-bold mb-4 text-slate-800 flex items-center gap-2">
-                        <ShieldCheck className={isDemoMode ? "text-amber-500" : "text-green-600"} />
-                        Status Lisensi
-                    </h2>
-                    {isDemoMode ? (
-                        /* ── DEMO MODE: Status & CTA ── */
-                        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
-                            <div className="flex items-center gap-3">
-                                <div className="bg-amber-100 p-2 rounded-full">
-                                    <Lock className="w-6 h-6 text-amber-600" />
-                                </div>
-                                <div>
-                                    <p className="font-bold text-amber-800">Mode Demo Aktif</p>
-                                    <p className="text-sm text-amber-700">Anda menggunakan Versi Demo CBT School. Beberapa fitur dibatasi.</p>
-                                </div>
-                            </div>
-                        </div>
-                    ) : (
-                        <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6">
-                            <div className="flex items-center gap-3">
-                                <div className="bg-green-100 p-2 rounded-full">
-                                    <ShieldCheck className="w-6 h-6 text-green-600" />
-                                </div>
-                                <div>
-                                    <p className="font-bold text-green-800">Aplikasi Terlisensi Resmi</p>
-                                    <p className="text-sm text-green-700">Terima kasih telah menggunakan CBT School Enterprise.</p>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-                    
-                    {isDemoMode ? (
-                        /* ── DEMO: Feature summary + CTA upgrade ── */
-                        <div className="mb-8">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                                <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                                    <p className="text-xs font-bold text-green-700 uppercase mb-2">Fitur Tersedia di Demo</p>
-                                    <ul className="text-sm text-green-800 space-y-1">
-                                        <li>✅ Dashboard & Statistik</li>
-                                        <li>✅ Pemantauan Ujian (UBK)</li>
-                                        <li>✅ Rekapitulasi Nilai</li>
-                                        <li>✅ Analisa Soal</li>
-                                        <li>👁 Bank Soal (hanya lihat)</li>
-                                        <li>👁 Jadwal Ujian (hanya lihat)</li>
-                                        <li>👁 Data Master (hanya lihat)</li>
-                                        <li>👁 Manajemen User (hanya lihat)</li>
-                                    </ul>
-                                </div>
-                                <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-                                    <p className="text-xs font-bold text-red-700 uppercase mb-2">Terkunci di Demo</p>
-                                    <ul className="text-sm text-red-800 space-y-1">
-                                        <li>🔒 Tambah/Edit/Hapus data</li>
-                                        <li>🔒 Backup & Restore</li>
-                                        <li>🔒 Konfigurasi Sekolah</li>
-                                        <li>🔒 Cetak Kartu Siswa</li>
-                                        <li>🔒 Berita Acara & Absen</li>
-                                        <li>🔒 Cetak Kartu Admin</li>
-                                    </ul>
-                                </div>
-                            </div>
-                            <div className="bg-blue-50 border border-blue-200 rounded-lg p-5">
-                                <p className="font-bold text-blue-800 mb-1">Upgrade ke Versi Lengkap</p>
-                                <p className="text-sm text-blue-600 mb-4">Dapatkan akses penuh ke semua fitur CBT School Enterprise. Hubungi tim kami untuk mendapatkan lisensi resmi.</p>
-                                <div className="flex gap-3 flex-wrap">
-                                    <button onClick={handleResetLicenseClick} disabled={isResettingLicense}
-                                        className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm rounded-lg transition-colors">
-                                        Masukkan Lisensi Resmi
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    ) : licenseProfile && (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-                            <div>
-                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Sekolah Terdaftar</label>
-                                <p className="text-lg font-medium text-gray-900">{licenseProfile.school_name}</p>
-                            </div>
-                            <div>
-                                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">NPSN</label>
-                                <p className="text-lg font-medium text-gray-900">{licenseProfile.npsn}</p>
-                            </div>
-                        </div>
-                    )}
+                <div className="space-y-5">
 
-                    {/* ── UPDATE APLIKASI ─────────────────────────────── */}
-                    <div className="mb-6 rounded-xl border border-blue-200 bg-gradient-to-br from-blue-50 to-indigo-50 p-5">
-                        <div className="flex items-center justify-between mb-3">
-                            <div>
-                                <h3 className="font-bold text-blue-800 flex items-center gap-2">
-                                    <ArrowUpCircle className="w-5 h-5" />
-                                    Update Aplikasi
-                                </h3>
-                                <p className="text-sm text-blue-600 mt-0.5">
-                                    Versi saat ini:{' '}
-                                    <span className="font-mono font-bold">v{liveAppVersion}</span>
+                    <UpdateNotification />
+
+                    {/* ── HERO CARD: Status Lisensi ── */}
+                    <div className={`relative overflow-hidden rounded-2xl p-6 text-white shadow-xl ${isDemoMode
+                        ? 'bg-gradient-to-br from-amber-500 via-orange-500 to-red-500'
+                        : 'bg-gradient-to-br from-slate-800 via-slate-900 to-indigo-950'
+                    }`}>
+                        {/* decorative blobs */}
+                        <div className="pointer-events-none absolute -top-10 -right-10 w-48 h-48 rounded-full opacity-10 bg-white" />
+                        <div className="pointer-events-none absolute -bottom-8 -left-8 w-36 h-36 rounded-full opacity-10 bg-white" />
+
+                        <div className="relative z-10">
+                            {/* Badge */}
+                            <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold mb-4 ${isDemoMode
+                                ? 'bg-white/20 text-white'
+                                : 'bg-emerald-400/20 text-emerald-300 border border-emerald-400/30'
+                            }`}>
+                                {isDemoMode
+                                    ? <><Lock className="w-3 h-3" /> MODE DEMO</>
+                                    : <><ShieldCheck className="w-3 h-3" /> TERLISENSI RESMI</>
+                                }
+                            </div>
+
+                            <h2 className="text-2xl font-bold mb-1">
+                                {isDemoMode ? 'Mode Demo Aktif' : 'CBT School Enterprise'}
+                            </h2>
+                            <p className="text-sm opacity-75 mb-5">
+                                {isDemoMode
+                                    ? 'Beberapa fitur dibatasi. Upgrade untuk akses penuh.'
+                                    : 'Lisensi aktif & valid. Semua fitur enterprise tersedia.'}
+                            </p>
+
+                            {/* School info row (licensed only) */}
+                            {!isDemoMode && licenseProfile && (
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 border border-white/10">
+                                        <div className="flex items-center gap-2 mb-1">
+                                            <Building2 className="w-3.5 h-3.5 text-slate-300" />
+                                            <span className="text-xs text-slate-300 font-medium uppercase tracking-wide">Sekolah</span>
+                                        </div>
+                                        <p className="text-sm font-bold text-white leading-tight">{licenseProfile.school_name}</p>
+                                    </div>
+                                    <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 border border-white/10">
+                                        <div className="flex items-center gap-2 mb-1">
+                                            <Hash className="w-3.5 h-3.5 text-slate-300" />
+                                            <span className="text-xs text-slate-300 font-medium uppercase tracking-wide">NPSN</span>
+                                        </div>
+                                        <p className="text-sm font-bold text-white font-mono">{licenseProfile.npsn}</p>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Demo CTA */}
+                            {isDemoMode && (
+                                <button onClick={handleResetLicenseClick} disabled={isResettingLicense}
+                                    className="flex items-center gap-2 px-5 py-2.5 bg-white text-amber-600 font-bold text-sm rounded-xl shadow-lg hover:bg-amber-50 transition-all">
+                                    <Sparkles className="w-4 h-4" />
+                                    Masukkan Lisensi Resmi
+                                    <ChevronRight className="w-4 h-4" />
+                                </button>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* ── DEMO: Feature grid ── */}
+                    {isDemoMode && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+                                <p className="text-xs font-bold text-emerald-600 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                                    <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" /> Tersedia di Demo
                                 </p>
+                                <ul className="space-y-2 text-sm text-slate-700">
+                                    {['Dashboard & Statistik','Pemantauan Ujian (UBK)','Rekapitulasi Nilai','Analisa Soal'].map(f => (
+                                        <li key={f} className="flex items-center gap-2"><span className="text-emerald-500">✓</span>{f}</li>
+                                    ))}
+                                    {['Bank Soal (lihat saja)','Jadwal Ujian (lihat saja)','Data Master (lihat saja)'].map(f => (
+                                        <li key={f} className="flex items-center gap-2 text-slate-400"><span>👁</span>{f}</li>
+                                    ))}
+                                </ul>
+                            </div>
+                            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+                                <p className="text-xs font-bold text-rose-500 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                                    <span className="w-2 h-2 rounded-full bg-rose-500 inline-block" /> Terkunci di Demo
+                                </p>
+                                <ul className="space-y-2 text-sm text-slate-500">
+                                    {['Tambah / Edit / Hapus Data','Backup & Restore Database','Konfigurasi Sekolah','Cetak Kartu Siswa & Admin','Berita Acara & Absen','Import Soal & Pengguna'].map(f => (
+                                        <li key={f} className="flex items-center gap-2"><Lock className="w-3.5 h-3.5 text-rose-400 flex-shrink-0" />{f}</li>
+                                    ))}
+                                </ul>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* ── UPDATE APLIKASI (Sequential) ── */}
+                    <SequentialUpdatePanel
+                        isDemoMode={isDemoMode}
+                        isLocked={isLocked}
+                        liveVersion={liveAppVersion}
+                        onVersionUpdated={(v) => setLiveAppVersion(v)}
+                        onUpdateFound={(count) => setUpdateBadgeCount(count)}
+                    />
+
+                    {/* ── RIWAYAT SINKRONISASI UPDATE ── */}
+                    <UpdateSyncHistoryTable />
+
+                    {/* ── PENGATURAN LISENSI ── */}
+                    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+                        <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-4 flex items-center gap-2">
+                            <span className="w-2 h-2 rounded-full bg-slate-400 inline-block" /> Pengaturan Lisensi
+                        </h3>
+                        <div className="flex items-center justify-between p-4 bg-rose-50 rounded-xl border border-rose-100">
+                            <div className="flex items-center gap-3">
+                                <div className="bg-rose-100 rounded-xl p-2.5">
+                                    <RotateCcw className="w-4 h-4 text-rose-600" />
+                                </div>
+                                <div>
+                                    <p className="font-semibold text-slate-800 text-sm">Reset Lisensi Aplikasi</p>
+                                    <p className="text-xs text-slate-500 mt-0.5">Hapus lisensi aktif dan kunci aplikasi ke mode default.</p>
+                                </div>
                             </div>
                             <button
-                                onClick={() => { setIsUpdateModalOpen(true); handleCheckUpdate(); }}
-                                className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm rounded-lg shadow-md hover:shadow-lg transition-all"
+                                onClick={handleResetLicenseClick}
+                                disabled={isResettingLicense}
+                                className="flex items-center gap-2 px-4 py-2 bg-rose-600 hover:bg-rose-700 disabled:bg-rose-400 text-white font-semibold text-sm rounded-xl transition-all active:scale-95 shadow-sm"
                             >
-                                <RefreshCw className="w-4 h-4" />
-                                Periksa Update
+                                {isResettingLicense
+                                    ? <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Mereset...</>
+                                    : <><RotateCcw className="w-3.5 h-3.5" /> Reset</>
+                                }
                             </button>
                         </div>
-                        <p className="text-xs text-blue-500 leading-relaxed">
-                            Klik "Periksa Update" untuk memeriksa dan menginstal versi terbaru dari server vendor secara otomatis.
-                            Pastikan VHD terhubung ke internet (NAT adapter aktif) sebelum memperbarui.
-                        </p>
                     </div>
 
-                    <div className="border-t border-gray-200 pt-6">
-                        <h3 className="text-lg font-semibold text-gray-800 mb-4">Pengaturan Lisensi</h3>
-                        <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-200">
-                            <div>
-                                <p className="font-medium text-gray-900">Reset Lisensi Aplikasi</p>
-                                <p className="text-sm text-gray-500">Tindakan ini akan menghapus lisensi aktif dan mengunci aplikasi kembali ke mode default.</p>
-                            </div>
-                            <button
-                                onClick={handleResetLicenseClick}
-                                disabled={isResettingLicense}
-                                className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 ${isResettingLicense ? 'bg-red-600' : 'bg-gray-200 hover:bg-red-200'}`}
-                                role="switch"
-                                aria-checked={isResettingLicense}
-                            >
-                                <span className="sr-only">Reset Lisensi</span>
-                                <span
-                                    aria-hidden="true"
-                                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${isResettingLicense ? 'translate-x-5' : 'translate-x-0'}`}
-                                />
-                            </button>
-                        </div>
-                        <div className="mt-2 text-right">
-                             <button 
-                                onClick={handleResetLicenseClick}
-                                disabled={isResettingLicense}
-                                className="text-sm text-red-600 hover:text-red-800 font-medium underline disabled:opacity-50"
-                             >
-                                 Atau klik di sini untuk reset
-                             </button>
-                        </div>
-                    </div>
                 </div>
             );
         }
@@ -1164,6 +1406,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
                     <div className="relative">{item.icon}{activeView === item.id && <span className="absolute -left-4 top-1/2 -translate-y-1/2 h-5 w-1 bg-white rounded-r-full"></span>}</div>
                     <span className="font-semibold text-sm flex-grow">{item.label}</span>
                     {item.isDemoLocked && <Lock className="w-3.5 h-3.5 text-amber-400 flex-shrink-0" title="Terkunci di Mode Demo" />}
+                    {!!(item.badge && item.badge > 0) && (
+                      <span className="flex-shrink-0 min-w-[1.25rem] h-5 px-1 flex items-center justify-center bg-amber-400 text-slate-900 text-xs font-bold rounded-full animate-pulse">
+                        {item.badge}
+                      </span>
+                    )}
                   </button>
                 </li>
               ))}
@@ -1183,16 +1430,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
               </button>
           </div>
       </aside>
-
-      {/* ── UPDATE MODAL ─────────────────────────────────────────────────── */}
-      <UpdateModal
-        isOpen={isUpdateModalOpen}
-        onClose={() => setIsUpdateModalOpen(false)}
-        currentVersion={liveAppVersion}
-        updateInfo={updateInfo}
-        onCheckUpdate={handleCheckUpdate}
-        isChecking={isCheckingUpdate}
-      />
 
       <div className="flex-grow flex flex-col w-full min-w-0">
           <header className="h-20 bg-white flex items-center justify-between px-4 sm:px-8 border-b border-slate-200 flex-shrink-0 relative">

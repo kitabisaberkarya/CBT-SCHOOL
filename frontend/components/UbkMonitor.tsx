@@ -9,6 +9,7 @@ type Status = 'Mengerjakan' | 'Selesai' | 'Diskualifikasi';
 
 interface StudentSession {
   id: string;
+  scheduleId: string;
   user: User;
   test: Test;
   status: Status;
@@ -17,6 +18,7 @@ interface StudentSession {
   violations: number;
   startedAt: string;
   currentQuestionNumber?: number | null;
+  isSuspended?: boolean;
 }
 
 interface LockedUser {
@@ -60,7 +62,7 @@ const UbkMonitor: React.FC<UbkMonitorProps> = ({ users, tests }) => {
   const [activeSessions, setActiveSessions] = useState<StudentSession[]>([]);
   const [lockedUsers, setLockedUsers] = useState<LockedUser[]>([]);
 
-  const [modalState, setModalState] = useState<{ type: 'reset' | 'finish' | 'resume' | 'unlock_device'; session: StudentSession | null; user?: LockedUser | null }>({ type: 'reset', session: null, user: null });
+  const [modalState, setModalState] = useState<{ type: 'reset' | 'finish' | 'resume' | 'unlock_device' | 'full_reset' | 'suspend' | 'unsuspend'; session: StudentSession | null; user?: LockedUser | null }>({ type: 'reset', session: null, user: null });
 
   // Add Time Modal
   const [addTimeModal, setAddTimeModal] = useState<{ session: StudentSession | null; minutes: number }>({ session: null, minutes: 10 });
@@ -92,16 +94,41 @@ const UbkMonitor: React.FC<UbkMonitorProps> = ({ users, tests }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [classFilter, setClassFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [subjectFilter, setSubjectFilter] = useState('all');
   const [dateFilter, setDateFilter] = useState(() => {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
   });
+
+  // Filter jadwal aktif — hanya tampilkan sesi untuk mapel yang sedang dijadwalkan saat ini
+  const [filterActiveSchedule, setFilterActiveSchedule] = useState(false);
+  const [activeScheduleIds, setActiveScheduleIds] = useState<Set<string>>(new Set());
+
+  const fetchActiveSchedules = async () => {
+    try {
+      const now = new Date().toISOString();
+      const { data } = await supabase
+        .from('schedules')
+        .select('id, start_time, end_time')
+        .lte('start_time', now)
+        .gte('end_time', now);
+      if (data) {
+        setActiveScheduleIds(new Set(data.map((s: any) => s.id)));
+      }
+    } catch (err) {
+      console.warn('[UbkMonitor] fetchActiveSchedules error:', err);
+    }
+  };
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(12);
 
   const classList = useMemo(() => ['all', ...Array.from(new Set(users.map(u => u.class))).sort()], [users]);
+  const subjectList = useMemo(() => {
+      const subjects = activeSessions.map(s => s.test.details.subject).filter(Boolean);
+      return ['all', ...Array.from(new Set(subjects)).sort()];
+  }, [activeSessions]);
 
   // --- DATA FETCHERS ---
   const fetchSessions = async (silent = false) => {
@@ -114,6 +141,11 @@ const UbkMonitor: React.FC<UbkMonitorProps> = ({ users, tests }) => {
 
         const { data, error } = await supabase.from('student_exam_sessions').select('*');
 
+        // Fetch status suspend semua user sekali
+        const { data: suspendData } = await supabase.from('users').select('id,is_suspended');
+        const suspendMap: Record<string, boolean> = {};
+        if (suspendData) suspendData.forEach((u: any) => { suspendMap[u.id] = u.is_suspended ?? false; });
+
         if (data) {
              const mapped = data.map(d => {
                  const user = usersRef.current.find(u => u.id === d.user_id);
@@ -124,6 +156,7 @@ const UbkMonitor: React.FC<UbkMonitorProps> = ({ users, tests }) => {
 
                  return {
                      id: d.id,
+                     scheduleId: d.schedule_id,
                      user,
                      test,
                      status: d.status,
@@ -132,6 +165,7 @@ const UbkMonitor: React.FC<UbkMonitorProps> = ({ users, tests }) => {
                      violations: d.violations ?? 0,
                      startedAt: d.started_at,
                      currentQuestionNumber: d.current_question_number ?? null,
+                     isSuspended: suspendMap[d.user_id] ?? false,
                  };
              }).filter(Boolean) as StudentSession[];
 
@@ -177,9 +211,11 @@ const UbkMonitor: React.FC<UbkMonitorProps> = ({ users, tests }) => {
 
   useEffect(() => {
     refreshAll(false);
+    fetchActiveSchedules();
 
     refreshIntervalRef.current = window.setInterval(() => {
         refreshAll(true);
+        fetchActiveSchedules();
     }, 5000);
 
     const channel = supabase
@@ -222,7 +258,13 @@ const UbkMonitor: React.FC<UbkMonitorProps> = ({ users, tests }) => {
             matchesDate = localSessionDate === dateFilter;
         }
 
-        return matchesSearch && matchesClass && matchesStatus && matchesDate;
+        const matchesSubject = subjectFilter === 'all' || session.test.details.subject === subjectFilter;
+
+        // Filter jadwal aktif: hanya tampilkan sesi untuk mapel yang sedang berjalan sesuai jadwal
+        const matchesActiveSchedule = !filterActiveSchedule ||
+            activeScheduleIds.has(session.scheduleId);
+
+        return matchesSearch && matchesClass && matchesStatus && matchesDate && matchesSubject && matchesActiveSchedule;
       })
       .sort((a, b) => {
           const score = (s: StudentSession) => {
@@ -233,7 +275,7 @@ const UbkMonitor: React.FC<UbkMonitorProps> = ({ users, tests }) => {
           };
           return score(b) - score(a);
       });
-  }, [activeSessions, searchTerm, classFilter, statusFilter, dateFilter]);
+  }, [activeSessions, searchTerm, classFilter, statusFilter, dateFilter, subjectFilter]);
 
   const filteredLockedUsers = useMemo(() => {
       return lockedUsers.filter(u => {
@@ -249,7 +291,7 @@ const UbkMonitor: React.FC<UbkMonitorProps> = ({ users, tests }) => {
   const totalRecords = currentDataList.length;
   const totalPages = rowsPerPage === 0 ? 1 : Math.ceil(totalRecords / rowsPerPage);
 
-  useEffect(() => { setCurrentPage(1); }, [searchTerm, classFilter, statusFilter, dateFilter, rowsPerPage, activeTab]);
+  useEffect(() => { setCurrentPage(1); }, [searchTerm, classFilter, statusFilter, dateFilter, subjectFilter, rowsPerPage, activeTab]);
 
   const paginatedData = useMemo(() => {
     if (rowsPerPage === 0) return currentDataList;
@@ -287,7 +329,11 @@ const UbkMonitor: React.FC<UbkMonitorProps> = ({ users, tests }) => {
   const handleActionConfirm = async () => {
     try {
         if (modalState.type === 'finish' && modalState.session) {
-            await supabase.from('student_exam_sessions').update({ status: 'Selesai', time_left_seconds: 0 }).eq('id', modalState.session.id);
+            // Hitung nilai dari jawaban yang sudah tersimpan, lalu finish (atomic)
+            const { error } = await supabase.rpc('admin_force_finish_exam', {
+                p_session_id: Number(modalState.session.id)
+            });
+            if (error) throw error;
         } else if (modalState.type === 'resume' && modalState.session) {
             await supabase.from('student_exam_sessions').update({ status: 'Mengerjakan', violations: 0 }).eq('id', modalState.session.id);
         } else if (modalState.type === 'reset' && modalState.session) {
@@ -299,6 +345,26 @@ const UbkMonitor: React.FC<UbkMonitorProps> = ({ users, tests }) => {
             const { error } = await supabase.rpc('admin_reset_device_login', { p_user_id: userId });
             if (error) throw error;
             alert(`Kunci perangkat untuk ${modalState.user.fullName} berhasil dibuka.`);
+        } else if (modalState.type === 'full_reset' && modalState.session) {
+            // Reset penuh via RPC atomic: hapus semua jawaban + reset sesi ke kondisi fresh
+            const { error } = await supabase.rpc('reset_exam_session', {
+                p_session_id: Number(modalState.session.id)
+            });
+            if (error) throw error;
+        } else if (modalState.type === 'suspend' && modalState.session) {
+            const { error } = await supabase.rpc('admin_suspend_student', {
+                p_user_id: modalState.session.user.id,
+                p_suspend: true
+            });
+            if (error) throw error;
+            alert(`Siswa ${modalState.session.user.fullName} berhasil ditangguhkan. Siswa tidak dapat login/mengerjakan ujian.`);
+        } else if (modalState.type === 'unsuspend' && modalState.session) {
+            const { error } = await supabase.rpc('admin_suspend_student', {
+                p_user_id: modalState.session.user.id,
+                p_suspend: false
+            });
+            if (error) throw error;
+            alert(`Siswa ${modalState.session.user.fullName} berhasil diaktifkan kembali.`);
         }
 
         refreshAll(true);
@@ -356,12 +422,10 @@ const UbkMonitor: React.FC<UbkMonitorProps> = ({ users, tests }) => {
       if (!window.confirm(`Selesaikan paksa ujian ${targets.length} siswa terpilih?`)) return;
       setIsBulkProcessing(true);
       try {
-          const ids = targets.map(s => s.id);
-          const { error } = await supabase.from('student_exam_sessions')
-              .update({ status: 'Selesai', time_left_seconds: 0 })
-              .in('id', ids);
+          const ids = targets.map(s => Number(s.id));
+          const { error } = await supabase.rpc('admin_force_finish_bulk', { p_session_ids: ids });
           if (error) throw error;
-          alert(`${targets.length} sesi berhasil diselesaikan.`);
+          alert(`${targets.length} sesi berhasil diselesaikan (nilai dihitung otomatis).`);
           clearSelection();
           refreshAll(true);
       } catch (err: any) {
@@ -427,16 +491,13 @@ const UbkMonitor: React.FC<UbkMonitorProps> = ({ users, tests }) => {
   const handleBulkStopAll = async () => {
       const working = activeSessions.filter(s => s.status === 'Mengerjakan');
       if (working.length === 0) { alert('Tidak ada sesi yang sedang aktif.'); return; }
-      if (!window.confirm(`Hentikan ${working.length} sesi ujian yang sedang aktif?\nSiswa tidak bisa melanjutkan ujian.`)) return;
+      if (!window.confirm(`Hentikan ${working.length} sesi ujian yang sedang aktif?\nNilai akan dihitung otomatis dari jawaban yang sudah tersimpan.`)) return;
       setIsBulkProcessing(true);
       try {
-          const ids = working.map(s => s.id);
-          const { error } = await supabase
-              .from('student_exam_sessions')
-              .update({ status: 'Selesai', time_left_seconds: 0 })
-              .in('id', ids);
+          const ids = working.map(s => Number(s.id));
+          const { error } = await supabase.rpc('admin_force_finish_bulk', { p_session_ids: ids });
           if (error) throw error;
-          alert(`${working.length} sesi berhasil dihentikan.`);
+          alert(`${working.length} sesi berhasil dihentikan (nilai dihitung otomatis).`);
           refreshAll(true);
       } catch (err: any) {
           alert('Gagal Stop All: ' + err.message);
@@ -485,6 +546,9 @@ const UbkMonitor: React.FC<UbkMonitorProps> = ({ users, tests }) => {
           case 'resume': return 'Lanjutkan Ujian Siswa?';
           case 'reset': return 'Reset Device & Sesi?';
           case 'unlock_device': return 'Buka Kunci Perangkat?';
+          case 'full_reset': return 'Mulai dari Awal?';
+          case 'suspend': return 'Tangguhkan Akses Siswa?';
+          case 'unsuspend': return 'Aktifkan Kembali Siswa?';
           default: return '';
       }
   };
@@ -499,6 +563,9 @@ const UbkMonitor: React.FC<UbkMonitorProps> = ({ users, tests }) => {
           case 'finish': return `Anda yakin ingin menyelesaikan ujian untuk ${name}? Status akan diubah menjadi 'Selesai'.`;
           case 'resume': return `Siswa ${name} akan diizinkan melanjutkan ujian. Jumlah pelanggaran akan di-reset menjadi 0.`;
           case 'reset': return `PERHATIAN: Ini akan membuka kunci perangkat siswa ${name}.`;
+          case 'full_reset': return `Reset ujian ${name}? Semua jawaban dan progress akan dihapus. Siswa akan mengerjakan dari soal pertama.`;
+          case 'suspend': return `Siswa ${name} akan DITANGGUHKAN. Mereka tidak dapat login atau mengerjakan ujian apapun sampai diaktifkan kembali oleh admin.`;
+          case 'unsuspend': return `Siswa ${name} akan diaktifkan kembali dan dapat login/mengerjakan ujian seperti biasa.`;
           default: return '';
       }
   };
@@ -509,6 +576,9 @@ const UbkMonitor: React.FC<UbkMonitorProps> = ({ users, tests }) => {
           case 'resume': return 'green';
           case 'reset': return 'red';
           case 'unlock_device': return 'blue';
+          case 'full_reset': return 'red';
+          case 'suspend': return 'red';
+          case 'unsuspend': return 'green';
           default: return 'blue';
       }
   };
@@ -655,6 +725,22 @@ const UbkMonitor: React.FC<UbkMonitorProps> = ({ users, tests }) => {
                             <option value="Diskualifikasi">Diskualifikasi</option>
                             <option value="Melanggar">Melanggar</option>
                         </select>
+                        <select
+                            value={subjectFilter}
+                            onChange={e => setSubjectFilter(e.target.value)}
+                            className="w-full sm:w-auto px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                        >
+                            <option value="all">Semua Mapel</option>
+                            {subjectList.slice(1).map(s => <option key={s} value={s}>{s}</option>)}
+                        </select>
+                        <button
+                            onClick={() => setFilterActiveSchedule(prev => !prev)}
+                            title="Hanya tampilkan sesi untuk mapel yang sedang aktif sesuai jadwal"
+                            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold border transition-all ${filterActiveSchedule ? 'bg-green-600 text-white border-green-600 shadow-sm' : 'bg-white text-gray-600 border-gray-300 hover:border-green-500 hover:text-green-600'}`}
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                            {filterActiveSchedule ? 'Jadwal Aktif ✓' : 'Jadwal Aktif'}
+                        </button>
                      </>
                  )}
                  <select
@@ -701,6 +787,9 @@ const UbkMonitor: React.FC<UbkMonitorProps> = ({ users, tests }) => {
                         onResume={() => setModalState({ type: 'resume', session: item })}
                         onAddTime={() => setAddTimeModal({ session: item, minutes: 10 })}
                         onReopen={() => setReopenModal({ session: item, minutes: 10 })}
+                        onFullReset={() => setModalState({ type: 'full_reset', session: item })}
+                        onSuspend={() => setModalState({ type: 'suspend', session: item })}
+                        onUnsuspend={() => setModalState({ type: 'unsuspend', session: item })}
                     />
                 ))}
             </div>
@@ -908,10 +997,13 @@ interface SessionCardProps {
     onResume: () => void;
     onAddTime: () => void;
     onReopen: () => void;
+    onFullReset: () => void;
+    onSuspend: () => void;
+    onUnsuspend: () => void;
 }
 
-const SessionCard: React.FC<SessionCardProps> = ({ session, isSelected, onSelect, onForceFinish, onReset, onResume, onAddTime, onReopen }) => {
-    const { user, test, status, progress, timeLeft, violations, currentQuestionNumber } = session;
+const SessionCard: React.FC<SessionCardProps> = ({ session, isSelected, onSelect, onForceFinish, onReset, onResume, onAddTime, onReopen, onFullReset, onSuspend, onUnsuspend }) => {
+    const { user, test, status, progress, timeLeft, violations, currentQuestionNumber, isSuspended } = session;
     const totalQuestions = test.questions.length;
     const progressPercentage = totalQuestions > 0 ? (progress / totalQuestions) * 100 : 0;
 
@@ -921,10 +1013,13 @@ const SessionCard: React.FC<SessionCardProps> = ({ session, isSelected, onSelect
         'Diskualifikasi': { bg: 'bg-red-100', text: 'text-red-800', border: 'border-red-500' },
     };
 
-    let borderColor = statusStyles[status].border;
+    let borderColor = isSuspended ? 'border-gray-400' : statusStyles[status].border;
     let statusBadge = <span className={`px-2 py-1 rounded-full text-xs font-bold ${statusStyles[status].bg} ${statusStyles[status].text}`}>{status}</span>;
 
-    if (violations > 0 && status === 'Mengerjakan') {
+    if (isSuspended) {
+        borderColor = 'border-gray-400';
+        statusBadge = <span className="bg-gray-200 text-gray-700 px-2 py-0.5 rounded text-xs font-bold border border-gray-300">Ditangguhkan</span>;
+    } else if (violations > 0 && status === 'Mengerjakan') {
         borderColor = 'border-orange-500';
         statusBadge = <span className="bg-orange-100 text-orange-700 px-2 py-0.5 rounded text-xs font-bold border border-orange-200">Melanggar ({violations})</span>;
     }
@@ -1047,6 +1142,17 @@ const SessionCard: React.FC<SessionCardProps> = ({ session, isSelected, onSelect
                         <span>Buka Kembali</span>
                     </button>
                 )}
+                {/* Tombol Mulai dari Awal — hapus semua jawaban & reset progress via RPC atomic */}
+                <button
+                    onClick={onFullReset}
+                    className="w-full text-xs font-bold text-white bg-purple-600 hover:bg-purple-700 rounded-md px-3 py-2 transition flex items-center justify-center space-x-1 shadow-sm mb-1.5"
+                    title="Hapus semua jawaban dan mulai ujian dari awal"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    <span>Mulai dari Awal</span>
+                </button>
                 <div className="flex gap-1.5">
                     <button
                         onClick={onReset}
@@ -1073,6 +1179,26 @@ const SessionCard: React.FC<SessionCardProps> = ({ session, isSelected, onSelect
                         Finish
                     </button>
                 </div>
+                {/* Tombol Suspend / Unsuspend */}
+                {isSuspended ? (
+                    <button
+                        onClick={onUnsuspend}
+                        className="w-full text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-md px-3 py-2 transition flex items-center justify-center gap-1.5 shadow-sm mt-0.5"
+                        title="Aktifkan kembali akses siswa"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                        Aktifkan Kembali
+                    </button>
+                ) : (
+                    <button
+                        onClick={onSuspend}
+                        className="w-full text-xs font-bold text-gray-700 bg-gray-200 hover:bg-gray-300 rounded-md px-3 py-2 transition flex items-center justify-center gap-1.5 shadow-sm mt-0.5"
+                        title="Tangguhkan akses siswa — tidak bisa login/ujian"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>
+                        Suspend Akses
+                    </button>
+                )}
             </div>
         </div>
     );

@@ -1,10 +1,24 @@
 
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { Test, User, AppConfig, Answer, Schedule } from '../types';
 import { supabase } from '../supabaseClient';
 import { calculateScore } from '../utils/scoring';
 import ExcelJS from 'exceljs';
+
+interface EssayAnswerRow {
+  answerId: string;
+  questionId: number;
+  questionText: string;
+  answerKey: string;
+  answerText: string;
+  currentScore: number | null;
+  weight: number;
+}
+interface EssayStudentData {
+  student: { id: string; fullName: string; class: string; nisn: string; sessionId: string; score: number | null };
+  answers: EssayAnswerRow[];
+}
 
 interface GradeRecapProps {
   tests: Map<string, Test>;
@@ -46,6 +60,11 @@ const GradeRecap: React.FC<GradeRecapProps> = ({ tests, users, examSessions, sch
   const [selectedToken, setSelectedToken] = useState<string>(preselectedToken || '');
   const [selectedClass, setSelectedClass] = useState<string>('all');
   const [isRecalculating, setIsRecalculating] = useState<string | null>(null);
+  const [isEssayView, setIsEssayView] = useState(false);
+  const [essayStudents, setEssayStudents] = useState<EssayStudentData[]>([]);
+  const [isLoadingEssay, setIsLoadingEssay] = useState(false);
+  const [essayScores, setEssayScores] = useState<Record<string, string>>({});
+  const [savingEssay, setSavingEssay] = useState<string | null>(null);
   
   // Map Schedule ID -> Test Token
   const scheduleMap = useMemo(() => {
@@ -60,6 +79,11 @@ const GradeRecap: React.FC<GradeRecapProps> = ({ tests, users, examSessions, sch
       setView('detail');
     }
   }, [preselectedToken]);
+
+  useEffect(() => {
+    setIsEssayView(false);
+    setEssayStudents([]);
+  }, [selectedToken]);
 
   const testsArray = Array.from(tests.entries());
   const studentUsers = users.filter(u => u.username !== 'admin');
@@ -130,8 +154,8 @@ const GradeRecap: React.FC<GradeRecapProps> = ({ tests, users, examSessions, sch
               
               const isMatch = sessionToken === token || (joinedTestId === test.details.id);
               
-              // Include sessions that are finished OR have a score (even if status is weird)
-              return isMatch && (s.score != null || s.status === 'Selesai');
+              // Include sessions that are finished, diskualifikasi, or have a score
+              return isMatch && (s.score != null || s.status === 'Selesai' || s.status === 'Diskualifikasi');
           });
           
           if (relevantSessions.length > 0) {
@@ -179,8 +203,12 @@ const GradeRecap: React.FC<GradeRecapProps> = ({ tests, users, examSessions, sch
         let displayStatus = 'Belum Mengerjakan';
         if (hasTaken) {
             if (score !== null && score !== undefined) {
-                displayStatus = score >= kkm ? 'Lulus' : 'Tidak Lulus';
-            } else if (status === 'Selesai') {
+                if (status === 'Diskualifikasi') {
+                    displayStatus = `Diskualifikasi (${score >= kkm ? 'Lulus' : 'Tidak Lulus'})`;
+                } else {
+                    displayStatus = score >= kkm ? 'Lulus' : 'Tidak Lulus';
+                }
+            } else if (status === 'Selesai' || status === 'Diskualifikasi') {
                 displayStatus = 'Belum Dinilai';
             } else {
                 displayStatus = status || 'Mengerjakan';
@@ -221,39 +249,61 @@ const GradeRecap: React.FC<GradeRecapProps> = ({ tests, users, examSessions, sch
       if (!selectedTest) return;
       setIsRecalculating(sessionId);
       try {
-          // 1. Fetch Answers
+          // 1. Fetch student answers first — ini menentukan soal mana yang BENAR-BENAR
+          //    diterima siswa. Jika test memakai questionsToDisplay (acak subset),
+          //    student_answers hanya punya baris untuk soal yang ditampilkan ke siswa itu.
           const { data: dbAnswers, error: ansError } = await supabase
               .from('student_answers')
-              .select('*')
+              .select('id, question_id, answer_value, is_unsure, manual_score')
               .eq('session_id', sessionId);
-          
+
           if (ansError) throw ansError;
 
-          // 2. Convert to Record<number, Answer>
+          // 2. Build answers map
           const answers: Record<number, Answer> = {};
+          const studentQuestionIds: number[] = [];
           dbAnswers?.forEach(a => {
-              // Prefer JSONB column (student_answer) for type safety
-              // Fallback to answer_value (TEXT) only if JSONB is missing
-              let val = a.student_answer?.value;
-              
-              if (val === undefined || val === null) {
-                  val = a.answer_value;
-                  // Try to parse if it looks like JSON array/object
-                  if (typeof val === 'string' && (val.startsWith('[') || val.startsWith('{'))) {
-                      try { val = JSON.parse(val); } catch (e) {}
-                  }
+              let val = a.answer_value;
+              if (typeof val === 'string' && (val.startsWith('[') || val.startsWith('{'))) {
+                  try { val = JSON.parse(val); } catch (e) {}
               }
-              
-              answers[a.question_id] = { value: val, unsure: a.is_unsure };
+              answers[a.question_id] = {
+                  value: val,
+                  unsure: a.is_unsure,
+                  manual_score: a.manual_score ?? undefined,
+              };
+              studentQuestionIds.push(Number(a.question_id));
           });
 
-          // 3. Calculate Score
-          const finalScore = calculateScore(selectedTest.questions, answers);
+          // 3. Fetch ONLY the questions this student received (by their student_answers rows).
+          //    Jangan fetch semua soal test — jika questionsToDisplay < total soal,
+          //    soal yang tidak ditampilkan ke siswa ini akan menggembungkan penyebut (denominator)
+          //    dan membuat nilai jadi jauh lebih kecil dari seharusnya.
+          const uniqueQIds = [...new Set(studentQuestionIds)];
+          if (uniqueQIds.length === 0) throw new Error('Tidak ada jawaban ditemukan untuk sesi ini.');
 
-          // 4. Update Session
+          const { data: qData, error: qErr } = await supabase
+              .from('questions')
+              .select('id, type, correct_answer_index, answer_key, options, matching_right_options, weight')
+              .in('id', uniqueQIds);
+          if (qErr) throw qErr;
+
+          const questionsForCalc = (qData || []).map((q: any) => ({
+              ...q,
+              correctAnswerIndex: q.correct_answer_index,
+              answerKey: q.answer_key,
+              matchingRightOptions: q.matching_right_options,
+          }));
+
+          // 4. Calculate Score
+          const finalScore = calculateScore(questionsForCalc, answers);
+
+          // 4. Update Session — jaga status Diskualifikasi, hanya update score
+          const sessionRow = examSessions.find(s => String(s.id) === String(sessionId));
+          const keepStatus = sessionRow?.status === 'Diskualifikasi' ? 'Diskualifikasi' : 'Selesai';
           const { error: updateError } = await supabase
               .from('student_exam_sessions')
-              .update({ score: finalScore, status: 'Selesai' }) // Ensure status is Selesai
+              .update({ score: finalScore, status: keepStatus })
               .eq('id', sessionId);
 
           if (updateError) throw updateError;
@@ -268,6 +318,124 @@ const GradeRecap: React.FC<GradeRecapProps> = ({ tests, users, examSessions, sch
       } finally {
           setIsRecalculating(null);
       }
+  };
+
+  const loadEssayData = useCallback(async () => {
+    if (!selectedTest) return;
+    setIsLoadingEssay(true);
+    try {
+      // Fetch essay questions directly from DB — jangan pakai selectedTest.questions
+      // karena AdminDashboard hanya load questions(count), bukan data lengkap
+      const { data: essayQuestionsData, error: qErr } = await supabase
+        .from('questions')
+        .select('id, question, answer_key, weight')
+        .eq('test_id', selectedTest.details.id)
+        .eq('type', 'essay');
+
+      if (qErr) throw qErr;
+      if (!essayQuestionsData || essayQuestionsData.length === 0) {
+        setEssayStudents([]);
+        setIsLoadingEssay(false);
+        return;
+      }
+
+      const essayQuestionIds = essayQuestionsData.map((q: any) => q.id);
+      const essayQMap = new Map<number, any>(essayQuestionsData.map((q: any) => [q.id, q]));
+
+      const sessionIds = detailedStudentScores
+        .filter(s => s.sessionId && (s.examStatus === 'Selesai' || s.examStatus === 'Diskualifikasi'))
+        .map(s => s.sessionId);
+
+      if (sessionIds.length === 0) { setEssayStudents([]); return; }
+
+      const { data, error } = await supabase
+        .from('student_answers')
+        .select('id, session_id, question_id, answer_value, manual_score')
+        .in('session_id', sessionIds)
+        .in('question_id', essayQuestionIds);
+
+      if (error) throw error;
+
+      const grouped = new Map<string, any[]>();
+      data?.forEach(row => {
+        if (!grouped.has(row.session_id)) grouped.set(row.session_id, []);
+        grouped.get(row.session_id)!.push(row);
+      });
+
+      const result: EssayStudentData[] = [];
+      detailedStudentScores.forEach(student => {
+        if (!student.sessionId) return;
+        const answerRows = grouped.get(student.sessionId);
+        if (!answerRows || answerRows.length === 0) return;
+        result.push({
+          student: {
+            id: student.id,
+            fullName: student.fullName,
+            class: student.class,
+            nisn: student.nisn || '-',
+            sessionId: student.sessionId,
+            score: student.score ?? null,
+          },
+          answers: answerRows.map(a => {
+            const q = essayQMap.get(a.question_id);
+            let txt = a.answer_value ?? '';
+            if (typeof txt !== 'string') txt = JSON.stringify(txt);
+            // question text bisa berupa string atau object dengan field 'text'
+            const rawQ = q?.question;
+            const questionText = typeof rawQ === 'string' ? rawQ : (rawQ?.text || rawQ?.ops?.[0]?.insert || `Soal #${a.question_id}`);
+            const answerKey = q?.answer_key?.text || q?.answer_key || '';
+            return {
+              answerId: a.id,
+              questionId: a.question_id,
+              questionText,
+              answerKey: typeof answerKey === 'string' ? answerKey : JSON.stringify(answerKey),
+              answerText: txt,
+              currentScore: a.manual_score ?? null,
+              weight: q?.weight || 1,
+            };
+          }),
+        });
+      });
+
+      setEssayStudents(result);
+      const initScores: Record<string, string> = {};
+      result.forEach(s => s.answers.forEach(a => {
+        if (a.currentScore !== null && a.currentScore !== undefined) {
+          initScores[a.answerId] = String(a.currentScore);
+        }
+      }));
+      setEssayScores(initScores);
+    } catch (err: any) {
+      console.error('Load essay error:', err);
+      alert('Gagal memuat data essay: ' + err.message);
+    } finally {
+      setIsLoadingEssay(false);
+    }
+  }, [selectedTest, detailedStudentScores]);
+
+  const handleSaveEssayStudent = async (s: EssayStudentData) => {
+    setSavingEssay(s.student.sessionId);
+    try {
+      for (const ans of s.answers) {
+        const raw = essayScores[ans.answerId];
+        if (raw === undefined || raw.trim() === '') continue;
+        const score = parseFloat(raw);
+        if (isNaN(score) || score < 0 || score > 100) { alert(`Nilai harus 0–100 (soal: ${ans.questionText.slice(0, 40)})`); return; }
+        // Gunakan direct update — tidak perlu RPC, hindari masalah tipe UUID vs integer
+        const { error } = await supabase
+          .from('student_answers')
+          .update({ manual_score: score })
+          .eq('id', ans.answerId);
+        if (error) throw error;
+      }
+      await handleRecalculate(s.student.sessionId);
+      await loadEssayData();
+    } catch (err: any) {
+      console.error('Save essay error:', err);
+      alert('Gagal menyimpan nilai: ' + err.message);
+    } finally {
+      setSavingEssay(null);
+    }
   };
 
   const downloadExcel = async () => {
@@ -448,11 +616,195 @@ const GradeRecap: React.FC<GradeRecapProps> = ({ tests, users, examSessions, sch
   };
 
   const downloadPDF = () => setTimeout(() => window.print(), 50);
-  
+
   const handleSelectTest = (token: string) => {
       setSelectedToken(token);
       setView('detail');
   }
+
+  const EssayGradeView = () => {
+    const ungradedCount = essayStudents.reduce((acc, s) =>
+      acc + s.answers.filter(a => a.currentScore === null || a.currentScore === undefined).length, 0);
+
+    return (
+      <div className="animate-fade-in">
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center space-x-3">
+            <button onClick={() => setIsEssayView(false)} className="text-blue-600 hover:bg-blue-50 rounded-full p-2">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
+            </button>
+            <div>
+              <h2 className="text-2xl font-black text-slate-800">Koreksi Essay</h2>
+              <p className="text-sm text-slate-500">{selectedTest?.details.subject} — {essayStudents.length} siswa memiliki jawaban essay</p>
+            </div>
+          </div>
+          {ungradedCount > 0 && (
+            <span className="bg-amber-100 text-amber-700 text-sm font-bold px-3 py-1 rounded-full border border-amber-200">
+              {ungradedCount} jawaban belum dinilai
+            </span>
+          )}
+        </div>
+
+        {isLoadingEssay ? (
+          <div className="flex items-center justify-center py-20">
+            <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent"></div>
+            <span className="ml-4 text-slate-500 font-medium">Memuat jawaban essay...</span>
+          </div>
+        ) : essayStudents.length === 0 ? (
+          <div className="text-center py-20 bg-white rounded-2xl border-2 border-dashed border-slate-200">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16 text-slate-300 mx-auto mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+            <p className="text-slate-500 font-bold text-lg">Tidak ada data essay untuk dikoreksi.</p>
+            <p className="text-slate-400 text-sm mt-1">Kemungkinan: paket soal ini tidak memiliki soal essay, atau belum ada siswa yang selesai ujian.</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {essayStudents.map(s => {
+              const allGraded = s.answers.every(a => {
+                const raw = essayScores[a.answerId];
+                return (raw !== undefined && raw.trim() !== '') || (a.currentScore !== null && a.currentScore !== undefined);
+              });
+              const isSaving = savingEssay === s.student.sessionId;
+              return (
+                <div key={s.student.sessionId} className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+                  <div className="flex items-center justify-between px-6 py-4 bg-slate-50 border-b border-slate-100">
+                    <div>
+                      <p className="font-black text-slate-800 text-lg">{s.student.fullName}</p>
+                      <p className="text-sm text-slate-500">{s.student.nisn} · Kelas {s.student.class}</p>
+                    </div>
+                    <div className="flex items-center space-x-3">
+                      {s.student.score !== null && (
+                        <span className="text-sm font-bold text-slate-600 bg-slate-100 px-3 py-1 rounded-full">
+                          Nilai sekarang: <span className="text-blue-700">{s.student.score}</span>
+                        </span>
+                      )}
+                      <button
+                        onClick={() => handleSaveEssayStudent(s)}
+                        disabled={isSaving}
+                        className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-400 text-white font-bold py-2 px-5 rounded-xl text-sm transition-all flex items-center space-x-2 shadow-md"
+                      >
+                        {isSaving ? (
+                          <><div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div><span>Menyimpan...</span></>
+                        ) : (
+                          <><svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" /></svg><span>Simpan & Hitung Ulang</span></>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="divide-y divide-slate-100">
+                    {s.answers.map((ans, idx) => {
+                      const currentVal = essayScores[ans.answerId] ?? (ans.currentScore !== null && ans.currentScore !== undefined ? String(ans.currentScore) : '');
+                      const numVal = parseFloat(currentVal);
+                      const isBenar = currentVal === '100';
+                      const isSalah = currentVal === '0';
+                      const isPartial = currentVal !== '' && !isBenar && !isSalah;
+                      const isGraded = currentVal !== '';
+                      return (
+                        <div key={ans.answerId} className="px-6 py-5">
+                          {/* Header soal */}
+                          <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-2">
+                            Soal {idx + 1} <span className="text-blue-500">(Bobot: {ans.weight})</span>
+                          </p>
+                          <p className="text-sm font-semibold text-slate-700 mb-4" dangerouslySetInnerHTML={{ __html: ans.questionText }} />
+
+                          {/* Jawaban + Kunci */}
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+                            <div className="bg-blue-50 rounded-xl p-4 border border-blue-100">
+                              <p className="text-xs font-black text-blue-400 uppercase tracking-wider mb-2">Jawaban Siswa</p>
+                              <p className="text-sm text-blue-900 whitespace-pre-wrap leading-relaxed min-h-[40px]">
+                                {ans.answerText || <span className="italic text-blue-300">Tidak menjawab</span>}
+                              </p>
+                            </div>
+                            {ans.answerKey && (
+                              <div className="bg-emerald-50 rounded-xl p-4 border border-emerald-100">
+                                <p className="text-xs font-black text-emerald-500 uppercase tracking-wider mb-2">Kunci Jawaban / Panduan</p>
+                                <p className="text-sm text-emerald-900 whitespace-pre-wrap leading-relaxed min-h-[40px]">{ans.answerKey}</p>
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Penilaian: Benar / Salah / Nilai parsial */}
+                          <div className="flex flex-wrap items-center gap-3 bg-slate-50 rounded-xl px-4 py-3 border border-slate-100">
+                            <span className="text-xs font-black text-slate-500 uppercase tracking-wider mr-1">Penilaian:</span>
+
+                            {/* Tombol BENAR */}
+                            <button
+                              type="button"
+                              onClick={() => setEssayScores(prev => ({ ...prev, [ans.answerId]: '100' }))}
+                              className={`flex items-center gap-1.5 px-4 py-2 rounded-xl font-bold text-sm transition-all shadow-sm ${
+                                isBenar
+                                  ? 'bg-emerald-500 text-white shadow-emerald-200 shadow-md scale-105'
+                                  : 'bg-white text-emerald-700 border-2 border-emerald-300 hover:bg-emerald-50'
+                              }`}
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                              </svg>
+                              Benar (100)
+                            </button>
+
+                            {/* Tombol SALAH */}
+                            <button
+                              type="button"
+                              onClick={() => setEssayScores(prev => ({ ...prev, [ans.answerId]: '0' }))}
+                              className={`flex items-center gap-1.5 px-4 py-2 rounded-xl font-bold text-sm transition-all shadow-sm ${
+                                isSalah
+                                  ? 'bg-red-500 text-white shadow-red-200 shadow-md scale-105'
+                                  : 'bg-white text-red-700 border-2 border-red-300 hover:bg-red-50'
+                              }`}
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                              Salah (0)
+                            </button>
+
+                            {/* Pemisah */}
+                            <span className="text-slate-300 font-bold text-lg">|</span>
+
+                            {/* Input nilai parsial */}
+                            <div className="flex items-center gap-2">
+                              <label className="text-xs text-slate-500 font-bold whitespace-nowrap">Nilai Parsial:</label>
+                              <input
+                                type="number"
+                                min={0}
+                                max={100}
+                                step={1}
+                                value={currentVal}
+                                onChange={e => setEssayScores(prev => ({ ...prev, [ans.answerId]: e.target.value }))}
+                                className={`w-20 text-center font-black text-base border-2 rounded-xl py-1.5 px-2 focus:outline-none focus:ring-2 focus:ring-blue-400 transition-all ${
+                                  isBenar ? 'border-emerald-400 bg-emerald-50 text-emerald-700' :
+                                  isSalah ? 'border-red-300 bg-red-50 text-red-700' :
+                                  isPartial ? 'border-amber-400 bg-amber-50 text-amber-800' :
+                                  'border-slate-200 bg-white text-slate-500'
+                                }`}
+                                placeholder="–"
+                              />
+                              <span className="text-xs text-slate-400">/100</span>
+                            </div>
+
+                            {/* Badge status */}
+                            {isGraded && (
+                              <span className={`ml-auto text-xs font-bold px-3 py-1 rounded-full ${
+                                isBenar ? 'bg-emerald-100 text-emerald-700' :
+                                isSalah ? 'bg-red-100 text-red-700' :
+                                'bg-amber-100 text-amber-700'
+                              }`}>
+                                {isBenar ? 'Benar' : isSalah ? 'Salah' : `Parsial ${numVal}%`}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   const MainView = () => (
     <div className="animate-fade-in">
@@ -532,6 +884,9 @@ const GradeRecap: React.FC<GradeRecapProps> = ({ tests, users, examSessions, sch
       <div className="print-only mb-8">
         <div className="flex items-center space-x-4 mb-4"><img src={config.logoUrl} alt="Logo" className="h-16 w-16 object-contain" /><div><h1 className="text-2xl font-bold">{config.schoolName}</h1><p className="text-lg">Laporan Hasil Ujian</p></div></div><hr className="my-2 border-gray-400" />
       </div>
+
+      {isEssayView ? <EssayGradeView /> : (
+      <>
       <div className="flex items-center mb-6 no-print">
         <button onClick={() => setView('main')} className="text-blue-600 hover:bg-blue-50 rounded-full p-2 mr-2"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg></button>
         <h1 className="text-3xl font-bold text-gray-800">Rekapitulasi Nilai</h1>
@@ -539,7 +894,18 @@ const GradeRecap: React.FC<GradeRecapProps> = ({ tests, users, examSessions, sch
       <div className="bg-white rounded-xl shadow-xl p-6 mb-8 no-print">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="md:col-span-1"><label className="block text-sm font-medium text-gray-700 mb-1">Filter Kelas:</label><select value={selectedClass} onChange={e => setSelectedClass(e.target.value)} className="w-full p-2 border border-gray-300 rounded-md" disabled={!selectedTest}>{classList.map(c => <option key={c} value={c}>{c === 'all' ? 'Semua Kelas' : c}</option>)}</select></div>
-            <div className="md:col-span-2 flex items-end space-x-2"><button onClick={downloadPDF} disabled={!selectedTest || filteredScores.length === 0} className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg shadow-md disabled:bg-gray-400 flex items-center justify-center space-x-2"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clipRule="evenodd" /></svg><span>Download PDF</span></button><button onClick={downloadExcel} disabled={!selectedTest || filteredScores.length === 0} className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg shadow-md disabled:bg-gray-400 flex items-center justify-center space-x-2"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M2 5a2 2 0 012-2h12a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V5zm2 1v2h12V6H4zm0 4v2h12v-2H4zm0 4v2h12v-2H4z" /></svg><span>Download Excel</span></button></div>
+            <div className="md:col-span-2 flex items-end space-x-2 flex-wrap gap-2">
+              <button onClick={downloadPDF} disabled={!selectedTest || filteredScores.length === 0} className="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg shadow-md disabled:bg-gray-400 flex items-center justify-center space-x-2"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clipRule="evenodd" /></svg><span>PDF</span></button>
+              <button onClick={downloadExcel} disabled={!selectedTest || filteredScores.length === 0} className="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-lg shadow-md disabled:bg-gray-400 flex items-center justify-center space-x-2"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M2 5a2 2 0 012-2h12a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V5zm2 1v2h12V6H4zm0 4v2h12v-2H4zm0 4v2h12v-2H4z" /></svg><span>Excel</span></button>
+              <button
+                onClick={() => { setIsEssayView(true); loadEssayData(); }}
+                disabled={!selectedTest}
+                className="flex-1 bg-violet-600 hover:bg-violet-700 text-white font-bold py-2 px-4 rounded-lg shadow-md disabled:bg-gray-400 flex items-center justify-center space-x-2"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                <span>Koreksi Essay</span>
+              </button>
+            </div>
         </div>
       </div>
       {selectedTest && (
@@ -569,10 +935,10 @@ const GradeRecap: React.FC<GradeRecapProps> = ({ tests, users, examSessions, sch
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{user.nisn}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{user.class}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-center font-bold text-gray-800">
-                        {user.score ?? (
-                            user.status === 'Belum Dinilai' && user.sessionId ? (
-                                <button 
-                                    onClick={() => handleRecalculate(user.sessionId)} 
+                        {user.score != null ? user.score : (
+                            user.sessionId ? (
+                                <button
+                                    onClick={() => handleRecalculate(user.sessionId)}
                                     disabled={isRecalculating === user.sessionId}
                                     className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200 disabled:opacity-50"
                                 >
@@ -582,7 +948,13 @@ const GradeRecap: React.FC<GradeRecapProps> = ({ tests, users, examSessions, sch
                         )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-center">
-                        <span className={`px-2.5 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${user.status === 'Lulus' ? 'bg-green-100 text-green-800' : user.status === 'Tidak Lulus' ? 'bg-red-100 text-red-800' : user.status === 'Belum Dinilai' ? 'bg-yellow-100 text-yellow-800' : 'bg-gray-100 text-gray-800'}`}>
+                        <span className={`px-2.5 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                            user.status === 'Lulus' ? 'bg-green-100 text-green-800' :
+                            user.status === 'Tidak Lulus' ? 'bg-red-100 text-red-800' :
+                            user.status === 'Belum Dinilai' ? 'bg-yellow-100 text-yellow-800' :
+                            user.status?.startsWith('Diskualifikasi') ? 'bg-orange-100 text-orange-800' :
+                            'bg-gray-100 text-gray-800'
+                        }`}>
                             {user.status}
                         </span>
                     </td>
@@ -590,6 +962,8 @@ const GradeRecap: React.FC<GradeRecapProps> = ({ tests, users, examSessions, sch
             ))}{filteredScores.length === 0 && (<tr><td colSpan={5} className="text-center py-10 text-gray-500">Tidak ada data untuk kelas yang dipilih.</td></tr>)}</tbody></table></div></div>
           </>
       )}
+    </>
+    )}
     </div>
   );
 

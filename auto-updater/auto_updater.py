@@ -397,6 +397,33 @@ def apply_update(update_info: dict) -> bool:
             )
         log.info('ZIP valid: index.html ditemukan.')
 
+        # ── 3b. UPDATE updater-server/server.js JIKA ADA DI ZIP ─
+        new_server_js = os.path.join(extract_dir, 'updater-server', 'server.js')
+        if os.path.isfile(new_server_js):
+            dest_server = '/opt/cbt-enterprise/updater-server/server.js'
+            try:
+                shutil.copy2(new_server_js, dest_server)
+                log.info('updater-server/server.js diperbarui dari ZIP.')
+                # Restart cbt-updater setelah proses ini selesai (non-blocking)
+                subprocess.Popen(
+                    ['bash', '-c', 'sleep 8 && systemctl restart cbt-updater'],
+                    start_new_session=True
+                )
+                log.info('cbt-updater akan di-restart dalam 8 detik.')
+            except Exception as e_srv:
+                log.warning(f'Gagal update server.js (non-fatal): {e_srv}')
+
+        # ── 3c. UPDATE auto_updater.py JIKA ADA DI ZIP ──────────
+        new_updater_py = os.path.join(extract_dir, 'auto-updater', 'auto_updater.py')
+        if os.path.isfile(new_updater_py):
+            try:
+                dest_py = '/opt/cbt-enterprise/auto-updater/auto_updater.py'
+                shutil.copy2(new_updater_py, dest_py)
+                os.chmod(dest_py, 0o755)
+                log.info('auto_updater.py diperbarui dari ZIP.')
+            except Exception as e_py:
+                log.warning(f'Gagal update auto_updater.py (non-fatal): {e_py}')
+
         # ── 4. BACKUP DIST LAMA ──────────────────────────────
         log.info('[4/7] Membuat backup...')
         current_ver = get_local_version()

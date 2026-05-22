@@ -16,71 +16,257 @@ const TxtQuestionImportModal: React.FC<TxtQuestionImportModalProps> = ({ testTok
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleDownloadTemplate = () => {
-    const content = `PANDUAN FORMAT IMPORT NOTEPAD (.TXT)
--------------------------------------------------------
-ATURAN:
-1. Pisahkan setiap soal dengan tanda "=====" (5 sama dengan).
-2. TIPE SOAL yang didukung: 
-   - SINGLE (Pilihan Ganda Biasa)
-   - MULTIPLE (Pilihan Ganda Kompleks)
-   - TRUE_FALSE (Benar/Salah)
-   - MATCHING (Menjodohkan)
-   - ESSAY (Uraian)
-3. Jangan lupa "JAWABAN" untuk kunci.
+    const content = `PANDUAN FORMAT IMPORT NOTEPAD (.TXT) — CBT School Enterprise
+=======================================================
+ATURAN PENULISAN:
+1. Setiap soal dipisah dengan tanda "=====" (minimal 5 tanda =)
+2. TIPE SOAL: SINGLE | MULTIPLE | TRUE_FALSE | MATCHING | ESSAY
+3. MEDIA: isi URL gambar (.jpg/.png/.webp), audio (.mp3), atau video (.mp4)
+4. Baris dimulai # adalah komentar, diabaikan saat import
+5. LEVEL   : L1 (Mengingat/Memahami) | L2 (Menerapkan/Menganalisis) | L3 (Mengevaluasi/Mencipta)
+6. KESULITAN: Easy | Medium | Hard
+7. BOBOT   : poin soal, angka (default: 1)
+8. TOPIK   : nama materi/bab soal
+=======================================================
 
+
+=======================================================
+# ════════════ TIPE: SINGLE — Pilihan Ganda Tunggal ════════════
+# Kunci jawaban: SATU huruf  →  A / B / C / D / E
 =======================================================
 
 TIPE: SINGLE
-SOAL: Siapakah presiden pertama Indonesia?
+SOAL: Siapakah presiden pertama Republik Indonesia?
 OPSI_A: Soeharto
 OPSI_B: B.J. Habibie
 OPSI_C: Soekarno
 OPSI_D: Megawati
-OPSI_E: Gus Dur
+OPSI_E: Susilo Bambang Yudhoyono
 JAWABAN: C
+LEVEL: L1
 KESULITAN: Easy
 BOBOT: 1
+TOPIK: Sejarah Indonesia
+
+=====
+
+TIPE: SINGLE
+SOAL: Perhatikan gambar rangkaian listrik berikut! Jika R1=4Ω dan R2=6Ω disusun seri, berapakah hambatan totalnya?
+OPSI_A: 10 Ω
+OPSI_B: 2,4 Ω
+OPSI_C: 24 Ω
+OPSI_D: 1,5 Ω
+JAWABAN: A
+LEVEL: L2
+KESULITAN: Medium
+BOBOT: 2
+TOPIK: Fisika Listrik
+MEDIA: https://upload.wikimedia.org/wikipedia/commons/thumb/9/97/The_Earth_seen_from_Apollo_17.jpg/320px-The_Earth_seen_from_Apollo_17.jpg
+
+=====
+
+TIPE: SINGLE
+SOAL: Perpindahan panas tanpa melalui zat perantara disebut...
+OPSI_A: Konduksi
+OPSI_B: Konveksi
+OPSI_C: Radiasi
+OPSI_D: Evaporasi
+JAWABAN: C
+LEVEL: L1
+KESULITAN: Easy
+BOBOT: 1
+TOPIK: Fisika Kalor
+
+
+=======================================================
+# ════════════ TIPE: MULTIPLE — Pilihan Ganda Kompleks ════════════
+# Kunci jawaban: SEMUA huruf yang benar, pisah koma  →  A, B, D
+=======================================================
 
 =====
 
 TIPE: MULTIPLE
-SOAL: Pilihlah dua warna primer di bawah ini:
-OPSI_A: Merah
-OPSI_B: Hijau
-OPSI_C: Biru
-OPSI_D: Ungu
-JAWABAN: A, C
+SOAL: Manakah yang termasuk bilangan prima? (Pilih semua yang benar)
+OPSI_A: 2
+OPSI_B: 3
+OPSI_C: 4
+OPSI_D: 5
+OPSI_E: 9
+JAWABAN: A, B, D
+LEVEL: L2
 KESULITAN: Medium
+BOBOT: 2
+TOPIK: Matematika
+
+=====
+
+TIPE: MULTIPLE
+SOAL: Dengarkan rekaman audio berikut! Alat musik manakah yang terdengar dalam rekaman tersebut?
+OPSI_A: Gitar
+OPSI_B: Piano
+OPSI_C: Drum
+OPSI_D: Suling
+OPSI_E: Biola
+JAWABAN: A, C, E
+LEVEL: L2
+KESULITAN: Medium
+BOBOT: 2
+TOPIK: Seni Musik
+MEDIA: https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3
+
+=====
+
+TIPE: MULTIPLE
+SOAL: Pernyataan manakah yang benar tentang Hukum Newton?
+OPSI_A: Hukum I: Benda diam tetap diam jika tidak ada gaya luar
+OPSI_B: Hukum II: F = m x a
+OPSI_C: Hukum III: Aksi = Reaksi dengan arah yang sama
+OPSI_D: Hukum II: F = m / a
+JAWABAN: A, B
+LEVEL: L2
+KESULITAN: Medium
+BOBOT: 2
+TOPIK: Fisika Mekanika
+
+
+=======================================================
+# ════════════ TIPE: TRUE_FALSE — Benar/Salah ════════════
+# Kunci jawaban: nomor-nilai, pisah koma  →  1-B, 2-S, 3-B
+# B = Benar,  S = Salah
+=======================================================
 
 =====
 
 TIPE: TRUE_FALSE
-SOAL: Tentukan kebenaran pernyataan berikut tentang Tata Surya.
-PERNYATAAN_1: Matahari adalah planet.
-PERNYATAAN_2: Bumi mengelilingi matahari.
-PERNYATAAN_3: Bulan adalah satelit bumi.
-JAWABAN: 1-S, 2-B, 3-B
+SOAL: Tentukan pernyataan berikut Benar (B) atau Salah (S)!
+PERNYATAAN_1: Matahari terbit dari arah timur
+PERNYATAAN_2: Bumi berbentuk datar
+PERNYATAAN_3: Air mendidih pada suhu 100 derajat Celsius di permukaan laut
+PERNYATAAN_4: Fotosintesis menghasilkan oksigen
+JAWABAN: 1-B, 2-S, 3-B, 4-B
+LEVEL: L1
+KESULITAN: Easy
+BOBOT: 1
+TOPIK: IPA Umum
+
+=====
+
+TIPE: TRUE_FALSE
+SOAL: Perhatikan peta berikut! Benar atau Salah pernyataan geografis di bawah ini?
+PERNYATAAN_1: Pulau Jawa berada di selatan Kalimantan
+PERNYATAAN_2: Sumatera adalah pulau terbesar di Indonesia
+PERNYATAAN_3: Papua berbatasan langsung dengan Papua Nugini
+JAWABAN: 1-B, 2-S, 3-B
+LEVEL: L2
 KESULITAN: Medium
-# Ket: B = Benar, S = Salah
+BOBOT: 2
+TOPIK: Geografi Indonesia
+MEDIA: https://upload.wikimedia.org/wikipedia/commons/thumb/9/95/Indonesia_%28orthographic_projection%29.svg/320px-Indonesia_%28orthographic_projection%29.svg.png
+
+=====
+
+TIPE: TRUE_FALSE
+SOAL: Tentukan Benar atau Salah pernyataan sistem pemerintahan Indonesia berikut!
+PERNYATAAN_1: Indonesia menganut sistem presidensial
+PERNYATAAN_2: MPR berwenang memilih presiden secara langsung
+PERNYATAAN_3: UUD 1945 adalah konstitusi tertinggi Indonesia
+PERNYATAAN_4: Kekuasaan legislatif dipegang oleh presiden
+JAWABAN: 1-B, 2-S, 3-B, 4-S
+LEVEL: L2
+KESULITAN: Medium
+BOBOT: 2
+TOPIK: PKN
+
+
+=======================================================
+# ════════════ TIPE: MATCHING — Menjodohkan ════════════
+# KANAN: daftar pasangan (jadi A, B, C, D urut dari kiri ke kanan)
+# Kunci jawaban: angka-huruf, pisah koma  →  1-A, 2-C, 3-B
+# Contoh: 1-C berarti KIRI_1 berpasangan dengan opsi C di KANAN
+=======================================================
 
 =====
 
 TIPE: MATCHING
-SOAL: Pasangkan ibukota dengan negaranya.
+SOAL: Jodohkan nama negara dengan ibu kotanya!
 KIRI_1: Indonesia
 KIRI_2: Jepang
-KIRI_3: Inggris
-KANAN: London, Tokyo, Jakarta
-JAWABAN: 1-C, 2-B, 3-A
-# Ket: Kanan otomatis jadi A, B, C urut. 1-C artinya Indonesia-Jakarta.
+KIRI_3: Amerika Serikat
+KIRI_4: Australia
+KANAN: Jakarta, Tokyo, Washington DC, Canberra
+JAWABAN: 1-A, 2-B, 3-C, 4-D
+LEVEL: L1
+KESULITAN: Easy
+BOBOT: 1
+TOPIK: IPS Geografi
+
+=====
+
+TIPE: MATCHING
+SOAL: Perhatikan gambar tokoh ilmuwan berikut! Jodohkan dengan bidang penemuan mereka!
+KIRI_1: Isaac Newton
+KIRI_2: Albert Einstein
+KIRI_3: Thomas Edison
+KIRI_4: Marie Curie
+KANAN: Gravitasi, Relativitas, Listrik, Radioaktivitas
+JAWABAN: 1-A, 2-B, 3-C, 4-D
+LEVEL: L2
+KESULITAN: Medium
+BOBOT: 2
+TOPIK: Sejarah Ilmu Pengetahuan
+MEDIA: https://upload.wikimedia.org/wikipedia/commons/thumb/3/3b/Portrait_of_Isaac_Newton.jpg/220px-Portrait_of_Isaac_Newton.jpg
+
+=====
+
+TIPE: MATCHING
+SOAL: Jodohkan rumus fisika dengan nama hukumnya!
+KIRI_1: F = m x a
+KIRI_2: E = mc2
+KIRI_3: PV = nRT
+KIRI_4: a2 + b2 = c2
+KANAN: Hukum Newton II, Relativitas Einstein, Hukum Gas Ideal, Teorema Pythagoras
+JAWABAN: 1-A, 2-B, 3-C, 4-D
+LEVEL: L3
+KESULITAN: Hard
+BOBOT: 3
+TOPIK: Fisika dan Matematika
+
+
+=======================================================
+# ════════════ TIPE: ESSAY — Uraian ════════════
+# JAWABAN: kunci jawaban atau rubrik penilaian
+=======================================================
 
 =====
 
 TIPE: ESSAY
-SOAL: Jelaskan pengertian fotosintesis secara singkat.
-JAWABAN: Proses pembuatan makanan pada tumbuhan
+SOAL: Jelaskan secara lengkap proses fotosintesis pada tumbuhan beserta persamaan reaksi kimianya!
+JAWABAN: Fotosintesis adalah proses pembuatan makanan oleh tumbuhan menggunakan energi cahaya matahari. Reaksi: 6CO2 + 6H2O + cahaya -> C6H12O6 + 6O2
+LEVEL: L3
 KESULITAN: Hard
 BOBOT: 5
+TOPIK: Biologi
+
+=====
+
+TIPE: ESSAY
+SOAL: Perhatikan video eksperimen berikut! Analisislah permasalahan yang terjadi dan berikan solusi yang tepat!
+JAWABAN: Rubrik: Identifikasi masalah (3 poin) + Analisis penyebab (3 poin) + Solusi dan kesimpulan (4 poin)
+LEVEL: L3
+KESULITAN: Hard
+BOBOT: 10
+TOPIK: IPA Eksperimen
+MEDIA: https://www.w3schools.com/html/mov_bbb.mp4
+
+=====
+
+TIPE: ESSAY
+SOAL: Uraikan perbedaan antara demokrasi langsung dan demokrasi perwakilan disertai contoh negara yang menganutnya!
+JAWABAN: Rubrik: Definisi masing-masing (2 poin) + Perbedaan utama (4 poin) + Contoh negara (4 poin)
+LEVEL: L3
+KESULITAN: Medium
+BOBOT: 10
+TOPIK: PKN Demokrasi
 `;
 
     const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
@@ -89,6 +275,7 @@ BOBOT: 5
     link.href = url;
     link.download = 'TEMPLATE_SOAL_LENGKAP.txt';
     link.click();
+    URL.revokeObjectURL(url);
   };
 
   const parseTxtContent = (content: string) => {
@@ -109,6 +296,11 @@ BOBOT: 5
       const answerRaw = getValue('JAWABAN');
       
       if (!typeRaw || !questionText) {
+        // Jika tidak ada key soal yang dikenal → blok panduan/header, skip diam-diam
+        const hasSoalKey = lines.some(l =>
+          /^(TIPE|SOAL|JAWABAN|OPSI_[A-E]|PERNYATAAN_\d+|KIRI_\d+|KANAN|MEDIA|LEVEL|KESULITAN|BOBOT|TOPIK)\s*:/i.test(l)
+        );
+        if (!hasSoalKey) return;
         if (lines.length < 3) return;
         errors.push(`Soal #${index + 1}: TIPE atau SOAL tidak ditemukan.`);
         return;
@@ -120,6 +312,15 @@ BOBOT: 5
       else if (typeRaw.toUpperCase() === 'ESSAY') systemType = 'essay';
       else if (typeRaw.toUpperCase() === 'TRUE_FALSE') systemType = 'true_false';
 
+      const mediaUrl = getValue('MEDIA');
+      // Deteksi tipe media dari ekstensi URL
+      const getMediaFields = (url: string) => {
+        if (!url) return {};
+        const lower = url.toLowerCase().split('?')[0];
+        if (/\.(mp3|wav|ogg|aac|m4a|flac)$/.test(lower)) return { audio_url: url };
+        if (/\.(mp4|webm|ogg|mov|avi|mkv)$/.test(lower)) return { video_url: url };
+        return { image_url: url };
+      };
       const qObj: any = {
         type: systemType,
         question: questionText,
@@ -129,7 +330,8 @@ BOBOT: 5
         cognitive_level: (getValue('LEVEL') || 'L1') as CognitiveLevel,
         difficulty: (getValue('KESULITAN') || 'Medium') as QuestionDifficulty,
         weight: parseFloat(getValue('BOBOT')) || 1,
-        topic: getValue('TOPIK') || 'Umum'
+        topic: getValue('TOPIK') || 'Umum',
+        ...getMediaFields(mediaUrl),
       };
 
       // --- PARSING LOGIC PER TYPE ---

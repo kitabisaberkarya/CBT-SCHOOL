@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { User, MasterData, AppConfig } from '../types';
 import { DEFAULT_PROFILE_IMAGES } from '../constants';
 
@@ -29,25 +29,48 @@ const UserModal: React.FC<UserModalProps> = ({ userToEdit, masterData, onSave, o
 
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  // Track if admin manually edited the email field (stop auto-fill)
-  const [manualEmail, setManualEmail] = useState(!!userToEdit);
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+  const photoInputRef = useRef<HTMLInputElement>(null);
 
   const isTeacher = formData.role === 'teacher';
   const isEditing = !!userToEdit;
 
-  // Auto-construct email from NIP/NISN when not manually edited
+  // Auto-generate username siswa dari NISN + domain (cegah double @@)
   useEffect(() => {
-    if (manualEmail || !formData.nisn) return;
-    let email = '';
-    if (isTeacher) {
-      email = formData.nisn.includes('@')
-        ? formData.nisn
-        : `${formData.nisn}@teacher.${cleanDomain}`;
-    } else {
-      email = `${formData.nisn}@${cleanDomain}`;
+    if (!isTeacher && !isEditing && formData.nisn) {
+      setFormData(prev => ({ ...prev, username: prev.nisn + '@' + cleanDomain }));
     }
-    setFormData(prev => ({ ...prev, username: email }));
-  }, [formData.nisn, isTeacher, cleanDomain, manualEmail]);
+  }, [formData.nisn, isTeacher, isEditing, cleanDomain]);
+
+  // Compress foto ke base64 via Canvas (max 200x200px, JPEG 80%)
+  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsUploadingPhoto(true);
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const img = new Image();
+      img.onload = () => {
+        const MAX = 200;
+        const ratio = Math.min(MAX / img.width, MAX / img.height, 1);
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width * ratio;
+        canvas.height = img.height * ratio;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) { setIsUploadingPhoto(false); return; }
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+        setFormData(prev => ({ ...prev, photoUrl: dataUrl }));
+        setIsUploadingPhoto(false);
+      };
+      img.src = ev.target?.result as string;
+    };
+    reader.readAsDataURL(file);
+    // Reset input agar file yang sama bisa dipilih ulang
+    e.target.value = '';
+  };
+
+  // Username bebas format — tidak auto-konstruksi dari NISN/NIP
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -56,13 +79,11 @@ const UserModal: React.FC<UserModalProps> = ({ userToEdit, masterData, onSave, o
 
   const handleRoleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const newRole = e.target.value;
-    setManualEmail(false); // Reset so email auto-fills for new role
     setFormData(prev => ({
       ...prev,
       role: newRole,
       class: newRole === 'teacher' ? 'STAFF' : '',
       major: '',
-      username: '', // Will be re-filled by effect
     }));
   };
 
@@ -73,8 +94,8 @@ const UserModal: React.FC<UserModalProps> = ({ userToEdit, masterData, onSave, o
     if (!isEditing) {
       // New user
       if (isTeacher) {
-        if (!formData.password || formData.password.length < 6) {
-          alert('Password guru wajib diisi minimal 6 karakter.');
+        if (!formData.password) {
+          alert('Password guru wajib diisi.');
           return;
         }
         if (formData.password !== confirmPassword) {
@@ -86,10 +107,6 @@ const UserModal: React.FC<UserModalProps> = ({ userToEdit, masterData, onSave, o
     } else {
       // Edit mode: if password entered, validate it
       if (formData.password) {
-        if (formData.password.length < 6) {
-          alert('Password baru minimal 6 karakter.');
-          return;
-        }
         if (formData.password !== confirmPassword) {
           alert('Konfirmasi password tidak cocok.');
           return;
@@ -194,10 +211,7 @@ const UserModal: React.FC<UserModalProps> = ({ userToEdit, masterData, onSave, o
                   type="text"
                   name="nisn"
                   value={formData.nisn}
-                  onChange={(e) => {
-                    setManualEmail(false); // Reset auto-fill when NIP changes
-                    handleChange(e);
-                  }}
+                  onChange={handleChange}
                   className="mt-1 w-full p-2 border rounded-md font-mono"
                   required
                   placeholder={isTeacher ? 'Contoh: pakbudi' : '1234567890'}
@@ -222,15 +236,15 @@ const UserModal: React.FC<UserModalProps> = ({ userToEdit, masterData, onSave, o
 
                 {/* Email Login — editable */}
                 <div>
-                  <label className="block text-xs font-bold text-purple-700 mb-1">Email Login <span className="text-purple-400 font-normal">(auto-isi dari NIP, bisa diubah)</span></label>
+                  <label className="block text-xs font-bold text-purple-700 mb-1">Username Login <span className="text-purple-400 font-normal">(bebas, contoh: pakbudi atau pakbudi@sekolah.id)</span></label>
                   <input
-                    type="email"
+                    type="text"
                     name="username"
                     value={formData.username}
-                    onChange={(e) => { setManualEmail(true); handleChange(e); }}
+                    onChange={handleChange}
                     className="w-full p-2 border border-purple-300 rounded-md font-mono text-sm bg-white focus:ring-2 focus:ring-purple-500"
                     required
-                    placeholder={`pakbudi@teacher.${cleanDomain}`}
+                    placeholder={`contoh: pakbudi atau pakbudi@teacher.${cleanDomain}`}
                   />
                   <p className="text-xs text-purple-500 mt-1">Ini yang digunakan guru untuk login ke panel guru.</p>
                 </div>
@@ -324,10 +338,70 @@ const UserModal: React.FC<UserModalProps> = ({ userToEdit, masterData, onSave, o
               </select>
             </div>
 
-            {/* Photo URL */}
+            {/* Foto Profil */}
             <div>
-              <label className="block text-sm font-medium text-gray-700">URL Foto (Opsional)</label>
-              <input type="text" name="photoUrl" value={formData.photoUrl} onChange={handleChange} className="mt-1 w-full p-2 border rounded-md text-sm" placeholder="https://..." />
+              <label className="block text-sm font-medium text-gray-700 mb-2">Foto Profil</label>
+              <div className="flex items-center gap-4">
+                {/* Preview Foto */}
+                <div className="relative flex-shrink-0">
+                  <img
+                    src={formData.photoUrl || (
+                      formData.role === 'admin' ? DEFAULT_PROFILE_IMAGES.ADMIN
+                      : formData.role === 'teacher' ? DEFAULT_PROFILE_IMAGES.TEACHER
+                      : formData.gender === 'Perempuan' ? DEFAULT_PROFILE_IMAGES.STUDENT_FEMALE
+                      : DEFAULT_PROFILE_IMAGES.STUDENT_MALE
+                    )}
+                    alt="Preview Foto"
+                    className="w-20 h-20 rounded-full object-cover border-2 border-gray-200 shadow-sm"
+                    onError={(e) => {
+                      const img = e.target as HTMLImageElement;
+                      const fb = formData.role === 'teacher' ? DEFAULT_PROFILE_IMAGES.TEACHER
+                        : formData.gender === 'Perempuan' ? DEFAULT_PROFILE_IMAGES.STUDENT_FEMALE
+                        : DEFAULT_PROFILE_IMAGES.STUDENT_MALE;
+                      if (img.src !== window.location.origin + fb) img.src = fb;
+                    }}
+                  />
+                  {isUploadingPhoto && (
+                    <div className="absolute inset-0 rounded-full bg-black/40 flex items-center justify-center">
+                      <svg className="animate-spin h-6 w-6 text-white" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
+                      </svg>
+                    </div>
+                  )}
+                </div>
+                {/* Upload Controls */}
+                <div className="flex-1 space-y-2">
+                  <button
+                    type="button"
+                    onClick={() => photoInputRef.current?.click()}
+                    disabled={isUploadingPhoto}
+                    className="w-full flex items-center justify-center gap-2 px-3 py-2 border-2 border-dashed border-blue-300 rounded-lg text-sm text-blue-600 hover:bg-blue-50 hover:border-blue-400 transition-colors disabled:opacity-50"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                    {isUploadingPhoto ? 'Memproses...' : 'Upload Foto dari Perangkat'}
+                  </button>
+                  {formData.photoUrl && !formData.photoUrl.startsWith('/assets/') && (
+                    <button
+                      type="button"
+                      onClick={() => setFormData(prev => ({ ...prev, photoUrl: '' }))}
+                      className="w-full text-xs text-red-500 hover:text-red-700 py-1"
+                    >
+                      Hapus / Gunakan Foto Default
+                    </button>
+                  )}
+                  <p className="text-xs text-gray-400">JPG/PNG, maks 5MB. Otomatis dikompres ke 200×200px.</p>
+                </div>
+              </div>
+              <input
+                ref={photoInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                className="hidden"
+                onChange={handlePhotoUpload}
+              />
             </div>
 
             {/* Info box for student */}
