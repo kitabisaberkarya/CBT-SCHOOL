@@ -342,30 +342,20 @@ const UserSyncModal: React.FC<UserSyncModalProps> = ({ existingUsers, onClose, o
 
     try {
         if (importType === 'sheet' && activeTab === 'student') {
-            // 2-PHASE SYNC — mencegah data terhapus saat chunking:
-            // Fase 1: insert/update semua siswa (chunked, tidak ada delete)
-            // Fase 2: hapus siswa yang tidak ada di spreadsheet (sekali, di akhir)
+            // SYNC — hanya insert/update, TIDAK menghapus siswa yang tidak ada di sheet
             const chunks: typeof sanitizedRows[] = [];
             for (let i = 0; i < sanitizedRows.length; i += IMPORT_CHUNK_SIZE) {
                 chunks.push(sanitizedRows.slice(i, i + IMPORT_CHUNK_SIZE));
             }
-            // Tampilkan total batch = chunks + 1 (fase delete terakhir)
-            setImportProgress({ done: 0, total: sanitizedRows.length, batch: 0, totalBatch: chunks.length + 1 });
+            setImportProgress({ done: 0, total: sanitizedRows.length, batch: 0, totalBatch: chunks.length });
 
-            // Fase 1: insert/update semua chunks via admin_import_users (tidak menghapus)
             for (let i = 0; i < chunks.length; i++) {
-                setImportProgress({ done: i * IMPORT_CHUNK_SIZE, total: sanitizedRows.length, batch: i + 1, totalBatch: chunks.length + 1 });
+                setImportProgress({ done: i * IMPORT_CHUNK_SIZE, total: sanitizedRows.length, batch: i + 1, totalBatch: chunks.length });
                 await rpcWithRetry('admin_import_users', { users_data: chunks[i] }, `Batch ${i + 1}/${chunks.length}`);
             }
 
-            // Fase 2: hapus siswa lama yang tidak ada di spreadsheet (satu panggilan)
-            setImportProgress({ done: sanitizedRows.length, total: sanitizedRows.length, batch: chunks.length + 1, totalBatch: chunks.length + 1 });
-            const allNisns: string[] = sanitizedRows.map((r: any) => r.nisn).filter(Boolean);
-            const deleteResult = await rpcWithRetry('sync_delete_removed_students', { valid_nisns: allNisns }, 'Fase hapus siswa lama');
-
-            setImportProgress({ done: sanitizedRows.length, total: sanitizedRows.length, batch: chunks.length + 1, totalBatch: chunks.length + 1 });
-            const deletedCount = deleteResult?.deleted ?? 0;
-            alert(`Sinkronisasi selesai: ${sanitizedRows.length} ditambah/diperbarui, ${deletedCount} dihapus.`);
+            setImportProgress({ done: sanitizedRows.length, total: sanitizedRows.length, batch: chunks.length, totalBatch: chunks.length });
+            alert(`Sinkronisasi selesai: ${sanitizedRows.length} siswa ditambah/diperbarui.`);
         } else {
             const chunks: typeof sanitizedRows[] = [];
             for (let i = 0; i < sanitizedRows.length; i += IMPORT_CHUNK_SIZE) {

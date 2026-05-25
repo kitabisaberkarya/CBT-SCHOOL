@@ -628,7 +628,7 @@ const GradeRecap: React.FC<GradeRecapProps> = ({ tests, users, examSessions, sch
 
     return (
       <div className="animate-fade-in">
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between mb-4">
           <div className="flex items-center space-x-3">
             <button onClick={() => setIsEssayView(false)} className="text-blue-600 hover:bg-blue-50 rounded-full p-2">
               <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" /></svg>
@@ -645,6 +645,24 @@ const GradeRecap: React.FC<GradeRecapProps> = ({ tests, users, examSessions, sch
           )}
         </div>
 
+        {/* Panduan Perhitungan Nilai */}
+        <div className="mb-5 bg-indigo-50 border border-indigo-200 rounded-2xl p-4">
+          <div className="flex items-start gap-3">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-indigo-500 flex-shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <div>
+              <p className="text-sm font-black text-indigo-800 mb-1">Panduan Perhitungan Nilai Essay</p>
+              <ul className="text-xs text-indigo-700 space-y-1 list-none">
+                <li><span className="font-bold">Nilai yang dimasukkan (0–100)</span> = persentase kebenaran jawaban essay soal tersebut.</li>
+                <li><span className="font-bold">Formula nilai akhir:</span> (poin benar MC + poin essay) ÷ (total bobot MC + total bobot essay) × 100</li>
+                <li><span className="font-bold">Contoh:</span> Nilai MC = 35 dari bobot 10, essay diberi nilai 80 (bobot 2) → poin essay = (80/100)×2 = 1.6 → nilai akhir = (3.5 + 1.6) / (10 + 2) × 100 = <strong>42.5</strong></li>
+                <li className="text-amber-700 font-semibold">Perhatian: jika nilai essay (%) lebih rendah dari rata-rata soal lain, nilai total bisa sedikit turun — ini normal dan matematis benar.</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
         {isLoadingEssay ? (
           <div className="flex items-center justify-center py-20">
             <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent"></div>
@@ -659,22 +677,34 @@ const GradeRecap: React.FC<GradeRecapProps> = ({ tests, users, examSessions, sch
         ) : (
           <div className="space-y-4">
             {essayStudents.map(s => {
-              const allGraded = s.answers.every(a => {
-                const raw = essayScores[a.answerId];
-                return (raw !== undefined && raw.trim() !== '') || (a.currentScore !== null && a.currentScore !== undefined);
-              });
               const isSaving = savingEssay === s.student.sessionId;
+
+              // Hitung ringkasan kontribusi essay untuk panduan per-siswa
+              const totalEssayWeight = s.answers.reduce((sum, a) => sum + (a.weight || 1), 0);
+              const essayPoinRows = s.answers.map(a => {
+                const raw = essayScores[a.answerId] ?? (a.currentScore !== null && a.currentScore !== undefined ? String(a.currentScore) : '');
+                const numVal = parseFloat(raw);
+                const poin = !isNaN(numVal) ? (numVal / 100) * (a.weight || 1) : null;
+                return { weight: a.weight || 1, raw, poin };
+              });
+              const totalEssayPoin = essayPoinRows.every(r => r.poin !== null)
+                ? essayPoinRows.reduce((sum, r) => sum + (r.poin ?? 0), 0)
+                : null;
+              // Estimasi persentase kontribusi essay bila nilai saat ini diketahui
+              const currentScore = s.student.score;
+
               return (
                 <div key={s.student.sessionId} className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+                  {/* Header siswa */}
                   <div className="flex items-center justify-between px-6 py-4 bg-slate-50 border-b border-slate-100">
                     <div>
                       <p className="font-black text-slate-800 text-lg">{s.student.fullName}</p>
                       <p className="text-sm text-slate-500">{s.student.nisn} · Kelas {s.student.class}</p>
                     </div>
                     <div className="flex items-center space-x-3">
-                      {s.student.score !== null && (
+                      {currentScore !== null && (
                         <span className="text-sm font-bold text-slate-600 bg-slate-100 px-3 py-1 rounded-full">
-                          Nilai sekarang: <span className="text-blue-700">{s.student.score}</span>
+                          Nilai sekarang: <span className="text-blue-700">{currentScore}</span>
                         </span>
                       )}
                       <button
@@ -690,6 +720,8 @@ const GradeRecap: React.FC<GradeRecapProps> = ({ tests, users, examSessions, sch
                       </button>
                     </div>
                   </div>
+
+                  {/* Daftar soal essay */}
                   <div className="divide-y divide-slate-100">
                     {s.answers.map((ans, idx) => {
                       const currentVal = essayScores[ans.answerId] ?? (ans.currentScore !== null && ans.currentScore !== undefined ? String(ans.currentScore) : '');
@@ -698,12 +730,20 @@ const GradeRecap: React.FC<GradeRecapProps> = ({ tests, users, examSessions, sch
                       const isSalah = currentVal === '0';
                       const isPartial = currentVal !== '' && !isBenar && !isSalah;
                       const isGraded = currentVal !== '';
+                      const poinKontribusi = !isNaN(numVal) ? ((numVal / 100) * (ans.weight || 1)).toFixed(2) : null;
                       return (
                         <div key={ans.answerId} className="px-6 py-5">
                           {/* Header soal */}
-                          <p className="text-xs font-black text-slate-400 uppercase tracking-widest mb-2">
-                            Soal {idx + 1} <span className="text-blue-500">(Bobot: {ans.weight})</span>
-                          </p>
+                          <div className="flex items-center justify-between mb-2">
+                            <p className="text-xs font-black text-slate-400 uppercase tracking-widest">
+                              Soal {idx + 1} <span className="text-blue-500">(Bobot: {ans.weight})</span>
+                            </p>
+                            {poinKontribusi !== null && (
+                              <span className="text-xs font-bold text-violet-600 bg-violet-50 px-2 py-0.5 rounded-full border border-violet-100">
+                                Kontribusi: {poinKontribusi} / {ans.weight} poin
+                              </span>
+                            )}
+                          </div>
                           <p className="text-sm font-semibold text-slate-700 mb-4" dangerouslySetInnerHTML={{ __html: ans.questionText }} />
 
                           {/* Jawaban + Kunci */}
@@ -763,7 +803,7 @@ const GradeRecap: React.FC<GradeRecapProps> = ({ tests, users, examSessions, sch
 
                             {/* Input nilai parsial */}
                             <div className="flex items-center gap-2">
-                              <label className="text-xs text-slate-500 font-bold whitespace-nowrap">Nilai Parsial:</label>
+                              <label className="text-xs text-slate-500 font-bold whitespace-nowrap">Nilai (0–100):</label>
                               <input
                                 type="number"
                                 min={0}
@@ -796,6 +836,43 @@ const GradeRecap: React.FC<GradeRecapProps> = ({ tests, users, examSessions, sch
                         </div>
                       );
                     })}
+                  </div>
+
+                  {/* Ringkasan Kontribusi Essay per Siswa */}
+                  <div className="px-6 py-4 bg-violet-50 border-t border-violet-100">
+                    <p className="text-xs font-black text-violet-700 uppercase tracking-wider mb-3">
+                      Ringkasan Kontribusi Essay
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
+                      {essayPoinRows.map((r, idx) => (
+                        <div key={idx} className="bg-white rounded-xl px-4 py-2.5 border border-violet-100 flex items-center justify-between">
+                          <span className="text-xs text-slate-500 font-semibold">Essay {idx + 1} (bobot {r.weight})</span>
+                          <span className={`text-xs font-black ${r.poin !== null ? 'text-violet-700' : 'text-slate-400'}`}>
+                            {r.poin !== null ? `${r.poin.toFixed(2)} / ${r.weight} poin` : 'Belum dinilai'}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-4 text-xs">
+                      <span className="text-slate-600">
+                        Total bobot essay: <strong className="text-violet-700">{totalEssayWeight}</strong>
+                      </span>
+                      {totalEssayPoin !== null && (
+                        <span className="text-slate-600">
+                          Total poin essay: <strong className="text-violet-700">{totalEssayPoin.toFixed(2)} / {totalEssayWeight}</strong>
+                        </span>
+                      )}
+                      {currentScore !== null && totalEssayPoin !== null && (
+                        <span className="text-slate-600">
+                          Nilai saat ini (MC): <strong className="text-blue-700">{currentScore}</strong>
+                          <span className="text-slate-400 mx-1">→</span>
+                          setelah essay dimasukkan ke formula rata-rata berbobot, nilai akan dihitung ulang.
+                        </span>
+                      )}
+                    </div>
+                    <p className="mt-2 text-[11px] text-violet-500 italic">
+                      Formula: Nilai Akhir = (poin MC benar + poin essay) ÷ (bobot MC + bobot essay) × 100
+                    </p>
                   </div>
                 </div>
               );
