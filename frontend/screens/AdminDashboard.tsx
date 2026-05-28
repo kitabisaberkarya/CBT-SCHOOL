@@ -22,6 +22,7 @@ import BulkImportProgress from '../components/BulkImportProgress';
 import RestoreProgressModal from '../components/RestoreProgressModal';
 import PrintDocuments from '../components/PrintDocuments'; // Import New Component
 import TokenManagement from '../components/TokenManagement';
+import PengawasManagement from '../components/PengawasManagement';
 import { DEFAULT_PROFILE_IMAGES } from '../constants';
 import { useCbtschoolLicense } from '../src/hooks/useCbtschoolLicense';
 import LicenseActivation from '../components/LicenseActivation';
@@ -165,6 +166,148 @@ const UpdateSyncHistoryTable: React.FC = () => {
   );
 };
 
+// ── Admin Documents Wrapper (Berita Acara & Daftar Hadir) ─────────────────────
+
+interface AdminRoomInfo {
+  id: string;
+  nama: string;
+  supervisorName: string;
+  studentIds: Set<string>;
+}
+
+interface AdminDocumentsWrapperProps {
+  users: User[];
+  tests: Map<string, Test>;
+  examSessions: any[];
+  config: AppConfig;
+  masterData: MasterData;
+}
+
+const AdminDocumentsWrapper: React.FC<AdminDocumentsWrapperProps> = ({ users, tests, examSessions, config, masterData }) => {
+  const [rooms, setRooms]           = useState<AdminRoomInfo[]>([]);
+  const [selectedRoomId, setRoomId] = useState<string | null>(null);
+  const [isLoading, setIsLoading]   = useState(true);
+
+  useEffect(() => {
+    const fetchRooms = async () => {
+      setIsLoading(true);
+      const [allRoomsRes, assignmentsRes] = await Promise.all([
+        supabase.from('ruangan_ujian').select('id, nama').order('nama'),
+        supabase.from('pengawas_ruangan').select('ruangan_id, pengawas_id'),
+      ]);
+
+      const allRoomsList  = allRoomsRes.data  || [];
+      const assignments   = assignmentsRes.data || [];
+
+      // Fetch pengawas names
+      const pgIds = [...new Set(assignments.map((a: any) => a.pengawas_id).filter(Boolean))];
+      const pgNameMap: Record<string, string> = {};
+      if (pgIds.length > 0) {
+        const { data: pgUsers } = await supabase.from('users').select('id, full_name').in('id', pgIds);
+        (pgUsers || []).forEach((u: any) => { pgNameMap[u.id] = u.full_name; });
+      }
+
+      // Fetch students per room
+      const roomIds = allRoomsList.map((r: any) => r.id);
+      let pesertaList: any[] = [];
+      if (roomIds.length > 0) {
+        const { data: peserta } = await supabase.from('peserta_ruangan').select('ruangan_id, siswa_id').in('ruangan_id', roomIds);
+        pesertaList = peserta || [];
+      }
+
+      const built: AdminRoomInfo[] = allRoomsList
+        .map((r: any) => {
+          const asgn          = assignments.find((a: any) => a.ruangan_id === r.id);
+          const supervisorName = asgn ? (pgNameMap[asgn.pengawas_id] || '') : '';
+          const studentIds     = new Set<string>(
+            pesertaList.filter((p: any) => p.ruangan_id === r.id).map((p: any) => p.siswa_id as string)
+          );
+          return { id: r.id, nama: r.nama, supervisorName, studentIds };
+        })
+        .filter((r: AdminRoomInfo) => r.studentIds.size > 0);
+
+      setRooms(built);
+      if (built.length > 0) setRoomId(built[0].id);
+      setIsLoading(false);
+    };
+    fetchRooms();
+  }, []);
+
+  const selectedRoom  = rooms.find(r => r.id === selectedRoomId) ?? null;
+  const filteredUsers = selectedRoom ? users.filter(u => selectedRoom.studentIds.has(u.id)) : users;
+
+  if (isLoading) return (
+    <div className="flex items-center justify-center p-20">
+      <svg className="animate-spin h-8 w-8 text-blue-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+      </svg>
+    </div>
+  );
+
+  return (
+    <div className="flex flex-col h-full overflow-hidden">
+      {/* Room filter bar */}
+      {rooms.length > 0 && (
+        <div className="bg-white border-b border-gray-200 px-4 py-2.5 flex items-center gap-2 flex-wrap flex-shrink-0">
+          <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">Filter Ruangan:</span>
+          <button
+            onClick={() => setRoomId(null)}
+            className={`px-3 py-1.5 text-xs font-bold rounded-lg border-2 transition-all ${
+              !selectedRoomId ? 'bg-blue-600 text-white border-blue-600 shadow-sm' : 'bg-white text-gray-600 border-gray-200 hover:border-blue-400'
+            }`}
+          >
+            Semua Ruangan
+          </button>
+          {rooms.map(r => (
+            <button
+              key={r.id}
+              onClick={() => setRoomId(r.id)}
+              title={r.supervisorName ? `Pengawas: ${r.supervisorName}` : 'Belum ada pengawas ditugaskan'}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg border-2 transition-all ${
+                selectedRoomId === r.id ? 'bg-blue-600 text-white border-blue-600 shadow-sm' : 'bg-white text-gray-600 border-gray-200 hover:border-blue-400'
+              }`}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+              </svg>
+              {r.nama}
+              {!r.supervisorName && <span className="text-amber-400" title="Belum ada pengawas">⚠</span>}
+              <span className={`px-1 py-0.5 rounded text-[10px] font-black ${selectedRoomId === r.id ? 'bg-blue-700 text-blue-100' : 'bg-gray-100 text-gray-500'}`}>
+                {r.studentIds.size}
+              </span>
+            </button>
+          ))}
+          {/* Warning jika ruangan belum punya pengawas */}
+          {selectedRoom && !selectedRoom.supervisorName && (
+            <span className="flex items-center gap-1.5 text-amber-700 text-xs font-semibold bg-amber-50 border border-amber-200 rounded-lg px-3 py-1.5">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+              Belum ada pengawas di ruangan ini — atur di menu Manajemen Pengawas.
+            </span>
+          )}
+        </div>
+      )}
+      <div className="flex-1 overflow-hidden min-h-0">
+        <PrintDocuments
+          key={selectedRoomId ?? 'all'}
+          users={filteredUsers}
+          tests={tests}
+          examSessions={examSessions}
+          config={config}
+          masterData={masterData}
+          initialRoom={selectedRoom?.nama ?? ''}
+          initialSupervisorName={selectedRoom?.supervisorName ?? ''}
+          initialToken={Array.from(tests.keys())[0] ?? ''}
+        />
+      </div>
+    </div>
+  );
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
   const { user, onLogout, config, onUpdateConfig, setIsBatchProcessing, isLocked: propsIsLocked, isDemoMode: propsIsDemoMode = false, licenseProfile: propsLicenseProfile, licenseError: propsLicenseError } = props;
   
@@ -191,6 +334,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
   const [realTeacherCount, setRealTeacherCount] = useState(0); // New State
   const [realAdminCount, setRealAdminCount] = useState(0); // New State
   const [realStudentCount, setRealStudentCount] = useState(0); // New State
+  const [realPengawasCount, setRealPengawasCount] = useState(0); // New State
   const [isResettingLicense, setIsResettingLicense] = useState(false); // New State for Reset Animation
 
   // Use hook for actions, but prefer props for state if available
@@ -430,6 +574,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
         { count: teacherCountData },
         { count: adminCountData },
         { count: studentCountData },
+        { count: pengawasCountData },
       ] = await Promise.all([
         fetchWithRetry(() => supabase.from('tests').select('*, questions:questions(count)')),
         fetchWithRetry(() => supabase.from('master_classes').select('*')),
@@ -440,6 +585,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
         fetchWithRetry(() => supabase.from('users').select('*', { count: 'exact', head: true }).eq('role', 'teacher')),
         fetchWithRetry(() => supabase.from('users').select('*', { count: 'exact', head: true }).eq('role', 'admin')),
         fetchWithRetry(() => supabase.from('users').select('*', { count: 'exact', head: true }).eq('role', 'student')),
+        fetchWithRetry(() => supabase.from('users').select('*', { count: 'exact', head: true }).eq('role', 'pengawas')),
       ]);
 
       if (testsError || classesError || majorsError || announcementsError || schedulesError) {
@@ -459,11 +605,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
       const tCount = teacherCountData;
       const aCount = adminCountData;
       const uCount = userCount;
+      const pgCount = pengawasCountData;
 
       if (uCount !== null) setTotalUserCount(uCount);
       if (tCount !== null) setRealTeacherCount(tCount);
       if (aCount !== null) setRealAdminCount(aCount);
       if (sCount !== null) setRealStudentCount(sCount);
+      if (pgCount !== null) setRealPengawasCount(pgCount);
 
       // Simpan ke sessionStorage HANYA jika semua count berhasil diambil
       if (sCount !== null && tCount !== null && aCount !== null && uCount !== null) {
@@ -1067,6 +1215,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
     { id: AdminView.HOME, label: 'Dashboard', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M10.707 2.293a1 1 0 00-1.414 0l-7 7a1 1 0 001.414 1.414L4 10.414V17a1 1 0 001 1h2a1 1 0 001-1v-2a1 1 0 011-1h2a1 1 0 011 1v2a1 1 0 001 1h2a1 1 0 001-1v-6.586l.293.293a1 1 0 001.414-1.414l-7-7z" /></svg> },
     { id: AdminView.DATA_MASTER, label: 'Data Master', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M2 6a2 2 0 012-2h5l2 2h5a2 2 0 012 2v6a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" /></svg> },
     { id: AdminView.MANAJEMEN_USER, label: 'Manajemen User', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M9 6a3 3 0 11-6 0 3 3 0 016 0zM17 6a3 3 0 11-6 0 3 3 0 016 0zM12.93 17c.046-.327.07-.66.07-1a6.97 6.97 0 00-1.5-4.33A5 5 0 0119 16v1h-6.07zM6 11a5 5 0 015 5v1H1v-1a5 5 0 015-5z" /></svg> },
+    { id: AdminView.MANAJEMEN_PENGAWAS, label: 'Pengawas & Ruangan', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg> },
     { id: AdminView.QUESTION_BANK, label: 'Bank Soal', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M5 3a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2V5a2 2 0 00-2-2H5zm0 2h10v7h-2V7a1 1 0 00-1-1H6V5z" clipRule="evenodd" /></svg> },
     { id: AdminView.JADWAL_UJIAN, label: 'Jadwal Ujian', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clipRule="evenodd" /></svg> },
     { id: AdminView.UBK, label: 'Pemantauan Ujian', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 12a2 2 0 100-4 2 2 0 000 4z" /><path fillRule="evenodd" d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z" clipRule="evenodd" /></svg> },
@@ -1156,14 +1305,15 @@ const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
     }
 
     switch (activeView) {
-      case AdminView.HOME: return <DashboardHome adminUser={user} config={config} studentUsers={studentUsers} studentCount={realStudentCount} teacherCount={realTeacherCount} adminCount={realAdminCount} tests={tests} questionCount={questionCount} scheduleCount={schedules.length} onNavigate={handleNavigate} activeSessionCount={activeSessionCount} examSessions={examSessions} totalDatabaseRecords={totalUserCount} isLoading={isInitialLoad} />;
+      case AdminView.HOME: return <DashboardHome adminUser={user} config={config} studentUsers={studentUsers} studentCount={realStudentCount} teacherCount={realTeacherCount} adminCount={realAdminCount} pengawasCount={realPengawasCount} tests={tests} questionCount={questionCount} scheduleCount={schedules.length} onNavigate={handleNavigate} activeSessionCount={activeSessionCount} examSessions={examSessions} totalDatabaseRecords={totalUserCount} isLoading={isInitialLoad} />;
       case AdminView.DATA_MASTER: return <DataMaster masterData={masterData} users={users} onAddItem={handleAddMasterItem} onUpdateItem={handleUpdateMasterItem} onDeleteItem={handleDeleteMasterItem} onMergeMasterData={() => {}} isDemoMode={isDemoMode} />;
       case AdminView.MANAJEMEN_USER: return <UserManagement isDemoMode={isDemoMode} onRefresh={fetchData} />;
+      case AdminView.MANAJEMEN_PENGAWAS: return <PengawasManagement config={config} />;
       case AdminView.JADWAL_UJIAN: return <ExamSchedule schedules={schedules} tests={tests} masterData={masterData} students={studentUsers} onAddSchedule={handleAddSchedule} onUpdateSchedule={handleUpdateSchedule} onDeleteSchedule={handleDeleteSchedule} isDemoMode={isDemoMode} />;
       case AdminView.QUESTION_BANK: return <QuestionBank tests={tests} onAddQuestion={handleAddQuestion} onUpdateQuestion={handleUpdateQuestion} onDeleteQuestion={handleDeleteQuestion} onAddTest={handleAddTest} onUpdateTest={handleUpdateTest} onDeleteTest={handleDeleteTest} onBulkAddQuestions={handleBulkAddQuestions} onImportError={(msg) => showToast(msg, 'error')} preselectedToken={preselectedTestToken} onRefresh={() => fetchTestsData()} onFetchQuestions={fetchQuestionsForTest} isFetchingQuestions={isFetchingQuestions} isDemoMode={isDemoMode} examTypes={effectiveExamTypes} />;
       case AdminView.UBK: return <UbkMonitor users={users} tests={tests} />;
       case AdminView.CETAK: return <ExamCards users={studentUsers} config={config} />;
-      case AdminView.CETAK_DOKUMEN: return <PrintDocuments users={studentUsers} tests={tests} examSessions={examSessions} config={config} masterData={masterData} />; // New Component
+      case AdminView.CETAK_DOKUMEN: return <AdminDocumentsWrapper users={studentUsers} tests={tests} examSessions={examSessions} config={config} masterData={masterData} />;
       case AdminView.REKAPITULASI_NILAI: return <GradeRecap tests={tests} users={studentUsers} examSessions={examSessions} schedules={mappedSchedules} preselectedToken={preselectedTestToken} config={config} onRefresh={() => fetchData(true)} />;
       case AdminView.ANALISA_SOAL: return <QuestionAnalysis tests={tests} users={studentUsers} />;
       case AdminView.ANALISA_JAWABAN: return <StudentAnswerAnalysis tests={tests} users={studentUsers} />;

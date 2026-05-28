@@ -10,6 +10,9 @@ interface PrintDocumentsProps {
   examSessions: any[];
   config: AppConfig;
   masterData: MasterData;
+  initialRoom?: string;
+  initialSupervisorName?: string;
+  initialToken?: string;
 }
 
 interface PrintableProps {
@@ -205,13 +208,13 @@ const PrintableDocument: React.FC<PrintableProps> = (props) => {
   );
 };
 
-const PrintDocuments: React.FC<PrintDocumentsProps> = ({ users, tests, examSessions, config, masterData }) => {
-  const [selectedToken, setSelectedToken] = useState<string>('');
-  const [selectedRoom, setSelectedRoom] = useState<string>('Ruang 01');
+const PrintDocuments: React.FC<PrintDocumentsProps> = ({ users, tests, examSessions, config, masterData, initialRoom, initialSupervisorName, initialToken }) => {
+  const [selectedToken, setSelectedToken] = useState<string>(initialToken || '');
+  const [selectedRoom, setSelectedRoom] = useState<string>(initialRoom || 'Ruang 01');
   const [selectedClass, setSelectedClass] = useState<string>('Semua Kelas');
   const [sessionName, setSessionName] = useState<string>('1');
   const [proctorName, setProctorName] = useState<string>('');
-  const [supervisorName, setSupervisorName] = useState<string>('');
+  const [supervisorName, setSupervisorName] = useState<string>(initialSupervisorName || '');
   const [responsibleName, setResponsibleName] = useState<string>('');
   const [supervisorNip, setSupervisorNip] = useState<string>('');
   const [proctorNip, setProctorNip] = useState<string>('');

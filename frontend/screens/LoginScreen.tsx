@@ -6,6 +6,7 @@ import { AppConfig } from '../types';
 import QRScannerModal from '../components/QRScannerModal';
 import LoginScreenSiswa from '../components/LoginScreenSiswa';
 import LoginScreenGuru from '../components/LoginScreenGuru';
+import LoginScreenPengawas from '../components/LoginScreenPengawas';
 
 interface LoginScreenProps {
   config: AppConfig;
@@ -14,7 +15,7 @@ interface LoginScreenProps {
   isDemoMode?: boolean;
 }
 
-type TabType = 'student' | 'teacher';
+type TabType = 'student' | 'teacher' | 'pengawas';
 
 const LoginScreen: React.FC<LoginScreenProps> = ({ config, onStudentLogin, onAdminLogin, isDemoMode }) => {
   const [activeTab, setActiveTab] = useState<TabType>('student');
@@ -34,8 +35,13 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ config, onStudentLogin, onAdm
 
   const handleTeacherSubmit = async (email: string, password: string) => {
       setIsLoading(true);
-      // GURU LOGIN: Gunakan Direct Auth (onAdminLogin) karena Guru punya akun Auth
-      // onStudentLogin menggunakan lookup manual yang sering gagal untuk email guru
+      const errorMsg = await onAdminLogin(email, password);
+      setIsLoading(false);
+      return errorMsg;
+  };
+
+  const handlePengawasSubmit = async (email: string, password: string) => {
+      setIsLoading(true);
       const errorMsg = await onAdminLogin(email, password);
       setIsLoading(false);
       return errorMsg;
@@ -118,9 +124,9 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ config, onStudentLogin, onAdm
             <div className="flex border-b border-gray-100">
                 <button
                     onClick={() => setActiveTab('student')}
-                    className={`flex-1 py-4 text-sm font-bold uppercase tracking-wider transition-colors ${
-                        activeTab === 'student' 
-                        ? 'bg-white text-blue-600 border-b-4 border-blue-600' 
+                    className={`flex-1 py-4 text-xs sm:text-sm font-bold uppercase tracking-wider transition-colors ${
+                        activeTab === 'student'
+                        ? 'bg-white text-blue-600 border-b-4 border-blue-600'
                         : 'bg-gray-50 text-gray-400 hover:bg-gray-100 hover:text-gray-600'
                     }`}
                 >
@@ -128,31 +134,47 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ config, onStudentLogin, onAdm
                 </button>
                 <button
                     onClick={() => setActiveTab('teacher')}
-                    className={`flex-1 py-4 text-sm font-bold uppercase tracking-wider transition-colors ${
-                        activeTab === 'teacher' 
-                        ? 'bg-white text-purple-600 border-b-4 border-purple-600' 
+                    className={`flex-1 py-4 text-xs sm:text-sm font-bold uppercase tracking-wider transition-colors ${
+                        activeTab === 'teacher'
+                        ? 'bg-white text-purple-600 border-b-4 border-purple-600'
                         : 'bg-gray-50 text-gray-400 hover:bg-gray-100 hover:text-gray-600'
                     }`}
                 >
                     Guru / Staf
+                </button>
+                <button
+                    onClick={() => setActiveTab('pengawas')}
+                    className={`flex-1 py-4 text-xs sm:text-sm font-bold uppercase tracking-wider transition-colors ${
+                        activeTab === 'pengawas'
+                        ? 'bg-white text-emerald-600 border-b-4 border-emerald-600'
+                        : 'bg-gray-50 text-gray-400 hover:bg-gray-100 hover:text-gray-600'
+                    }`}
+                >
+                    Pengawas
                 </button>
             </div>
 
             {/* CONTENT */}
             <div className="p-5 sm:p-8">
                 {activeTab === 'student' ? (
-                    <LoginScreenSiswa 
-                        onLogin={handleStudentSubmit} 
-                        isLoading={isLoading} 
+                    <LoginScreenSiswa
+                        onLogin={handleStudentSubmit}
+                        isLoading={isLoading}
+                        config={config}
+                        onOpenQR={() => setIsScannerOpen(true)}
+                    />
+                ) : activeTab === 'teacher' ? (
+                    <LoginScreenGuru
+                        onLogin={handleTeacherSubmit}
+                        isLoading={isLoading}
                         config={config}
                         onOpenQR={() => setIsScannerOpen(true)}
                     />
                 ) : (
-                    <LoginScreenGuru 
-                        onLogin={handleTeacherSubmit} 
-                        isLoading={isLoading} 
+                    <LoginScreenPengawas
+                        onLogin={handlePengawasSubmit}
+                        isLoading={isLoading}
                         config={config}
-                        onOpenQR={() => setIsScannerOpen(true)} // Admin QR check
                     />
                 )}
             </div>

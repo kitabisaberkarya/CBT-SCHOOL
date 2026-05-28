@@ -663,6 +663,81 @@ iface enp0s3 inet static
     return;
   }
 
+  // ── POST /api/updater/patch-db ───────────────────────────────────────────
+  // Jalankan SQL patch satu kolom (safe, idempotent dengan IF NOT EXISTS).
+  // Dipanggil otomatis oleh GradeRecap saat koreksi essay gagal karena
+  // kolom manual_score belum ada di DB (sekolah update zip tapi migration skip).
+  if (req.method === 'POST' && pathname === '/api/updater/patch-db') {
+    (async () => {
+      try {
+        const body = await new Promise((resolve) => {
+          let raw = '';
+          req.on('data', c => (raw += c));
+          req.on('end', () => {
+            try { resolve(JSON.parse(raw)); } catch { resolve({}); }
+          });
+        });
+
+        // Daftar patch SQL yang diizinkan (keyed by patchId, semuanya idempotent)
+        const PATCHES = {
+          'add_manual_score': `
+ALTER TABLE public.student_answers
+  ADD COLUMN IF NOT EXISTS manual_score numeric
+  CHECK (manual_score >= 0 AND manual_score <= 100);
+NOTIFY pgrst, 'reload config';
+`,
+          'create_absensi_ujian': `
+CREATE TABLE IF NOT EXISTS public.absensi_ujian (
+  id          uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  pengawas_id uuid REFERENCES public.users(id) ON DELETE CASCADE,
+  ruangan_id  uuid REFERENCES public.ruangan_ujian(id) ON DELETE CASCADE,
+  siswa_id    uuid REFERENCES public.users(id) ON DELETE CASCADE,
+  tanggal     date DEFAULT CURRENT_DATE,
+  status      text NOT NULL DEFAULT 'belum'
+              CHECK (status IN ('hadir','tidak_hadir','izin','sakit','belum')),
+  catatan     text,
+  waktu_absen timestamptz,
+  created_at  timestamptz DEFAULT now(),
+  updated_at  timestamptz DEFAULT now(),
+  UNIQUE (ruangan_id, siswa_id, tanggal)
+);
+CREATE INDEX IF NOT EXISTS idx_absensi_ruangan_tanggal ON public.absensi_ujian (ruangan_id, tanggal);
+CREATE INDEX IF NOT EXISTS idx_absensi_pengawas ON public.absensi_ujian (pengawas_id);
+ALTER TABLE public.absensi_ujian ENABLE ROW LEVEL SECURITY;
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename='absensi_ujian' AND policyname='pengawas_full_absensi') THEN
+    EXECUTE 'CREATE POLICY pengawas_full_absensi ON public.absensi_ujian FOR ALL USING (true) WITH CHECK (true)';
+  END IF;
+END $$;
+NOTIFY pgrst, 'reload config';
+`,
+        };
+
+        const patchId = (body && body.patch) ? String(body.patch) : '';
+        const sql = PATCHES[patchId];
+        if (!sql) {
+          sendJSON(res, 400, { ok: false, error: `Patch '${patchId}' tidak dikenal.` });
+          return;
+        }
+
+        const tmpFile = `/tmp/cbt_patch_${patchId}.sql`;
+        fs.writeFileSync(tmpFile, sql, 'utf8');
+
+        const { pgUser, pgDb, pgPass } = getDbCredentials();
+        await runCmd(
+          `PGPASSWORD="${pgPass}" docker exec -i supabase-db psql` +
+          ` -U "${pgUser}" -d "${pgDb}" --set ON_ERROR_STOP=1 -q -f /dev/stdin < "${tmpFile}" 2>&1`
+        );
+
+        fs.unlinkSync(tmpFile);
+        sendJSON(res, 200, { ok: true, patch: patchId });
+      } catch (err) {
+        sendJSON(res, 500, { ok: false, error: err.message });
+      }
+    })();
+    return;
+  }
+
   sendJSON(res, 404, { error: 'Endpoint tidak ditemukan.' });
 });
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import ExcelJS from 'exceljs';
 import { Test, User } from '../types';
 import { supabase } from '../supabaseClient';
@@ -22,6 +22,7 @@ interface QuestionMeta {
   id: number;
   question: string;
   correctAnswerIndex: number;
+  answerKey: number[] | null;  // untuk complex_multiple_choice: array of correct indices
   options: string[];
   type: string;
 }
@@ -56,7 +57,7 @@ const StudentAnswerAnalysis: React.FC<StudentAnswerAnalysisProps> = ({ tests, us
         // 1. Fetch questions
         const { data: qData, error: qErr } = await supabase
           .from('questions')
-          .select('id, question, options, correct_answer_index, type')
+          .select('id, question, options, correct_answer_index, answer_key, type')
           .eq('test_id', testId)
           .order('id', { ascending: true });
 
@@ -65,13 +66,24 @@ const StudentAnswerAnalysis: React.FC<StudentAnswerAnalysisProps> = ({ tests, us
           return;
         }
 
-        const parsedQuestions: QuestionMeta[] = qData.map((q: any) => ({
-          id: q.id,
-          question: q.question,
-          correctAnswerIndex: q.correct_answer_index ?? -1,
-          options: q.options ?? [],
-          type: q.type,
-        }));
+        const parsedQuestions: QuestionMeta[] = qData.map((q: any) => {
+          let answerKey: number[] | null = null;
+          if (q.type === 'complex_multiple_choice' && q.answer_key) {
+            try {
+              const ak = typeof q.answer_key === 'string' ? JSON.parse(q.answer_key) : q.answer_key;
+              if (Array.isArray(ak?.indices)) answerKey = ak.indices.map(Number);
+              else if (Array.isArray(ak)) answerKey = ak.map(Number);
+            } catch { /* ignore */ }
+          }
+          return {
+            id: q.id,
+            question: q.question,
+            correctAnswerIndex: q.correct_answer_index ?? -1,
+            answerKey,
+            options: q.options ?? [],
+            type: q.type,
+          };
+        });
         setQuestions(parsedQuestions);
 
         // 2. Fetch schedules
@@ -188,6 +200,54 @@ const StudentAnswerAnalysis: React.FC<StudentAnswerAnalysisProps> = ({ tests, us
     return studentRows.filter(r => r.studentClass === filterClass);
   }, [studentRows, filterClass]);
 
+  // ─── Helper: parse nilai true/false dari berbagai format storage ─────────
+  // Format DB aktual: {"0":true} atau {"0":false} (JSON object dari TestScreen)
+  // Format lama: "true"/"false"/"benar"/"salah"/"1"/"0"
+  const parseTrueFalseValue = useCallback((raw: string | null): boolean | null => {
+    if (raw === null) return null;
+    // Format JSON object: {"0":true} atau {"0":false}
+    try {
+      const parsed = JSON.parse(raw);
+      if (typeof parsed === 'object' && parsed !== null && '0' in parsed) {
+        return Boolean(parsed['0']);
+      }
+      if (typeof parsed === 'boolean') return parsed;
+    } catch { /* bukan JSON, lanjut ke pengecekan string */ }
+    // Format string biasa
+    const val = raw.toLowerCase().trim();
+    if (val === 'true'  || val === 'benar' || val === '1') return true;
+    if (val === 'false' || val === 'salah' || val === '0') return false;
+    return null;
+  }, []);
+
+  // ─── Helper: cek jawaban benar untuk soal true/false ──────────────────
+  const isTrueFalseCorrect = useCallback((raw: string | null, correctIdx: number): boolean => {
+    if (correctIdx < 0) return false;
+    const boolVal = parseTrueFalseValue(raw);
+    if (boolVal === null) return false;
+    if (correctIdx === 0) return boolVal === true;  // kunci = Benar
+    if (correctIdx === 1) return boolVal === false; // kunci = Salah
+    return false;
+  }, [parseTrueFalseValue]);
+
+  // ─── Helper: cek jawaban benar untuk PG Kompleks ──────────────────────
+  const isComplexMcCorrect = useCallback((raw: string | null, answerKey: number[] | null): boolean => {
+    if (!raw || !answerKey || answerKey.length === 0) return false;
+    try {
+      const selected: number[] = JSON.parse(raw);
+      if (!Array.isArray(selected) || selected.length !== answerKey.length) return false;
+      const sortedSel = [...selected].map(Number).sort((a, b) => a - b);
+      const sortedKey = [...answerKey].map(Number).sort((a, b) => a - b);
+      return sortedSel.every((v, i) => v === sortedKey[i]);
+    } catch { return false; }
+  }, []);
+
+  // ─── Helper: format kunci jawaban PG Kompleks → "A,B,D" ──────────────
+  const formatComplexMcKey = useCallback((answerKey: number[] | null): string => {
+    if (!answerKey || answerKey.length === 0) return '—';
+    return [...answerKey].sort((a, b) => a - b).map(i => String.fromCharCode(65 + i)).join(',');
+  }, []);
+
   // ─── Per-student score calculation ─────────────────────────────────────
   const getScore = (row: StudentRow) => {
     let correct = 0;
@@ -197,7 +257,13 @@ const StudentAnswerAnalysis: React.FC<StudentAnswerAnalysisProps> = ({ tests, us
       const hasAnswer = ans && (ans.idx !== null || ans.raw !== null);
       if (hasAnswer) {
         answered++;
-        if (ans.idx !== null && ans.idx === q.correctAnswerIndex) correct++;
+        if (q.type === 'true_false') {
+          if (isTrueFalseCorrect(ans.raw, q.correctAnswerIndex)) correct++;
+        } else if (q.type === 'complex_multiple_choice') {
+          if (isComplexMcCorrect(ans.raw, q.answerKey)) correct++;
+        } else if (ans.idx !== null && ans.idx === q.correctAnswerIndex) {
+          correct++;
+        }
       }
     });
     const pct = questions.length > 0 ? (correct / questions.length) * 100 : 0;
@@ -214,13 +280,23 @@ const StudentAnswerAnalysis: React.FC<StudentAnswerAnalysisProps> = ({ tests, us
         const hasAnswer = ans && (ans.idx !== null || ans.raw !== null);
         if (hasAnswer) {
           answered++;
-          if (ans.idx !== null && ans.idx === q.correctAnswerIndex) correct++;
+          if (q.type === 'true_false') {
+            if (isTrueFalseCorrect(ans.raw, q.correctAnswerIndex)) correct++;
+          } else if (q.type === 'complex_multiple_choice') {
+            if (isComplexMcCorrect(ans.raw, q.answerKey)) correct++;
+          } else if (ans.idx !== null && ans.idx === q.correctAnswerIndex) {
+            correct++;
+          }
         }
       });
-      const pct = filteredRows.length > 0 ? (correct / filteredRows.length) * 100 : 0;
-      return { correct, answered, pct };
+      // essay/matching: tampilkan % dijawab bukan % benar
+      const isAutoScore = q.type !== 'essay' && q.type !== 'matching';
+      const pct = filteredRows.length > 0
+        ? (isAutoScore ? (correct / filteredRows.length) : (answered / filteredRows.length)) * 100
+        : 0;
+      return { correct, answered, pct, isAutoScore };
     });
-  }, [questions, filteredRows]);
+  }, [questions, filteredRows, isTrueFalseCorrect, isComplexMcCorrect]);
 
   // ─── Format display string per tipe soal ──────────────────────────────
   const formatAnswerDisplay = (ans: { idx: number | null; raw: string | null }, q: QuestionMeta): string => {
@@ -234,13 +310,28 @@ const StudentAnswerAnalysis: React.FC<StudentAnswerAnalysisProps> = ({ tests, us
             return arr.map((i: number) => String.fromCharCode(65 + i)).join(',');
           }
         } catch { /* ignore */ }
-        return '✓';
+        return ans.raw.substring(0, 8) || '?';
       }
-      case 'true_false':
-      case 'matching':
+      case 'true_false': {
+        // Gunakan parseTrueFalseValue agar handle format {"0":true}/{"0":false}
+        const boolVal = parseTrueFalseValue(ans.raw);
+        if (boolVal === true)  return 'Benar';
+        if (boolVal === false) return 'Salah';
+        return '?';
+      }
+      case 'matching': {
+        try {
+          const pairs = JSON.parse(ans.raw);
+          if (Array.isArray(pairs)) {
+            return pairs.map((p: unknown, i: number) => `${String.fromCharCode(65 + i)}→${p}`).join(' ');
+          }
+        } catch { /* ignore */ }
+        return ans.raw.substring(0, 10);
+      }
       case 'essay':
+        return '✏';  // selalu ikon pena; jawaban penuh tampil di tooltip
       default:
-        return '✓';
+        return ans.raw.substring(0, 8) || '?';
     }
   };
 
@@ -327,11 +418,15 @@ const StudentAnswerAnalysis: React.FC<StudentAnswerAnalysisProps> = ({ tests, us
       // ── Row 3: Kunci Jawaban ──────────────────────────────────────────
       const keyLabels: any[] = ['', 'KUNCI JAWABAN', '', ''];
       questions.forEach(q => {
-        keyLabels.push(
-          q.type === 'multiple_choice' && q.correctAnswerIndex >= 0
-            ? String.fromCharCode(65 + q.correctAnswerIndex)
-            : '-'
-        );
+        let keyLabel = '-';
+        if (q.type === 'multiple_choice' && q.correctAnswerIndex >= 0) {
+          keyLabel = String.fromCharCode(65 + q.correctAnswerIndex);
+        } else if (q.type === 'true_false') {
+          keyLabel = q.correctAnswerIndex === 0 ? 'Benar' : 'Salah';
+        } else if (q.type === 'complex_multiple_choice') {
+          keyLabel = formatComplexMcKey(q.answerKey);
+        }
+        keyLabels.push(keyLabel);
       });
       keyLabels.push('', '');
       const keyRow = sheet.addRow(keyLabels);
@@ -650,15 +745,141 @@ const StudentAnswerAnalysis: React.FC<StudentAnswerAnalysisProps> = ({ tests, us
       {/* Main Table */}
       {selectedTest && !isLoading && filteredRows.length > 0 && questions.length > 0 && (
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-          {/* Legend */}
+
+          {/* ── Panduan Sistem Penilaian ────────────────────────────────── */}
+          <details className="border-b border-gray-200">
+            <summary className="px-6 py-3 bg-gradient-to-r from-violet-50 to-indigo-50 cursor-pointer select-none flex items-center gap-2 text-sm font-semibold text-violet-700 hover:bg-violet-100 transition-colors">
+              <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              Panduan Membaca Tabel &amp; Sistem Penilaian
+              <span className="ml-auto text-violet-400 text-xs font-normal">klik untuk buka/tutup</span>
+            </summary>
+            <div className="px-6 py-4 bg-gray-50/50 space-y-4 text-sm">
+
+              {/* Legenda Warna */}
+              <div>
+                <p className="font-semibold text-gray-700 mb-2">🎨 Legenda Warna &amp; Simbol Sel</p>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  <div className="flex items-center gap-2 bg-white rounded-lg border border-gray-200 px-3 py-2">
+                    <span className="w-7 h-7 rounded bg-green-100 border border-green-300 flex items-center justify-center text-green-800 font-bold text-xs flex-shrink-0">A</span>
+                    <div>
+                      <p className="font-semibold text-green-700 text-xs">Hijau — Benar</p>
+                      <p className="text-gray-500 text-[11px]">Pilihan Ganda dijawab tepat</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 bg-white rounded-lg border border-gray-200 px-3 py-2">
+                    <span className="w-7 h-7 rounded bg-red-100 border border-red-300 flex items-center justify-center text-red-700 font-bold text-xs flex-shrink-0">B</span>
+                    <div>
+                      <p className="font-semibold text-red-700 text-xs">Merah — Salah</p>
+                      <p className="text-gray-500 text-[11px]">Pilihan Ganda dijawab keliru</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 bg-white rounded-lg border border-gray-200 px-3 py-2">
+                    <span className="w-7 h-7 rounded bg-green-100 border border-green-300 flex items-center justify-center text-green-800 font-bold text-xs flex-shrink-0">✓</span>
+                    <div>
+                      <p className="font-semibold text-green-700 text-xs">✓ Benar / ✓ Salah</p>
+                      <p className="text-gray-500 text-[11px]">Soal Benar-Salah, jawab tepat</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 bg-white rounded-lg border border-gray-200 px-3 py-2">
+                    <span className="w-7 h-7 rounded bg-red-100 border border-red-300 flex items-center justify-center text-red-700 font-bold text-xs flex-shrink-0">✗</span>
+                    <div>
+                      <p className="font-semibold text-red-700 text-xs">✗ Benar / ✗ Salah</p>
+                      <p className="text-gray-500 text-[11px]">Soal Benar-Salah, jawab keliru</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 bg-white rounded-lg border border-gray-200 px-3 py-2">
+                    <span className="w-7 h-7 rounded bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600 font-bold text-xs flex-shrink-0">✏</span>
+                    <div>
+                      <p className="font-semibold text-blue-700 text-xs">Biru — Essay</p>
+                      <p className="text-gray-500 text-[11px]">Sudah diisi; hover untuk baca</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 bg-white rounded-lg border border-gray-200 px-3 py-2">
+                    <span className="w-7 h-7 rounded bg-gray-100 border border-gray-200 flex items-center justify-center text-gray-400 font-bold text-xs flex-shrink-0">—</span>
+                    <div>
+                      <p className="font-semibold text-gray-500 text-xs">Abu — Kosong</p>
+                      <p className="text-gray-500 text-[11px]">Soal tidak dijawab</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Cara Baca Kolom */}
+              <div>
+                <p className="font-semibold text-gray-700 mb-2">📊 Cara Membaca Kolom</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-gray-600">
+                  <div className="bg-white rounded-lg border border-gray-200 px-3 py-2 space-y-1">
+                    <p><span className="font-semibold text-violet-600">S1, S2, … Sn</span> = Nomor soal urut</p>
+                    <p><span className="font-semibold text-emerald-600">Baris Kunci</span> = Jawaban benar tiap soal (A/B/C/D untuk PG; B/S untuk Benar-Salah)</p>
+                    <p><span className="font-semibold text-amber-600">Kolom Benar</span> = Jumlah jawaban benar siswa dari total soal</p>
+                    <p><span className="font-semibold text-amber-600">Kolom %</span> = Persentase nilai siswa</p>
+                  </div>
+                  <div className="bg-white rounded-lg border border-gray-200 px-3 py-2 space-y-1">
+                    <p><span className="font-semibold text-indigo-600">Baris bawah tabel</span> = % siswa yang menjawab benar per soal</p>
+                    <p className="text-green-700">● Hijau ≥ 67% = soal mudah/dikuasai</p>
+                    <p className="text-amber-600">● Kuning 34–66% = soal sedang</p>
+                    <p className="text-red-600">● Merah &lt; 34% = soal sulit / perlu remedial</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Rumus Nilai */}
+              <div>
+                <p className="font-semibold text-gray-700 mb-2">🧮 Rumus Perhitungan Nilai</p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+                  <div className="bg-green-50 border border-green-200 rounded-lg px-3 py-2">
+                    <p className="font-semibold text-green-700 mb-1">Pilihan Ganda (PG)</p>
+                    <p className="text-gray-600">Tiap soal bernilai sama.</p>
+                    <p className="font-mono text-green-800 mt-1">Nilai = (Benar / Total) × 100</p>
+                    <p className="text-gray-500 mt-1 text-[11px]">Contoh: 25 benar dari 30 soal = 83%</p>
+                  </div>
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2">
+                    <p className="font-semibold text-blue-700 mb-1">Benar-Salah (B/S)</p>
+                    <p className="text-gray-600">Dihitung sama seperti PG.</p>
+                    <p className="font-mono text-blue-800 mt-1">Nilai = (Benar / Total) × 100</p>
+                    <p className="text-gray-500 mt-1 text-[11px]">✓ Benar = tepat; ✗ Benar = salah pilih</p>
+                  </div>
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                    <p className="font-semibold text-amber-700 mb-1">Essay ✏</p>
+                    <p className="text-gray-600">Dinilai manual oleh guru.</p>
+                    <p className="font-mono text-amber-800 mt-1">Tidak dihitung otomatis</p>
+                    <p className="text-gray-500 mt-1 text-[11px]">Hover sel ✏ untuk baca jawaban siswa</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Catatan */}
+              <div className="bg-violet-50 border border-violet-200 rounded-lg px-4 py-2.5 text-xs text-violet-700">
+                <span className="font-semibold">📌 Catatan:</span> Data hanya menampilkan sesi ujian berstatus <strong>"Selesai"</strong>.
+                Sesi yang sedang berlangsung atau dibatalkan tidak ditampilkan di sini.
+                Klik tombol <strong>Download Excel</strong> untuk ekspor data lengkap.
+              </div>
+            </div>
+          </details>
+
+          {/* Legend ringkas */}
           <div className="px-6 py-3 bg-gray-50 border-b border-gray-200 flex flex-wrap gap-4 text-xs font-medium">
             <div className="flex items-center gap-1.5">
-              <span className="w-5 h-5 rounded bg-green-100 border border-green-200 flex items-center justify-center text-green-700 font-bold text-[10px]">A</span>
-              <span className="text-gray-600">Benar</span>
+              <span className="w-5 h-5 rounded bg-green-100 border border-green-200 flex items-center justify-center text-green-800 font-bold text-[10px]">A</span>
+              <span className="text-gray-600">Benar PG</span>
             </div>
             <div className="flex items-center gap-1.5">
               <span className="w-5 h-5 rounded bg-red-100 border border-red-200 flex items-center justify-center text-red-700 font-bold text-[10px]">B</span>
-              <span className="text-gray-600">Salah</span>
+              <span className="text-gray-600">Salah PG</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="w-5 h-5 rounded bg-green-100 border border-green-200 flex items-center justify-center text-green-800 font-bold text-[10px]">✓</span>
+              <span className="text-gray-600">Benar B/S</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="w-5 h-5 rounded bg-red-100 border border-red-200 flex items-center justify-center text-red-700 font-bold text-[10px]">✗</span>
+              <span className="text-gray-600">Salah B/S</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="w-5 h-5 rounded bg-blue-50 border border-blue-200 flex items-center justify-center text-blue-600 font-bold text-[10px]">✏</span>
+              <span className="text-gray-600">Essay (hover)</span>
             </div>
             <div className="flex items-center gap-1.5">
               <span className="w-5 h-5 rounded bg-gray-100 border border-gray-200 flex items-center justify-center text-gray-400 text-[10px]">—</span>
@@ -680,6 +901,10 @@ const StudentAnswerAnalysis: React.FC<StudentAnswerAnalysisProps> = ({ tests, us
                       className="px-1 py-2 text-center font-bold text-emerald-700 border border-gray-200 min-w-[32px]">
                       {q.type === 'multiple_choice' && q.correctAnswerIndex >= 0
                         ? String.fromCharCode(65 + q.correctAnswerIndex)
+                        : q.type === 'true_false'
+                        ? (q.correctAnswerIndex === 0 ? 'B' : 'S')
+                        : q.type === 'complex_multiple_choice'
+                        ? formatComplexMcKey(q.answerKey)
                         : '—'}
                     </th>
                   ))}
@@ -733,17 +958,39 @@ const StudentAnswerAnalysis: React.FC<StudentAnswerAnalysisProps> = ({ tests, us
                           );
                         }
                         const display = formatAnswerDisplay(ans, q);
-                        const isPg = q.type === 'multiple_choice';
-                        const isCorrect = isPg && ans.idx !== null && ans.idx === q.correctAnswerIndex;
-                        const isWrong = isPg && ans.idx !== null && ans.idx !== q.correctAnswerIndex;
+                        const isPg      = q.type === 'multiple_choice';
+                        const isComplex = q.type === 'complex_multiple_choice';
+                        const isTf      = q.type === 'true_false';
+                        const isEssay   = q.type === 'essay' || q.type === 'matching';
+                        const isCorrect = isPg
+                          ? (ans.idx !== null && ans.idx === q.correctAnswerIndex)
+                          : isComplex
+                          ? isComplexMcCorrect(ans.raw, q.answerKey)
+                          : isTf
+                          ? isTrueFalseCorrect(ans.raw, q.correctAnswerIndex)
+                          : false;
+                        const isWrong = !isEssay && !isCorrect;
+
+                        const tooltipText = isTf
+                          ? `Jawaban: ${display} | Kunci: ${q.correctAnswerIndex === 0 ? 'Benar' : 'Salah'}`
+                          : isEssay
+                          ? (ans.raw ? `Jawaban Essay: ${ans.raw}` : 'Belum dijawab')
+                          : undefined;
+
+                        const cellLabel = isTf
+                          ? (isCorrect ? `✓ ${display}` : `✗ ${display}`)
+                          : display;
+
                         return (
                           <td key={q.id}
-                            className={`px-1 py-1.5 text-center font-bold border border-gray-200 text-[11px] ${
-                              isCorrect ? 'bg-green-50 text-green-700' :
-                              isWrong   ? 'bg-red-50 text-red-600' :
-                                          'bg-blue-50 text-blue-700'
+                            title={tooltipText}
+                            className={`px-1 py-1.5 text-center font-bold border border-gray-200 text-[11px] max-w-[64px] truncate ${
+                              isEssay    ? 'bg-blue-50 text-blue-700' :
+                              isCorrect  ? 'bg-green-100 text-green-800' :
+                              isWrong    ? 'bg-red-100 text-red-700' :
+                                           'bg-blue-50 text-blue-700'
                             }`}>
-                            {display}
+                            {cellLabel}
                           </td>
                         );
                       })}
@@ -774,7 +1021,9 @@ const StudentAnswerAnalysis: React.FC<StudentAnswerAnalysisProps> = ({ tests, us
                   </td>
                   {questionStats.map((stat, i) => (
                     <td key={i}
+                      title={!stat.isAutoScore ? `${stat.answered} siswa menjawab` : undefined}
                       className={`px-1 py-2 text-center font-bold border border-indigo-500 text-[11px] ${
+                        !stat.isAutoScore ? 'bg-indigo-400' :
                         stat.pct >= 67 ? 'bg-green-500' :
                         stat.pct >= 34 ? 'bg-amber-400 text-gray-800' :
                         'bg-red-500'

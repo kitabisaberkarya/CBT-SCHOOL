@@ -5,31 +5,34 @@
 -- Supabase : https://supabase.com/dashboard/project/yiuamqcfgdgcwxtrihfd
 -- =====================================================================
 -- Langkah:
---   1. Buka Vendor Supabase SQL Editor
---   2. Paste seluruh isi file ini
---   3. Klik Run
---   4. Semua VHD sekolah akan menerima notifikasi update otomatis
+--   1. Buka: https://supabase.com/dashboard/project/yiuamqcfgdgcwxtrihfd
+--   2. Klik SQL Editor → New Query
+--   3. Paste SELURUH isi file ini
+--   4. Klik RUN
+--   5. Semua VHD sekolah akan menerima notifikasi update otomatis
 -- =====================================================================
 
--- Nonaktifkan versi lama
+-- Step 1: Nonaktifkan semua versi lama
 UPDATE app_versions
 SET is_active = false
 WHERE application_id = 'cbtschool';
 
--- Insert versi 4.1.9
+-- Step 2: Insert versi 4.1.9 (kolom sesuai skema aktual tabel)
 INSERT INTO app_versions (
   application_id,
-  version,
+  version_number,
+  release_date,
+  changelog,
   download_url,
-  release_notes,
   sql_migration,
-  is_active,
-  created_at
+  is_mandatory,
+  is_active
 ) VALUES (
   'cbtschool',
   '4.1.9',
-  'https://github.com/awmediadigitaldeveloper/cbt-school-enterprise/releases/download/v4.1.9/cbt-school-enterprise-v4.1.9.zip',
-  'Fix KRITIS: Fitur koreksi essay oleh guru kini berfungsi penuh. Root cause: kolom manual_score tidak ada di tabel student_answers sehingga semua save nilai essay gagal (error 400). Fix: tambah kolom manual_score numeric(0-100) ke student_answers. Bonus: UI koreksi essay ditambah panduan perhitungan nilai (formula rata-rata berbobot) dan preview kontribusi per soal sehingga guru dapat melihat dampak nilai essay terhadap nilai akhir secara real-time. Versi: 4.1.9.250526',
+  NOW(),
+  'Fix KRITIS: Fitur koreksi essay oleh guru kini berfungsi penuh. Root cause: kolom manual_score tidak ada di tabel student_answers sehingga semua save nilai essay gagal (HTTP 400). Fix: tambah kolom manual_score numeric(0-100) ke student_answers. Bonus: UI koreksi essay ditambah panduan perhitungan nilai dan preview kontribusi per soal secara real-time. Versi: 4.1.9.250526',
+  'https://github.com/kitabisaberkarya/CBT-SCHOOL/releases/download/v4.1.9/cbt-school-enterprise-v4.1.9.zip',
   $MIGRATION$
 -- =====================================================================
 -- MIGRATION v4.1.9 — CBT School Enterprise VHD
@@ -64,19 +67,19 @@ BEGIN
   END IF;
 END $$;
 $MIGRATION$,
-  true,
-  NOW()
+  false,
+  true
 );
 
--- Verifikasi hasil insert
+-- Step 3: Verifikasi hasil
 SELECT
   id,
-  version,
+  version_number,
   is_active,
-  created_at,
-  left(download_url, 80) AS download_url_preview,
-  left(release_notes, 100) AS notes_preview
+  release_date,
+  left(download_url, 80)   AS download_url_preview,
+  left(changelog, 100)     AS changelog_preview
 FROM app_versions
 WHERE application_id = 'cbtschool'
-ORDER BY created_at DESC
+ORDER BY release_date DESC
 LIMIT 5;

@@ -320,7 +320,26 @@ const GradeRecap: React.FC<GradeRecapProps> = ({ tests, users, examSessions, sch
       }
   };
 
-  const loadEssayData = useCallback(async () => {
+  // Auto-patch: tambah kolom manual_score via updater server jika belum ada
+  const runDbPatch = useCallback(async (patchId: string): Promise<boolean> => {
+    try {
+      const res = await fetch('/api/updater/patch-db', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ patch: patchId }),
+      });
+      const json = await res.json();
+      return json.ok === true;
+    } catch {
+      return false;
+    }
+  }, []);
+
+  const isMissingColumnError = (msg: string) =>
+    msg.toLowerCase().includes('manual_score') &&
+    (msg.toLowerCase().includes('does not exist') || msg.toLowerCase().includes('tidak ada'));
+
+  const loadEssayData = useCallback(async (isRetryAfterPatch = false) => {
     if (!selectedTest) return;
     setIsLoadingEssay(true);
     try {
@@ -354,7 +373,23 @@ const GradeRecap: React.FC<GradeRecapProps> = ({ tests, users, examSessions, sch
         .in('session_id', sessionIds)
         .in('question_id', essayQuestionIds);
 
-      if (error) throw error;
+      if (error) {
+        // Kolom manual_score belum ada di DB — auto-patch lalu retry sekali
+        if (isMissingColumnError(error.message) && !isRetryAfterPatch) {
+          setIsLoadingEssay(false);
+          setIsLoadingEssay(true);
+          const patched = await runDbPatch('add_manual_score');
+          if (patched) {
+            // Tunggu PostgREST reload schema cache
+            await new Promise(r => setTimeout(r, 2000));
+            await loadEssayData(true);
+          } else {
+            alert('Database belum memiliki kolom penilaian essay. Hubungi administrator untuk menjalankan migrasi v4.1.9.');
+          }
+          return;
+        }
+        throw error;
+      }
 
       const grouped = new Map<string, any[]>();
       data?.forEach(row => {
@@ -380,7 +415,6 @@ const GradeRecap: React.FC<GradeRecapProps> = ({ tests, users, examSessions, sch
             const q = essayQMap.get(a.question_id);
             let txt = a.answer_value ?? '';
             if (typeof txt !== 'string') txt = JSON.stringify(txt);
-            // question text bisa berupa string atau object dengan field 'text'
             const rawQ = q?.question;
             const questionText = typeof rawQ === 'string' ? rawQ : (rawQ?.text || rawQ?.ops?.[0]?.insert || `Soal #${a.question_id}`);
             const answerKey = q?.answer_key?.text || q?.answer_key || '';
@@ -411,7 +445,7 @@ const GradeRecap: React.FC<GradeRecapProps> = ({ tests, users, examSessions, sch
     } finally {
       setIsLoadingEssay(false);
     }
-  }, [selectedTest, detailedStudentScores]);
+  }, [selectedTest, detailedStudentScores, runDbPatch]);
 
   const handleSaveEssayStudent = async (s: EssayStudentData) => {
     setSavingEssay(s.student.sessionId);
@@ -421,12 +455,27 @@ const GradeRecap: React.FC<GradeRecapProps> = ({ tests, users, examSessions, sch
         if (raw === undefined || raw.trim() === '') continue;
         const score = parseFloat(raw);
         if (isNaN(score) || score < 0 || score > 100) { alert(`Nilai harus 0–100 (soal: ${ans.questionText.slice(0, 40)})`); return; }
-        // Gunakan direct update — tidak perlu RPC, hindari masalah tipe UUID vs integer
+
         const { error } = await supabase
           .from('student_answers')
           .update({ manual_score: score })
           .eq('id', ans.answerId);
-        if (error) throw error;
+
+        if (error) {
+          // Kolom belum ada — coba auto-patch lalu retry update ini
+          if (isMissingColumnError(error.message)) {
+            const patched = await runDbPatch('add_manual_score');
+            if (!patched) throw new Error('Kolom manual_score belum ada dan auto-patch gagal. Hubungi administrator.');
+            await new Promise(r => setTimeout(r, 2000));
+            const { error: retryErr } = await supabase
+              .from('student_answers')
+              .update({ manual_score: score })
+              .eq('id', ans.answerId);
+            if (retryErr) throw retryErr;
+          } else {
+            throw error;
+          }
+        }
       }
       await handleRecalculate(s.student.sessionId);
       await loadEssayData();

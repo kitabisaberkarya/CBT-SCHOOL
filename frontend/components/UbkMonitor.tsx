@@ -100,18 +100,21 @@ const UbkMonitor: React.FC<UbkMonitorProps> = ({ users, tests }) => {
     return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
   });
 
-  // Filter jadwal aktif — hanya tampilkan sesi untuk mapel yang sedang dijadwalkan saat ini
-  const [filterActiveSchedule, setFilterActiveSchedule] = useState(false);
+  // Filter jadwal aktif — default TRUE: hanya tampilkan sesi ujian yang sedang berlangsung
+  const [filterActiveSchedule, setFilterActiveSchedule] = useState(true);
   const [activeScheduleIds, setActiveScheduleIds] = useState<Set<string>>(new Set());
 
   const fetchActiveSchedules = async () => {
     try {
-      const now = new Date().toISOString();
+      const now = new Date();
+      const nowIso = now.toISOString();
+      // Ambil jadwal yang sedang aktif ATAU akan mulai dalam 30 menit ke depan
+      const soon = new Date(now.getTime() + 30 * 60 * 1000).toISOString();
       const { data } = await supabase
         .from('schedules')
         .select('id, start_time, end_time')
-        .lte('start_time', now)
-        .gte('end_time', now);
+        .lte('start_time', soon)   // sudah mulai atau mulai dalam 30 menit
+        .gte('end_time', nowIso);  // belum berakhir
       if (data) {
         setActiveScheduleIds(new Set(data.map((s: any) => s.id)));
       }
@@ -139,7 +142,17 @@ const UbkMonitor: React.FC<UbkMonitorProps> = ({ users, tests }) => {
         const { data: schedulesData } = await supabase.from('schedules').select('id,test_id');
         const latestSchedules: any[] = schedulesData || [];
 
-        const { data, error } = await supabase.from('student_exam_sessions').select('*');
+        // Filter hanya sesi hari ini untuk mengurangi beban query
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+        const tomorrowStart = new Date(todayStart);
+        tomorrowStart.setDate(tomorrowStart.getDate() + 1);
+
+        const { data, error } = await supabase
+            .from('student_exam_sessions')
+            .select('*')
+            .gte('started_at', todayStart.toISOString())
+            .lt('started_at', tomorrowStart.toISOString());
 
         // Fetch status suspend semua user sekali
         const { data: suspendData } = await supabase.from('users').select('id,is_suspended');
@@ -216,11 +229,33 @@ const UbkMonitor: React.FC<UbkMonitorProps> = ({ users, tests }) => {
     refreshIntervalRef.current = window.setInterval(() => {
         refreshAll(true);
         fetchActiveSchedules();
-    }, 5000);
+    }, 15000);
 
     const channel = supabase
         .channel('ubk_monitor_changes')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'student_exam_sessions' }, () => fetchSessions(true))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'student_exam_sessions' }, (payload: any) => {
+            // Update in-place hanya baris yang berubah, tidak full refetch
+            const updated = payload.new;
+            if (!updated) return;
+            setActiveSessions(prev => {
+                const idx = prev.findIndex(s => s.id === updated.id);
+                if (idx === -1) {
+                    // Sesi baru masuk — trigger full fetch hanya untuk ini
+                    fetchSessions(true);
+                    return prev;
+                }
+                const next = [...prev];
+                next[idx] = {
+                    ...next[idx],
+                    status: updated.status,
+                    progress: updated.progress ?? next[idx].progress,
+                    timeLeft: updated.time_left_seconds ?? next[idx].timeLeft,
+                    violations: updated.violations ?? next[idx].violations,
+                    currentQuestionNumber: updated.current_question_number ?? next[idx].currentQuestionNumber,
+                };
+                return next;
+            });
+        })
         .on('postgres_changes', { event: '*', schema: 'public', table: 'users' }, () => fetchLockedUsers(true))
         .subscribe();
 
@@ -299,14 +334,14 @@ const UbkMonitor: React.FC<UbkMonitorProps> = ({ users, tests }) => {
     return currentDataList.slice(startIndex, startIndex + rowsPerPage);
   }, [currentDataList, currentPage, rowsPerPage]);
 
-  // --- Stats ---
+  // --- Stats --- (ikut filter yang aktif, bukan semua data mentah)
   const stats = useMemo(() => {
-      const working = activeSessions.filter(s => s.status === 'Mengerjakan').length;
-      const finished = activeSessions.filter(s => s.status === 'Selesai').length;
-      const violations = activeSessions.reduce((acc, s) => acc + s.violations, 0);
+      const working = filteredSessions.filter(s => s.status === 'Mengerjakan').length;
+      const finished = filteredSessions.filter(s => s.status === 'Selesai').length;
+      const violations = filteredSessions.reduce((acc, s) => acc + s.violations, 0);
       const locked = lockedUsers.length;
       return { working, finished, violations, locked };
-  }, [activeSessions, lockedUsers]);
+  }, [filteredSessions, lockedUsers]);
 
   // --- Selection Helpers ---
   const toggleSelect = (id: string) => {
@@ -489,7 +524,7 @@ const UbkMonitor: React.FC<UbkMonitorProps> = ({ users, tests }) => {
 
   // --- Global Bulk (existing) ---
   const handleBulkStopAll = async () => {
-      const working = activeSessions.filter(s => s.status === 'Mengerjakan');
+      const working = filteredSessions.filter(s => s.status === 'Mengerjakan');
       if (working.length === 0) { alert('Tidak ada sesi yang sedang aktif.'); return; }
       if (!window.confirm(`Hentikan ${working.length} sesi ujian yang sedang aktif?\nNilai akan dihitung otomatis dari jawaban yang sudah tersimpan.`)) return;
       setIsBulkProcessing(true);
@@ -505,7 +540,7 @@ const UbkMonitor: React.FC<UbkMonitorProps> = ({ users, tests }) => {
   };
 
   const handleBulkResumeAll = async () => {
-      const diskualifikasi = activeSessions.filter(s => s.status === 'Diskualifikasi' || s.violations > 0);
+      const diskualifikasi = filteredSessions.filter(s => s.status === 'Diskualifikasi' || s.violations > 0);
       if (diskualifikasi.length === 0) { alert('Tidak ada sesi yang perlu dilanjutkan.'); return; }
       if (!window.confirm(`Lanjutkan ${diskualifikasi.length} sesi siswa yang terkendala?`)) return;
       setIsBulkProcessing(true);
@@ -739,7 +774,7 @@ const UbkMonitor: React.FC<UbkMonitorProps> = ({ users, tests }) => {
                             className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold border transition-all ${filterActiveSchedule ? 'bg-green-600 text-white border-green-600 shadow-sm' : 'bg-white text-gray-600 border-gray-300 hover:border-green-500 hover:text-green-600'}`}
                         >
                             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
-                            {filterActiveSchedule ? 'Jadwal Aktif ✓' : 'Jadwal Aktif'}
+                            {filterActiveSchedule ? '● Ujian Berlangsung' : 'Semua Hari Ini'}
                         </button>
                      </>
                  )}

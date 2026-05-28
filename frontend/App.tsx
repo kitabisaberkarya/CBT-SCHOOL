@@ -9,7 +9,8 @@ import TokenScreen from './screens/TokenScreen';
 import ExamSelectionScreen from './screens/ExamSelectionScreen';
 import BiodataScreen from './screens/BiodataScreen';
 import AdminDashboard from './screens/AdminDashboard';
-import TeacherDashboard from './screens/TeacherDashboard'; // Import Dashboard Guru
+import TeacherDashboard from './screens/TeacherDashboard';
+import PengawasDashboard from './screens/PengawasDashboard';
 import ProfileErrorScreen from './screens/ProfileErrorScreen';
 import DeviceMismatchModal from './components/DeviceMismatchModal';
 import CopyrightModal from './components/CopyrightModal';
@@ -201,6 +202,24 @@ const App: React.FC = () => {
         sessionStorage.removeItem('cbt_teacher_session');
     }
 
+    // Cek session storage pengawas manual
+    try {
+        const pengawasSession = sessionStorage.getItem('cbt_pengawas_session');
+        if (pengawasSession) {
+            const user: User = JSON.parse(pengawasSession);
+            if (user.role === 'pengawas') {
+                supabase.auth.signOut({ scope: 'local' }).catch(() => {});
+                user.photoUrl = resolveAdminPhoto(user.photoUrl, DEFAULT_PROFILE_IMAGES.ADMIN);
+                setCurrentUser(user);
+                setAppState(AppState.PENGAWAS_DASHBOARD);
+                setIsAuthLoading(false);
+                return;
+            }
+        }
+    } catch(e) {
+        sessionStorage.removeItem('cbt_pengawas_session');
+    }
+
     // Cek session storage siswa manual (Non-Supabase Auth)
     try {
         const studentSession = sessionStorage.getItem('cbt_student_session');
@@ -277,26 +296,45 @@ const App: React.FC = () => {
           setAppState(AppState.ADMIN_DASHBOARD);
 
         }
-        // 2. GURU (TEACHER) - LOGIC DIPERBAIKI
-        // Kita percayai role 'teacher' dari DB sepenuhnya, tanpa peduli format email.
+        // 2. GURU (TEACHER)
         else if (dbRole === 'teacher') {
            const teacherUser: User = {
             id: user.id,
             username: email,
             fullName: dbData?.full_name || user.user_metadata?.full_name || 'Guru',
-            nisn: dbData?.nisn || 'N/A', 
-            class: dbData?.class || 'STAFF', 
-            major: dbData?.major || 'Guru Mapel', 
-            religion: dbData?.religion || 'Islam', 
-            gender: dbData?.gender || 'Laki-laki', 
+            nisn: dbData?.nisn || 'N/A',
+            class: dbData?.class || 'STAFF',
+            major: dbData?.major || 'Guru Mapel',
+            religion: dbData?.religion || 'Islam',
+            gender: dbData?.gender || 'Laki-laki',
             role: 'teacher',
             photoUrl: resolveAdminPhoto(dbData?.photo_url, DEFAULT_PROFILE_IMAGES.ADMIN)
           };
+          sessionStorage.setItem('cbt_teacher_session', JSON.stringify(teacherUser));
           setCurrentUser(teacherUser);
           setAppState(AppState.TEACHER_DASHBOARD);
 
-        } 
-        // 3. SISWA / UNDEFINED
+        }
+        // 3. PENGAWAS
+        else if (dbRole === 'pengawas') {
+          const pengawasUser: User = {
+            id: user.id,
+            username: email,
+            fullName: dbData?.full_name || user.user_metadata?.full_name || 'Pengawas',
+            nisn: dbData?.nisn || 'N/A',
+            class: dbData?.class || 'PENGAWAS',
+            major: dbData?.major || 'Pengawas Ujian',
+            religion: dbData?.religion || 'Islam',
+            gender: dbData?.gender || 'Laki-laki',
+            role: 'pengawas',
+            photoUrl: resolveAdminPhoto(dbData?.photo_url, DEFAULT_PROFILE_IMAGES.ADMIN)
+          };
+          sessionStorage.setItem('cbt_pengawas_session', JSON.stringify(pengawasUser));
+          setCurrentUser(pengawasUser);
+          setAppState(AppState.PENGAWAS_DASHBOARD);
+
+        }
+        // 4. SISWA / UNDEFINED
         else {
             // Cek apakah ini sebenarnya Guru yang role-nya belum terset di DB tapi emailnya mengandung ciri guru
             if (email.includes('@teacher.') || email.startsWith('guru')) {
@@ -618,6 +656,44 @@ const App: React.FC = () => {
           // DB tidak tersedia — lanjut ke Supabase Auth
       }
 
+      // PENGAWAS: Manual auth via public.users
+      try {
+          const { data: dbPengawas } = await supabase
+              .from('users')
+              .select('*')
+              .eq('username', email.toLowerCase().trim())
+              .eq('role', 'pengawas')
+              .maybeSingle();
+
+          if (dbPengawas) {
+              const storedPass = dbPengawas.password_text || dbPengawas.qr_login_password;
+              if (!storedPass || password.trim() !== storedPass) {
+                  setIsAuthLoading(false);
+                  return "Password salah. Coba lagi atau hubungi administrator.";
+              }
+              await supabase.auth.signOut({ scope: 'local' });
+              const pengawasUser: User = {
+                  id: dbPengawas.id,
+                  username: dbPengawas.username,
+                  fullName: dbPengawas.full_name || 'Pengawas',
+                  nisn: dbPengawas.nisn || 'N/A',
+                  class: dbPengawas.class || 'PENGAWAS',
+                  major: dbPengawas.major || 'Pengawas Ujian',
+                  gender: dbPengawas.gender || 'Laki-laki',
+                  religion: dbPengawas.religion || 'Islam',
+                  role: 'pengawas',
+                  photoUrl: dbPengawas.photo_url || DEFAULT_PROFILE_IMAGES.ADMIN
+              };
+              sessionStorage.setItem('cbt_pengawas_session', JSON.stringify(pengawasUser));
+              setCurrentUser(pengawasUser);
+              setAppState(AppState.PENGAWAS_DASHBOARD);
+              setIsAuthLoading(false);
+              return "";
+          }
+      } catch(e: any) {
+          // DB tidak tersedia — lanjut
+      }
+
       // ADMIN: Coba lookup DB dulu (untuk mendukung qr_login_password)
       try {
           const { data: dbAdmin } = await supabase
@@ -820,7 +896,16 @@ const App: React.FC = () => {
                 user={currentUser} onLogout={handleLogout} config={safeConfig}
                 setIsBatchProcessing={setIsBatchProcessing}
               />;
-            
+
+            case AppState.PENGAWAS_DASHBOARD:
+              if (!currentUser) {
+                  setTimeout(() => setAppState(AppState.LOGIN), 0);
+                  return null;
+              }
+              return <PengawasDashboard
+                user={currentUser} onLogout={handleLogout} config={safeConfig}
+              />;
+
             default:
               return <LoginScreen config={safeConfig} onStudentLogin={handleStudentLogin} onAdminLogin={handleAdminLogin} isDemoMode={isDemoMode} />;
           }

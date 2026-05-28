@@ -474,7 +474,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = (props) => {
       case TeacherView.REKAPITULASI_NILAI: return <GradeRecap tests={tests} users={studentUsers} examSessions={examSessions} schedules={schedules} preselectedToken={preselectedTestToken} config={config} onRefresh={() => fetchData(true)} />;
       case TeacherView.ANALISA_SOAL: return <QuestionAnalysis tests={tests} users={studentUsers} />;
       case TeacherView.ANALISA_JAWABAN: return <StudentAnswerAnalysis tests={tests} users={studentUsers} />;
-      case TeacherView.TOKEN: return <TokenManagement />;
+      case TeacherView.TOKEN: return <TokenManagement readOnly={true} />;
       default: return <div>Not Implemented</div>;
     }
   };

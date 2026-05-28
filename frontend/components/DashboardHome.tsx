@@ -153,6 +153,7 @@ interface DashboardHomeProps {
     studentCount?: number;
     teacherCount: number;
     adminCount: number;
+    pengawasCount?: number;
     tests: Map<string, Test>;
     questionCount: number;
     scheduleCount?: number;
@@ -165,7 +166,7 @@ interface DashboardHomeProps {
     isLoading?: boolean;
 }
 
-const DashboardHome: React.FC<DashboardHomeProps> = ({ adminUser, config, studentUsers, studentCount, teacherCount, adminCount, tests, questionCount, scheduleCount, onNavigate, activeSessionCount, examSessions, onSyncUsers, isSyncing, totalDatabaseRecords, isLoading }) => {
+const DashboardHome: React.FC<DashboardHomeProps> = ({ adminUser, config, studentUsers, studentCount, teacherCount, adminCount, pengawasCount = 0, tests, questionCount, scheduleCount, onNavigate, activeSessionCount, examSessions, onSyncUsers, isSyncing, totalDatabaseRecords, isLoading }) => {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const [isRepairing, setIsRepairing] = useState(false);
     
@@ -257,10 +258,37 @@ const DashboardHome: React.FC<DashboardHomeProps> = ({ adminUser, config, studen
                 <StatCard isLoading={isLoading} title="Total Siswa" value={studentCount ?? studentUsers.length} gradient="bg-gradient-to-br from-blue-500 to-cyan-400" icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M15 21a6 6 0 00-9-5.197M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>} />
                 <StatCard isLoading={isLoading} title="Total Guru" value={teacherCount} gradient="bg-gradient-to-br from-indigo-500 to-purple-400" icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" /></svg>} />
                 <StatCard isLoading={isLoading} title="Total Admin" value={adminCount} gradient="bg-gradient-to-br from-slate-600 to-gray-500" icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg>} />
+                <StatCard isLoading={isLoading} title="Pengawas" value={pengawasCount} gradient="bg-gradient-to-br from-emerald-500 to-teal-400" icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>} />
                 <StatCard isLoading={isLoading} title="Mata Pelajaran" value={tests.size} gradient="bg-gradient-to-br from-green-500 to-emerald-400" icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>} />
                 <StatCard isLoading={isLoading} title="Jadwal Ujian" value={scheduleCount ?? 0} gradient="bg-gradient-to-br from-teal-500 to-cyan-600" icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>} />
                 <StatCard isLoading={isLoading} title="Total Soal" value={questionCount} gradient="bg-gradient-to-br from-orange-500 to-amber-400" icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7l8 5 8-5M12 22V12" /></svg>} />
                 <StatCard isLoading={isLoading} title="Sesi Aktif" value={activeSessionCount} gradient="bg-gradient-to-br from-pink-500 to-rose-400" icon={<svg xmlns="http://www.w3.org/2000/svg" className="h-7 w-7 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.636 18.364a9 9 0 010-12.728m12.728 0a9 9 0 010 12.728m-9.9-2.829a1.5 1.5 0 100-2.122 1.5 1.5 0 000 2.122z" /></svg>} />
+            </div>
+
+            {/* Quick Action: Pengawas & Ruangan */}
+            <div
+                onClick={() => onNavigate(AdminView.MANAJEMEN_PENGAWAS)}
+                className="bg-gradient-to-r from-emerald-600 to-teal-600 rounded-2xl shadow-lg p-5 flex items-center gap-5 cursor-pointer hover:from-emerald-700 hover:to-teal-700 transition-all duration-300 transform hover:-translate-y-0.5 group"
+            >
+                <div className="w-14 h-14 bg-white/20 rounded-xl flex items-center justify-center flex-shrink-0 border border-white/30 group-hover:bg-white/30 transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                    </svg>
+                </div>
+                <div className="flex-1">
+                    <h4 className="font-bold text-lg text-white">Pengawas & Ruangan Ujian</h4>
+                    <p className="text-emerald-100 text-sm mt-0.5">Kelola akun pengawas, buat ruangan, assign peserta & pengawas per ruangan</p>
+                </div>
+                <div className="flex items-center gap-3 flex-shrink-0">
+                    <div className="text-center bg-white/10 rounded-xl px-4 py-2 border border-white/20">
+                        <p className="text-2xl font-black text-white">{pengawasCount}</p>
+                        <p className="text-[10px] text-emerald-100 font-bold uppercase tracking-wide">Pengawas</p>
+                    </div>
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-white/60 group-hover:text-white group-hover:translate-x-1 transition-all" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                </div>
             </div>
 
             {/* Test Subjects Section with Pagination */}

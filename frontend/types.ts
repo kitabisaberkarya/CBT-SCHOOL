@@ -9,7 +9,8 @@ export enum AppState {
   TESTING,
   FINISHED,
   ADMIN_DASHBOARD,
-  TEACHER_DASHBOARD, // State baru untuk Panel Guru
+  TEACHER_DASHBOARD,   // State baru untuk Panel Guru
+  PENGAWAS_DASHBOARD,  // Panel Pengawas Ujian
 }
 
 export enum AdminView {
@@ -25,6 +26,7 @@ export enum AdminView {
   REKAPITULASI_NILAI,
   PENGUMAN,
   MANAJEMEN_USER,
+  MANAJEMEN_PENGAWAS, // Manajemen Pengawas & Ruangan Ujian
   BACKUP_DATA,
   CONFIG,
   CETAK_ADMIN_CARD,
@@ -42,6 +44,36 @@ export enum TeacherView {
   ANALISA_SOAL,
   ANALISA_JAWABAN,
   TOKEN, // Menu Token Ujian Global
+}
+
+// Menu khusus untuk Pengawas Ujian
+export enum PengawasView {
+  HOME,        // Info ruangan & jadwal hari ini
+  PEMANTAUAN,  // Monitoring real-time siswa di ruangan yang dijaga
+  ABSENSI,     // Daftar hadir siswa per ruangan
+  TOKEN,       // Lihat token ujian aktif (read-only)
+}
+
+export interface RuanganUjian {
+  id: string;
+  nama: string;
+  kapasitas: number;
+  keterangan?: string;
+  created_at?: string;
+}
+
+export interface PesertaRuangan {
+  id: string;
+  ruangan_id: string;
+  siswa_id: string;
+  nomor_meja?: number;
+}
+
+export interface PengawasRuangan {
+  id: string;
+  pengawas_id: string;
+  ruangan_id: string;
+  schedule_id?: string;
 }
 
 export type QuestionType = 'multiple_choice' | 'complex_multiple_choice' | 'matching' | 'essay' | 'true_false';

@@ -11,9 +11,10 @@ const fmtCountdown = (secs: number) =>
 
 interface TokenManagementProps {
   isDemoMode?: boolean;
+  readOnly?: boolean;
 }
 
-const TokenManagement: React.FC<TokenManagementProps> = ({ isDemoMode = false }) => {
+const TokenManagement: React.FC<TokenManagementProps> = ({ isDemoMode = false, readOnly = false }) => {
   const [settings, setSettings] = useState<ExamTokenSettings | null>(null);
   const [localToken, setLocalToken] = useState('');
   const [localInterval, setLocalInterval] = useState(15);
@@ -161,7 +162,30 @@ const TokenManagement: React.FC<TokenManagementProps> = ({ isDemoMode = false })
 
   return (
     <div className="animate-fade-in space-y-4 sm:space-y-6 max-w-2xl mx-auto">
-      <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">Token Ujian</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl sm:text-3xl font-bold text-gray-800">Token Ujian</h1>
+        {readOnly && (
+          <span className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-100 text-amber-700 text-xs font-bold rounded-full border border-amber-200">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
+            </svg>
+            Hanya Lihat
+          </span>
+        )}
+      </div>
+
+      {/* Notif read-only */}
+      {readOnly && (
+        <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl p-4">
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-amber-500 flex-shrink-0 mt-0.5" viewBox="0 0 20 20" fill="currentColor">
+            <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+          </svg>
+          <div>
+            <p className="text-sm font-bold text-amber-800">Token Ujian Hanya Bisa Dikelola oleh Admin</p>
+            <p className="text-xs text-amber-600 mt-0.5">Anda hanya dapat melihat token aktif saat ini. Untuk mengubah token, interval, atau mode — hubungi Administrator sistem.</p>
+          </div>
+        </div>
+      )}
 
       {/* Token Display Card */}
       <div className="bg-gradient-to-br from-indigo-600 to-blue-700 rounded-2xl p-5 sm:p-7 text-white shadow-xl">
@@ -187,7 +211,7 @@ const TokenManagement: React.FC<TokenManagementProps> = ({ isDemoMode = false })
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/>
               </svg>
-              Generating...
+              Memperbarui...
             </span>
           ) : (
             settings.currentToken || '——————'
@@ -219,154 +243,194 @@ const TokenManagement: React.FC<TokenManagementProps> = ({ isDemoMode = false })
           )}
         </div>
 
-        <button
-          onClick={handleGenerate}
-          disabled={isSaving || isAutoGenerating || isDemoMode}
-          className="mt-5 w-full flex items-center justify-center gap-2 bg-white/20 hover:bg-white/30 border border-white/30 text-white font-bold py-3 px-4 rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 ${(isSaving || isAutoGenerating) ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-          </svg>
-          {isAutoGenerating ? 'Auto-generating...' : 'Generate Token Baru Sekarang'}
-        </button>
+        {/* Tombol generate — hanya tampil untuk admin (bukan read-only) */}
+        {!readOnly && (
+          <button
+            onClick={handleGenerate}
+            disabled={isSaving || isAutoGenerating || isDemoMode}
+            className="mt-5 w-full flex items-center justify-center gap-2 bg-white/20 hover:bg-white/30 border border-white/30 text-white font-bold py-3 px-4 rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 ${(isSaving || isAutoGenerating) ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+            {isAutoGenerating ? 'Auto-generating...' : 'Generate Token Baru Sekarang'}
+          </button>
+        )}
 
         {savedMsg && (
           <p className="text-center text-green-300 text-sm mt-3 font-semibold">✓ {savedMsg}</p>
         )}
       </div>
 
-      {/* Settings Card */}
-      <div className="bg-white rounded-2xl shadow-xl p-6 space-y-6">
-        <h2 className="text-lg font-bold text-gray-800 border-b pb-3">Pengaturan Token</h2>
+      {/* Settings Card — hanya tampil untuk admin */}
+      {!readOnly && (
+        <div className="bg-white rounded-2xl shadow-xl p-6 space-y-6">
+          <h2 className="text-lg font-bold text-gray-800 border-b pb-3">Pengaturan Token</h2>
 
-        {/* Mode */}
-        <div>
-          <label className="block text-sm font-semibold text-gray-700 mb-3">Mode Token</label>
-          <div className="grid grid-cols-2 gap-3">
-            <button
-              type="button"
-              onClick={() => setLocalMode('auto')}
-              disabled={isDemoMode}
-              className={`p-4 rounded-xl border-2 text-left transition-all ${
-                localMode === 'auto' ? 'border-indigo-500 bg-indigo-50' : 'border-gray-200 hover:border-gray-300'
-              }`}
-            >
-              <div className="flex items-center gap-2 mb-1">
-                <span className="text-xl">🔄</span>
-                <span className={`font-bold text-sm ${localMode === 'auto' ? 'text-indigo-700' : 'text-gray-700'}`}>
-                  Auto Generate
-                </span>
-              </div>
-              <p className="text-xs text-gray-500">Token berubah otomatis setiap X menit</p>
-            </button>
-            <button
-              type="button"
-              onClick={() => setLocalMode('manual')}
-              disabled={isDemoMode}
-              className={`p-4 rounded-xl border-2 text-left transition-all ${
-                localMode === 'manual' ? 'border-indigo-500 bg-indigo-50' : 'border-gray-200 hover:border-gray-300'
-              }`}
-            >
-              <div className="flex items-center gap-2 mb-1">
-                <span className="text-xl">✏️</span>
-                <span className={`font-bold text-sm ${localMode === 'manual' ? 'text-indigo-700' : 'text-gray-700'}`}>
-                  Manual
-                </span>
-              </div>
-              <p className="text-xs text-gray-500">Token tetap, diatur sendiri</p>
-            </button>
-          </div>
-        </div>
-
-        {/* Auto: interval */}
-        {localMode === 'auto' && (
+          {/* Mode */}
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1">
-              Interval Perubahan Token (menit)
-            </label>
-            <input
-              type="number"
-              min={1}
-              max={120}
-              value={localInterval}
-              onChange={e => setLocalInterval(Math.max(1, parseInt(e.target.value) || 15))}
-              disabled={isDemoMode}
-              className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-            />
-            <p className="text-xs text-gray-400 mt-1">Rentang: 1–120 menit. Default: 15 menit.</p>
-          </div>
-        )}
-
-        {/* Manual: token input */}
-        {localMode === 'manual' && (
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1">Token Manual</label>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={localToken}
-                onChange={e => setLocalToken(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10))}
-                disabled={isDemoMode}
-                className="flex-1 p-3 border border-gray-300 rounded-xl font-mono font-bold text-xl tracking-[0.25em] uppercase focus:ring-2 focus:ring-indigo-500"
-                placeholder="TOKEN"
-                maxLength={10}
-              />
+            <label className="block text-sm font-semibold text-gray-700 mb-3">Mode Token</label>
+            <div className="grid grid-cols-2 gap-3">
               <button
                 type="button"
-                onClick={() => setLocalToken(genToken())}
+                onClick={() => setLocalMode('auto')}
                 disabled={isDemoMode}
-                className="px-4 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 font-bold rounded-xl text-sm transition-all"
-                title="Generate token acak"
+                className={`p-4 rounded-xl border-2 text-left transition-all ${
+                  localMode === 'auto' ? 'border-indigo-500 bg-indigo-50' : 'border-gray-200 hover:border-gray-300'
+                }`}
               >
-                ⟳
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-xl">🔄</span>
+                  <span className={`font-bold text-sm ${localMode === 'auto' ? 'text-indigo-700' : 'text-gray-700'}`}>
+                    Auto Generate
+                  </span>
+                </div>
+                <p className="text-xs text-gray-500">Token berubah otomatis setiap X menit</p>
+              </button>
+              <button
+                type="button"
+                onClick={() => setLocalMode('manual')}
+                disabled={isDemoMode}
+                className={`p-4 rounded-xl border-2 text-left transition-all ${
+                  localMode === 'manual' ? 'border-indigo-500 bg-indigo-50' : 'border-gray-200 hover:border-gray-300'
+                }`}
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-xl">✏️</span>
+                  <span className={`font-bold text-sm ${localMode === 'manual' ? 'text-indigo-700' : 'text-gray-700'}`}>
+                    Manual
+                  </span>
+                </div>
+                <p className="text-xs text-gray-500">Token tetap, diatur sendiri</p>
               </button>
             </div>
           </div>
-        )}
 
-        {/* Active toggle */}
-        <div className="flex items-center justify-between py-3 border-t border-gray-100">
-          <div>
-            <p className="text-sm font-semibold text-gray-700">Sistem Token Aktif</p>
-            <p className="text-xs text-gray-400 mt-0.5">
-              Jika dimatikan, akses ujian tetap berdasarkan jadwal tanpa validasi token
-            </p>
+          {/* Auto: interval */}
+          {localMode === 'auto' && (
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">
+                Interval Perubahan Token (menit)
+              </label>
+              <input
+                type="number"
+                min={1}
+                max={120}
+                value={localInterval}
+                onChange={e => setLocalInterval(Math.max(1, parseInt(e.target.value) || 15))}
+                disabled={isDemoMode}
+                className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+              />
+              <p className="text-xs text-gray-400 mt-1">Rentang: 1–120 menit. Default: 15 menit.</p>
+            </div>
+          )}
+
+          {/* Manual: token input */}
+          {localMode === 'manual' && (
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">Token Manual</label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={localToken}
+                  onChange={e => setLocalToken(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10))}
+                  disabled={isDemoMode}
+                  className="flex-1 p-3 border border-gray-300 rounded-xl font-mono font-bold text-xl tracking-[0.25em] uppercase focus:ring-2 focus:ring-indigo-500"
+                  placeholder="TOKEN"
+                  maxLength={10}
+                />
+                <button
+                  type="button"
+                  onClick={() => setLocalToken(genToken())}
+                  disabled={isDemoMode}
+                  className="px-4 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 font-bold rounded-xl text-sm transition-all"
+                  title="Generate token acak"
+                >
+                  ⟳
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Active toggle */}
+          <div className="flex items-center justify-between py-3 border-t border-gray-100">
+            <div>
+              <p className="text-sm font-semibold text-gray-700">Sistem Token Aktif</p>
+              <p className="text-xs text-gray-400 mt-0.5">
+                Jika dimatikan, akses ujian tetap berdasarkan jadwal tanpa validasi token
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setLocalIsActive(v => !v)}
+              disabled={isDemoMode}
+              className={`relative inline-flex h-7 w-12 flex-shrink-0 items-center rounded-full transition-colors focus:outline-none ${
+                localIsActive ? 'bg-indigo-600' : 'bg-gray-300'
+              } disabled:opacity-50`}
+            >
+              <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-md transition-transform ${
+                localIsActive ? 'translate-x-6' : 'translate-x-1'
+              }`} />
+            </button>
           </div>
+
+          {/* Save Button */}
           <button
             type="button"
-            onClick={() => setLocalIsActive(v => !v)}
-            disabled={isDemoMode}
-            className={`relative inline-flex h-7 w-12 flex-shrink-0 items-center rounded-full transition-colors focus:outline-none ${
-              localIsActive ? 'bg-indigo-600' : 'bg-gray-300'
-            } disabled:opacity-50`}
+            onClick={handleSave}
+            disabled={isSaving || isDemoMode}
+            className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-xl shadow-md disabled:opacity-50 disabled:cursor-not-allowed transition-all"
           >
-            <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-md transition-transform ${
-              localIsActive ? 'translate-x-6' : 'translate-x-1'
-            }`} />
+            {isSaving ? 'Menyimpan...' : isDemoMode ? 'Tidak Tersedia di Mode Demo' : 'Simpan Pengaturan'}
           </button>
         </div>
+      )}
 
-        {/* Save Button */}
-        <button
-          type="button"
-          onClick={handleSave}
-          disabled={isSaving || isDemoMode}
-          className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-xl shadow-md disabled:opacity-50 disabled:cursor-not-allowed transition-all"
-        >
-          {isSaving ? 'Menyimpan...' : isDemoMode ? 'Tidak Tersedia di Mode Demo' : 'Simpan Pengaturan'}
-        </button>
-      </div>
+      {/* Info read-only: info singkat untuk guru/pengawas */}
+      {readOnly && (
+        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-5 space-y-3">
+          <h2 className="text-sm font-bold text-gray-700 border-b pb-2">Informasi Token</h2>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between py-2 border-b border-gray-50">
+              <span className="text-sm text-gray-600">Mode</span>
+              <span className="text-sm font-bold text-gray-800">
+                {settings.mode === 'auto' ? 'Auto Generate' : 'Manual'}
+              </span>
+            </div>
+            {settings.mode === 'auto' && (
+              <div className="flex items-center justify-between py-2 border-b border-gray-50">
+                <span className="text-sm text-gray-600">Interval perbarui</span>
+                <span className="text-sm font-bold text-gray-800">Setiap {settings.intervalMinutes} menit</span>
+              </div>
+            )}
+            <div className="flex items-center justify-between py-2 border-b border-gray-50">
+              <span className="text-sm text-gray-600">Status sistem</span>
+              <span className={`text-sm font-bold ${settings.isActive ? 'text-emerald-600' : 'text-gray-400'}`}>
+                {settings.isActive ? 'Aktif' : 'Nonaktif'}
+              </span>
+            </div>
+            {settings.lastGeneratedAt && (
+              <div className="flex items-center justify-between py-2">
+                <span className="text-sm text-gray-600">Token terakhir diperbarui</span>
+                <span className="text-sm font-bold text-gray-800">
+                  {new Date(settings.lastGeneratedAt).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
-      {/* Info Box */}
+      {/* Info Box — tampil untuk semua */}
       <div className="bg-blue-50 border border-blue-200 rounded-xl p-5 text-sm text-blue-700">
         <p className="font-semibold mb-2">ℹ️ Cara Kerja Token Global</p>
         <ul className="space-y-1.5 text-blue-600 list-disc list-inside">
-          <li>Token ini <strong>tidak diketik oleh siswa</strong> — dikelola sepenuhnya oleh admin/guru.</li>
+          <li>Token ini <strong>tidak diketik oleh siswa</strong> — dikelola sepenuhnya oleh admin.</li>
           <li>Siswa memilih ujian dari <strong>daftar ujian</strong> berdasarkan jadwal dan kelas.</li>
           <li>Token divalidasi otomatis di backend saat siswa klik "Mulai Ujian".</li>
           <li>Tampilkan token ini di <strong>papan tulis / proyektor</strong> sebagai kode sesi ujian.</li>
-          <li>Mode <strong>Auto</strong>: token berubah tiap X menit secara otomatis.</li>
-          <li>Mode <strong>Manual</strong>: token tetap sampai diganti oleh admin/guru.</li>
+          {!readOnly && <li>Mode <strong>Auto</strong>: token berubah tiap X menit secara otomatis.</li>}
+          {!readOnly && <li>Mode <strong>Manual</strong>: token tetap sampai diganti oleh admin.</li>}
         </ul>
       </div>
     </div>
