@@ -354,6 +354,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
   // ── Versi live dari /api/updater/status (baca version.txt dari disk) ──────
   const [liveAppVersion, setLiveAppVersion] = useState<string>(APP_VERSION);
   const [updateBadgeCount, setUpdateBadgeCount] = useState(0);
+  const [pendingUpdateInfo, setPendingUpdateInfo] = useState<import('../src/services/UpdaterService').UpdateInfo | null>(null);
+  const [updateBannerDismissed, setUpdateBannerDismissed] = useState(false);
 
   useEffect(() => {
     fetch('/api/updater/status')
@@ -361,6 +363,26 @@ const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
       .then((d: any) => { if (d.currentVersion) setLiveAppVersion(d.currentVersion); })
       .catch(() => {});
   }, []);
+
+  // ── Cek update saat admin login — tanpa harus buka menu Lisensi ──────────
+  useEffect(() => {
+    if (isLocked) return; // jangan cek kalau belum login
+    const checkNow = async () => {
+      try {
+        const UpdaterService = (await import('../src/services/UpdaterService')).default;
+        const info = await UpdaterService.checkUpdate();
+        if (info) {
+          setPendingUpdateInfo(info);
+          setUpdateBadgeCount(1);
+        }
+      } catch {}
+    };
+    // Cek setelah 3 detik (beri waktu halaman load)
+    const t = setTimeout(checkNow, 3000);
+    // Cek ulang tiap 30 menit
+    const interval = setInterval(checkNow, 30 * 60 * 1000);
+    return () => { clearTimeout(t); clearInterval(interval); };
+  }, [isLocked]);
 
   const handleResetLicenseClick = () => {
       setIsConfirmResetOpen(true);
@@ -1542,8 +1564,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
       {restoreProgress !== null && <RestoreProgressModal progress={restoreProgress.percent} message={restoreProgress.message} />}
       {isSidebarOpen && <div onClick={() => setSidebarOpen(false)} className="fixed inset-0 bg-black/50 z-30 md:hidden" aria-hidden="true"></div>}
 
-      {/* Update notification — tampil di semua halaman sebagai floating popup */}
-      <UpdateNotification />
+      {/* UpdateNotification hanya sebagai fallback — banner utama sudah ada di atas */}
 
       <aside className={`fixed inset-y-0 left-0 z-40 w-64 bg-slate-900 text-slate-300 flex-col flex-shrink-0 transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
           <div className="h-20 flex items-center justify-center px-4 border-b border-slate-800">
@@ -1583,6 +1604,37 @@ const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
       </aside>
 
       <div className="flex-grow flex flex-col w-full min-w-0">
+
+          {/* ── BANNER UPDATE GLOBAL — muncul di semua halaman ── */}
+          {pendingUpdateInfo && !updateBannerDismissed && activeView !== AdminView.LICENSE && (
+            <div className="bg-gradient-to-r from-amber-500 to-orange-500 text-white px-4 py-2.5 flex items-center justify-between gap-3 flex-shrink-0 shadow-md z-20">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="text-lg flex-shrink-0">🔔</span>
+                <div className="min-w-0">
+                  <span className="font-bold text-sm">Update Tersedia: v{pendingUpdateInfo.version}</span>
+                  {pendingUpdateInfo.release_notes && (
+                    <span className="text-xs text-amber-100 ml-2 truncate hidden sm:inline">
+                      — {pendingUpdateInfo.release_notes}
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <button
+                  onClick={() => handleNavigate(AdminView.LICENSE)}
+                  className="bg-white text-orange-600 hover:bg-amber-50 text-xs font-bold px-3 py-1.5 rounded-lg transition-colors"
+                >
+                  Lihat Detail
+                </button>
+                <button
+                  onClick={() => setUpdateBannerDismissed(true)}
+                  className="text-amber-200 hover:text-white transition-colors text-lg leading-none"
+                  title="Tutup"
+                >×</button>
+              </div>
+            </div>
+          )}
+
           <header className="h-20 bg-white flex items-center justify-between px-4 sm:px-8 border-b border-slate-200 flex-shrink-0 relative">
             {/* Loading Indicator */}
             {isInitialLoad && (
