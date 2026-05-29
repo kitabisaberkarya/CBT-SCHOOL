@@ -83,17 +83,26 @@ const THEMES = {
 
 type ThemeType = 'light' | 'sepia' | 'dark';
 
+// Deteksi iOS — Safari tidak support Fullscreen API sama sekali
+const isIOSDevice = () =>
+  /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
 // Helper untuk mengecek status fullscreen di berbagai browser
 const checkIsFullScreen = () => {
+  // iOS tidak punya Fullscreen API — anggap selalu fullscreen agar tidak terkunci
+  if (isIOSDevice()) return true;
   const doc = document as any;
-  return !!(doc.fullscreenElement || 
-            doc.webkitFullscreenElement || 
-            doc.mozFullScreenElement || 
+  return !!(doc.fullscreenElement ||
+            doc.webkitFullscreenElement ||
+            doc.mozFullScreenElement ||
             doc.msFullscreenElement);
 };
 
 // Helper untuk meminta fullscreen (cross-browser)
 const requestFullScreen = async (isRequestingRef?: React.MutableRefObject<boolean>) => {
+  // iOS tidak support requestFullscreen — skip agar tidak error
+  if (isIOSDevice()) return;
   const docEl = document.documentElement as any;
   const requestMethod = docEl.requestFullscreen ||
                         docEl.webkitRequestFullscreen ||
@@ -776,16 +785,21 @@ const TestScreen: React.FC<TestScreenProps> = ({ onFinishTest, user, onLogout, q
     // 1. Visibility Change (Tab Switching / Minimize / Split Screen)
     const onVisibilityChange = () => {
         if (document.hidden && !isDisqualified) {
-            startLeaveCountdown();
+            // iOS: beri jeda 800ms sebelum mulai countdown (mencegah false-positive saat keyboard/address bar muncul)
+            if (isIOSDevice()) {
+                setTimeout(() => { if (document.hidden) startLeaveCountdown(); }, 800);
+            } else {
+                startLeaveCountdown();
+            }
         } else if (!document.hidden) {
-            // Siswa kembali → batalkan countdown (pelanggaran sudah tercatat jika sempat)
             cancelLeaveCountdown();
         }
     };
 
     // 2. Blur (Clicking outside / Overlay / Alt+Tab)
+    // iOS: blur terpicu oleh keyboard, address bar, notifikasi — JANGAN hitung pelanggaran
     const onBlur = () => {
-        // Abaikan blur saat sedang request fullscreen (mencegah false-positive)
+        if (isIOSDevice()) return; // iOS blur tidak reliable, pakai visibilitychange saja
         if (!isDisqualified && !isRequestingFullscreenRef.current) {
             startLeaveCountdown();
         }
@@ -801,7 +815,7 @@ const TestScreen: React.FC<TestScreenProps> = ({ onFinishTest, user, onLogout, q
     document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
     document.addEventListener('mozfullscreenchange', handleFullscreenChange);
     document.addEventListener('MSFullscreenChange', handleFullscreenChange);
-    
+
     document.addEventListener('visibilitychange', onVisibilityChange);
     window.addEventListener('blur', onBlur);
     window.addEventListener('focus', onFocus);

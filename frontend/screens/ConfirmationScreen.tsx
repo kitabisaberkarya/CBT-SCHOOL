@@ -43,12 +43,17 @@ const ConfirmationScreen: React.FC<ConfirmationScreenProps> = ({ onStartTest, us
     return results.some(Boolean);
   };
 
+  // Deteksi iOS — Safari tidak support Fullscreen API
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
   // Helper robust untuk request fullscreen di berbagai browser/device
   const triggerFullscreen = async () => {
+    if (isIOS) return; // iOS tidak support fullscreen — skip agar tidak error
     const docEl = document.documentElement as any;
-    const requestMethod = docEl.requestFullscreen || 
-                          docEl.webkitRequestFullscreen || 
-                          docEl.mozRequestFullScreen || 
+    const requestMethod = docEl.requestFullscreen ||
+                          docEl.webkitRequestFullscreen ||
+                          docEl.mozRequestFullScreen ||
                           docEl.msRequestFullscreen;
 
     if (requestMethod) {
