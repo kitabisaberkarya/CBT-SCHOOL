@@ -1335,8 +1335,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
             return (
                 <div className="space-y-5">
 
-                    <UpdateNotification />
-
                     {/* ── HERO CARD: Status Lisensi ── */}
                     <div className={`relative overflow-hidden rounded-2xl p-6 text-white shadow-xl ${isDemoMode
                         ? 'bg-gradient-to-br from-amber-500 via-orange-500 to-red-500'
@@ -1543,6 +1541,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
       {isImporting && <BulkImportProgress processed={importProgress.processed} total={importProgress.total} errors={importProgress.errors} onClose={() => setIsImporting(false)} />}
       {restoreProgress !== null && <RestoreProgressModal progress={restoreProgress.percent} message={restoreProgress.message} />}
       {isSidebarOpen && <div onClick={() => setSidebarOpen(false)} className="fixed inset-0 bg-black/50 z-30 md:hidden" aria-hidden="true"></div>}
+
+      {/* Update notification — tampil di semua halaman sebagai floating popup */}
+      <UpdateNotification />
 
       <aside className={`fixed inset-y-0 left-0 z-40 w-64 bg-slate-900 text-slate-300 flex-col flex-shrink-0 transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
           <div className="h-20 flex items-center justify-center px-4 border-b border-slate-800">
