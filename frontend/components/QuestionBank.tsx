@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Test, Question, QuestionDifficulty, TestDetails, MasterDataItem } from '../types';
+import { Test, Question, QuestionDifficulty, TestDetails, MasterDataItem, User } from '../types';
 import QuestionModal from './QuestionModal';
 import ConfirmationModal from './ConfirmationModal';
 import TestModal from './TestModal';
@@ -10,6 +10,7 @@ import BulkQuestionImportModal from './BulkQuestionImportModal';
 import TxtQuestionImportModal from './TxtQuestionImportModal';
 import WordQuestionImportModal from './WordQuestionImportModal';
 import { EXAM_EVENT_TYPES } from '../constants';
+import { supabase } from '../supabaseClient';
 
 const generateRandomToken = () => {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -28,10 +29,11 @@ interface QuestionBankProps {
   onImportError: (message: string) => void;
   preselectedToken?: string;
   onRefresh: () => void;
-  onFetchQuestions?: (token: string) => Promise<void>; // New prop
-  isFetchingQuestions?: boolean; // New prop
-  isDemoMode?: boolean; // Mode Demo: sembunyikan tombol tambah/edit/hapus
-  examTypes?: MasterDataItem[]; // Kategori ujian dinamis dari DB
+  onFetchQuestions?: (token: string) => Promise<void>;
+  isFetchingQuestions?: boolean;
+  isDemoMode?: boolean;
+  examTypes?: MasterDataItem[];
+  teachers?: User[]; // Daftar guru untuk fitur "Kirim ke Guru"
 }
 
 const DifficultyBadge: React.FC<{ difficulty: QuestionDifficulty }> = ({ difficulty }) => {
@@ -61,13 +63,13 @@ const ActionCard: React.FC<{title: string, description: string, icon: React.Reac
 );
 
 
-const QuestionBank: React.FC<QuestionBankProps> = ({ tests, onAddQuestion, onUpdateQuestion, onDeleteQuestion, onAddTest, onUpdateTest, onDeleteTest, onBulkAddQuestions, onImportError, preselectedToken, onRefresh, onFetchQuestions, isFetchingQuestions, isDemoMode = false, examTypes }) => {
+const QuestionBank: React.FC<QuestionBankProps> = ({ tests, onAddQuestion, onUpdateQuestion, onDeleteQuestion, onAddTest, onUpdateTest, onDeleteTest, onBulkAddQuestions, onImportError, preselectedToken, onRefresh, onFetchQuestions, isFetchingQuestions, isDemoMode = false, examTypes, teachers = [] }) => {
   const [view, setView] = useState<'main' | 'detail'>('main');
   const [selectedToken, setSelectedToken] = useState<string>(preselectedToken || '');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isTestModalOpen, setIsTestModalOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
-  const [isTxtImportModalOpen, setIsTxtImportModalOpen] = useState(false); 
+  const [isTxtImportModalOpen, setIsTxtImportModalOpen] = useState(false);
   const [isWordImportModalOpen, setIsWordImportModalOpen] = useState(false);
 
   const [editingQuestion, setEditingQuestion] = useState<Question | null>(null);
@@ -75,6 +77,13 @@ const QuestionBank: React.FC<QuestionBankProps> = ({ tests, onAddQuestion, onUpd
   const [testToDelete, setTestToDelete] = useState<{ token: string; name: string } | null>(null);
   const [testToEdit, setTestToEdit] = useState<{ token: string; test: Test } | null>(null);
   const [previewTest, setPreviewTest] = useState<Test | null>(null);
+
+  // State untuk fitur "Kirim ke Guru"
+  const [sendToTeacherToken, setSendToTeacherToken] = useState<string | null>(null);
+  const [selectedTeacherId, setSelectedTeacherId] = useState<string>('');
+  const [teacherSearch, setTeacherSearch] = useState('');
+  const [isSending, setIsSending] = useState(false);
+  const [sendResult, setSendResult] = useState<{ ok: boolean; msg: string } | null>(null);
 
   // Filters for detail view (Questions)
   const [searchTerm, setSearchTerm] = useState('');
@@ -93,9 +102,42 @@ const QuestionBank: React.FC<QuestionBankProps> = ({ tests, onAddQuestion, onUpd
   }, [preselectedToken]);
 
 
+  // Handler: kirim bank soal ke guru
+  const handleSendToTeacher = async () => {
+    if (!sendToTeacherToken || !selectedTeacherId) return;
+    setIsSending(true);
+    setSendResult(null);
+    const test = tests.get(sendToTeacherToken);
+    if (!test?.details?.id) { setSendResult({ ok: false, msg: 'ID soal tidak ditemukan.' }); setIsSending(false); return; }
+    const { error } = await supabase
+      .from('tests')
+      .update({ created_by: selectedTeacherId })
+      .eq('id', test.details.id);
+    if (error) {
+      setSendResult({ ok: false, msg: 'Gagal: ' + error.message });
+    } else {
+      const guru = teachers.find(t => t.id === selectedTeacherId);
+      setSendResult({ ok: true, msg: `Bank soal berhasil dikirim ke ${guru?.fullName || 'guru'}.` });
+      onRefresh();
+      setTimeout(() => {
+        setSendToTeacherToken(null);
+        setSelectedTeacherId('');
+        setTeacherSearch('');
+        setSendResult(null);
+      }, 2000);
+    }
+    setIsSending(false);
+  };
+
+  const filteredTeachers = useMemo(() =>
+    teachers.filter(t => t.role === 'teacher' &&
+      (t.fullName.toLowerCase().includes(teacherSearch.toLowerCase()) ||
+       (t.major || '').toLowerCase().includes(teacherSearch.toLowerCase()))
+    ), [teachers, teacherSearch]);
+
   const testsArray = Array.from(tests.entries());
   const selectedTest = selectedToken ? tests.get(selectedToken) : null;
-  
+
   // Filter Logic for Tests (Main View)
   const filteredTests = useMemo(() => {
     let result = testsArray.filter(([token, test]) => {
@@ -208,11 +250,19 @@ const QuestionBank: React.FC<QuestionBankProps> = ({ tests, onAddQuestion, onUpd
                   {!isDemoMode && <div className="absolute top-4 right-4 z-20"><button onClick={(e) => { e.stopPropagation(); setTestToDelete({ token, name: test.details.subject }); }} className="p-2 bg-black/20 hover:bg-red-600 rounded-full text-white transition-all backdrop-blur-sm"><svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button></div>}
                   <div className="relative z-10 flex-grow flex flex-col">
                     <div className="mb-4">{icon}</div>
-                    <div className="flex items-center gap-2 mb-1"><span className="text-[10px] bg-white/20 px-2 py-0.5 rounded font-mono">TOKEN: {token}</span><span className="text-[10px] bg-black/30 px-2 py-0.5 rounded font-bold uppercase truncate max-w-[150px]">{test.details.examType || 'Umum'}</span></div>
+                    <div className="flex items-center gap-2 mb-1"><span className="text-[10px] bg-black/30 px-2 py-0.5 rounded font-bold uppercase truncate max-w-[180px]">{test.details.examType || 'Umum'}</span></div>
                     <h2 className="text-2xl font-bold tracking-tight pr-8 line-clamp-2">{test.details.subject}</h2>
                     <div className="space-y-2 text-sm backdrop-blur-sm bg-black/10 p-3 rounded-lg border border-white/20 mt-auto"><div className="flex justify-between items-center"><span className="opacity-80">Total Soal:</span><span className="font-bold text-lg">{test.details.questionCount ?? test.questions.length}</span></div></div>
                   </div>
-                  <div className="relative z-10 mt-6 flex gap-2"><button onClick={() => handleSelectTest(token)} className="flex-1 bg-white/20 hover:bg-white/30 backdrop-blur-md text-white font-bold py-2.5 px-4 rounded-lg border border-white/30 transition-all">Kelola Soal</button><button onClick={(e) => handlePreviewTest(test, e)} className="bg-white/20 hover:bg-white/30 backdrop-blur-md text-white p-2.5 rounded-lg border border-white/30 transition-all"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg></button></div>
+                  <div className="relative z-10 mt-6 flex gap-2">
+                    <button onClick={() => handleSelectTest(token)} className="flex-1 bg-white/20 hover:bg-white/30 backdrop-blur-md text-white font-bold py-2.5 px-4 rounded-lg border border-white/30 transition-all">Kelola Soal</button>
+                    <button onClick={(e) => handlePreviewTest(test, e)} className="bg-white/20 hover:bg-white/30 backdrop-blur-md text-white p-2.5 rounded-lg border border-white/30 transition-all"><svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg></button>
+                    {!isDemoMode && teachers.length > 0 && (
+                      <button onClick={(e) => { e.stopPropagation(); setSendToTeacherToken(token); setSelectedTeacherId(''); setTeacherSearch(''); setSendResult(null); }} title="Kirim ke Guru" className="bg-white/20 hover:bg-amber-500 backdrop-blur-md text-white p-2.5 rounded-lg border border-white/30 transition-all">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>
+                      </button>
+                    )}
+                  </div>
                 </div>
                )
              })}
@@ -334,6 +384,62 @@ const QuestionBank: React.FC<QuestionBankProps> = ({ tests, onAddQuestion, onUpd
       )}
       
       {testToDelete && ( <ConfirmationModal title="Hapus Bank Soal" message={`Yakin hapus bank soal "${testToDelete.name}"?`} confirmText="Hapus" cancelText="Batal" onConfirm={() => { onDeleteTest(testToDelete.token); setTestToDelete(null); }} onCancel={() => setTestToDelete(null)} confirmColor="red" cancelColor="green" /> )}
+
+      {/* Modal Kirim ke Guru */}
+      {sendToTeacherToken && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+            <div className="bg-gradient-to-r from-amber-500 to-orange-500 rounded-t-2xl px-6 py-4 flex items-center justify-between">
+              <div>
+                <h3 className="text-white font-bold text-lg">Kirim ke Guru</h3>
+                <p className="text-amber-100 text-xs mt-0.5">Pilih guru yang akan menerima bank soal ini</p>
+              </div>
+              <button onClick={() => setSendToTeacherToken(null)} className="text-white/80 hover:text-white text-2xl leading-none">×</button>
+            </div>
+            <div className="p-5">
+              <div className="mb-3">
+                <p className="text-sm text-gray-600 mb-1">Bank Soal:</p>
+                <p className="font-bold text-gray-800">{tests.get(sendToTeacherToken)?.details.subject}</p>
+              </div>
+              <input
+                type="text"
+                placeholder="Cari nama guru atau mata pelajaran..."
+                value={teacherSearch}
+                onChange={e => { setTeacherSearch(e.target.value); setSelectedTeacherId(''); }}
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-amber-400"
+              />
+              <div className="max-h-52 overflow-y-auto border border-gray-200 rounded-lg divide-y divide-gray-100 mb-4">
+                {filteredTeachers.length === 0 ? (
+                  <p className="text-center text-gray-400 text-sm py-6">Tidak ada guru ditemukan</p>
+                ) : filteredTeachers.map(t => (
+                  <button key={t.id} onClick={() => setSelectedTeacherId(t.id)}
+                    className={`w-full text-left px-4 py-3 flex items-center gap-3 transition-colors ${selectedTeacherId === t.id ? 'bg-amber-50 border-l-4 border-amber-500' : 'hover:bg-gray-50'}`}>
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold text-white flex-shrink-0 ${selectedTeacherId === t.id ? 'bg-amber-500' : 'bg-gray-400'}`}>
+                      {t.fullName.charAt(0).toUpperCase()}
+                    </div>
+                    <div>
+                      <p className="font-semibold text-sm text-gray-800">{t.fullName}</p>
+                      {t.major && <p className="text-xs text-gray-500">{t.major}</p>}
+                    </div>
+                  </button>
+                ))}
+              </div>
+              {sendResult && (
+                <div className={`mb-3 px-4 py-2 rounded-lg text-sm font-medium ${sendResult.ok ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+                  {sendResult.msg}
+                </div>
+              )}
+              <div className="flex gap-3">
+                <button onClick={() => setSendToTeacherToken(null)} className="flex-1 py-2.5 rounded-lg border border-gray-300 text-gray-600 font-medium text-sm hover:bg-gray-50">Batal</button>
+                <button onClick={handleSendToTeacher} disabled={!selectedTeacherId || isSending}
+                  className="flex-1 py-2.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white font-bold text-sm disabled:opacity-50 transition-colors">
+                  {isSending ? 'Mengirim...' : 'Kirim Bank Soal'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
