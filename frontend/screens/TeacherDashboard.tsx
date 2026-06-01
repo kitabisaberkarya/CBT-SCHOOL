@@ -68,7 +68,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = (props) => {
       const { data: testsData, error: testsError } = await supabase
         .from('tests')
         .select('*, questions(count)')
-        .eq('created_by', user.id);
+        .or(`created_by.eq.${user.id},created_by.is.null`);
 
       if (testsError) throw new Error('Gagal mengambil data ujian.');
 
@@ -167,7 +167,7 @@ const TeacherDashboard: React.FC<TeacherDashboardProps> = (props) => {
         { data: sessionsData, error: sessionsError },
       ] = await Promise.all([
         supabase.from('users').select('*'),
-        supabase.from('tests').select('*, questions:questions(count)').eq('created_by', user.id),
+        supabase.from('tests').select('*, questions:questions(count)').or(`created_by.eq.${user.id},created_by.is.null`),
         supabase.from('master_classes').select('*'),
         supabase.from('master_majors').select('*'),
         supabase.from('schedules').select('*'),
