@@ -835,10 +835,10 @@ const TestScreen: React.FC<TestScreenProps> = ({ onFinishTest, user, onLogout, q
         if (overlay) overlay.style.display = 'flex';
         setIsScreenshotBlocked(true);
         // Bersihkan clipboard agar gambar layar tidak dapat ditempel
-        try { navigator.clipboard.writeText(''); } catch {}
+        try { navigator.clipboard.writeText('SCREENSHOT DIBLOKIR - CBT SCHOOL ENTERPRISE'); } catch {}
         try {
             const ta = document.createElement('textarea');
-            ta.value = '';
+            ta.value = 'SCREENSHOT DIBLOKIR - CBT SCHOOL ENTERPRISE';
             document.body.appendChild(ta);
             ta.select();
             document.execCommand('copy');
@@ -847,7 +847,7 @@ const TestScreen: React.FC<TestScreenProps> = ({ onFinishTest, user, onLogout, q
         setTimeout(() => {
             setIsScreenshotBlocked(false);
             if (overlay) overlay.style.display = 'none';
-        }, 2000);
+        }, 3000);
     };
 
     // 1. Blokir keyboard: PrintScreen + semua kombinasi screenshot lazim
@@ -892,6 +892,16 @@ const TestScreen: React.FC<TestScreenProps> = ({ onFinishTest, user, onLogout, q
         }
         // Ctrl+Shift+I/J/C (DevTools open)
         if (e.ctrlKey && e.shiftKey && (key === 'i' || key === 'I' || key === 'j' || key === 'J' || key === 'c' || key === 'C')) {
+            e.preventDefault();
+            return;
+        }
+        // Ctrl+C / Ctrl+A / Ctrl+V — blokir copy, select-all, paste saat ujian
+        if (e.ctrlKey && (key === 'c' || key === 'C' || key === 'a' || key === 'A' || key === 'v' || key === 'V' || key === 'x' || key === 'X')) {
+            e.preventDefault();
+            return;
+        }
+        // Cmd+C / Cmd+A (macOS)
+        if (e.metaKey && (key === 'c' || key === 'C' || key === 'a' || key === 'A' || key === 'v' || key === 'V' || key === 'x' || key === 'X')) {
             e.preventDefault();
             return;
         }
@@ -1493,13 +1503,17 @@ const TestScreen: React.FC<TestScreenProps> = ({ onFinishTest, user, onLogout, q
           sebelum browser sempat capture screenshot. */}
       <div
           id="cbt-screenshot-blocker"
-          className="fixed inset-0 z-[99999] bg-black flex items-center justify-center"
-          style={{ display: 'none', pointerEvents: 'none' }}
+          className="fixed inset-0 z-[99999] bg-black flex flex-col items-center justify-center gap-4"
+          style={{ display: 'none', pointerEvents: 'all' }}
           aria-hidden="true"
       >
-          <p className="text-white/5 text-xs font-black tracking-widest select-none">
-              CBT SECURE — SCREENSHOT BLOCKED
+          <div className="w-16 h-16 rounded-full bg-red-600/20 flex items-center justify-center">
+            <svg className="w-8 h-8 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>
+          </div>
+          <p className="text-red-400 text-sm font-bold tracking-widest select-none">
+              SCREENSHOT DIBLOKIR
           </p>
+          <p className="text-white/30 text-xs select-none">CBT SCHOOL ENTERPRISE — SECURE MODE</p>
       </div>
 
       {/* --- SCREEN BLOCKER FOR ANTI-CHEAT --- */}

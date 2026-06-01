@@ -100,8 +100,8 @@ const UbkMonitor: React.FC<UbkMonitorProps> = ({ users, tests }) => {
     return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
   });
 
-  // Filter jadwal aktif — default TRUE: hanya tampilkan sesi ujian yang sedang berlangsung
-  const [filterActiveSchedule, setFilterActiveSchedule] = useState(true);
+  // Filter jadwal aktif — default FALSE: tampilkan semua sesi agar tidak ada yang tersembunyi
+  const [filterActiveSchedule, setFilterActiveSchedule] = useState(false);
   const [activeScheduleIds, setActiveScheduleIds] = useState<Set<string>>(new Set());
 
   const fetchActiveSchedules = async () => {

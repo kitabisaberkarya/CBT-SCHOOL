@@ -316,6 +316,24 @@ const SequentialUpdatePanel: React.FC<SequentialUpdatePanelProps> = ({
     onUpdateFound?.(0);
   };
 
+  // Install satu versi spesifik (dari riwayat "Belum diinstall")
+  const handleInstallSingle = useCallback(async (info: UpdateInfo) => {
+    setPhase('running');
+    setGlobalError('');
+    abortRef.current = false;
+    const steps: QueueStep[] = [{ info, status: 'pending', progress: 0, message: '' }];
+    setQueue(steps);
+    setCurrentIdx(0);
+    const ok = await executeStep(0, steps);
+    if (!ok) {
+      setGlobalError(`Gagal install v${info.version}. Silakan coba lagi.`);
+      setPhase('error');
+    } else {
+      setPhase('done');
+      fetchHistory();
+    }
+  }, [executeStep, fetchHistory]);
+
   const completedCount = queue.filter(s => s.status === 'done').length;
   const finalVersion   = queue.length > 0 ? queue[queue.length - 1].info.version : '';
 
@@ -672,9 +690,20 @@ const SequentialUpdatePanel: React.FC<SequentialUpdatePanelProps> = ({
                                     </span>
                                   )}
                                   {isPending && (
-                                    <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-amber-100 text-amber-700">
-                                      Belum diinstall
-                                    </span>
+                                    <>
+                                      <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-amber-100 text-amber-700">
+                                        Belum diinstall
+                                      </span>
+                                      <button
+                                        onClick={() => handleInstallSingle(entry as unknown as UpdateInfo)}
+                                        disabled={phase === 'running'}
+                                        className="text-xs px-2.5 py-0.5 rounded-full font-bold bg-indigo-600 hover:bg-indigo-700 text-white disabled:opacity-40 transition-colors flex items-center gap-1"
+                                        title={`Install v${entry.version}`}
+                                      >
+                                        <Download className="w-3 h-3" />
+                                        Install
+                                      </button>
+                                    </>
                                   )}
                                   {entry.sql_migration && (
                                     <span className="text-xs flex items-center gap-0.5 text-slate-400">
