@@ -1,8 +1,11 @@
 -- ============================================================
 -- MODULE 32: FIX RLS PENGAWAS RUANGAN (v4.1.9d)
--- Memperbaiki RLS INSERT pada tabel ruangan_ujian, peserta_ruangan,
--- pengawas_ruangan yang gagal di sekolah karena policy lama konflik
--- saat upgrade. Idempotent: aman dijalankan berulang kali.
+-- Root cause: policy lama menggunakan auth.uid() yang memerlukan
+-- JWT Supabase Auth. VHD menggunakan manual session (offline mode)
+-- sehingga auth.uid() = NULL → INSERT ditolak.
+-- Fix: samakan dengan pola cbt_all (true) seperti app_config,
+-- master_classes, dan users — konsisten dengan seluruh sistem VHD.
+-- Idempotent: aman dijalankan berulang kali.
 -- ============================================================
 
 -- 1. Pastikan tabel ada (idempotent)
@@ -37,22 +40,12 @@ ALTER TABLE public.ruangan_ujian    ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.peserta_ruangan  ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.pengawas_ruangan ENABLE ROW LEVEL SECURITY;
 
--- 3. GRANT ke authenticated dan anon (idempotent)
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.ruangan_ujian    TO authenticated;
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.peserta_ruangan  TO authenticated;
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.pengawas_ruangan TO authenticated;
-GRANT SELECT ON public.ruangan_ujian    TO anon;
-GRANT SELECT ON public.peserta_ruangan  TO anon;
-GRANT SELECT ON public.pengawas_ruangan TO anon;
-
--- 4. Drop semua policy lama di ketiga tabel (idempotent via DO block)
+-- 3. Drop SEMUA policy lama (idempotent via DO block)
 DO $$
-DECLARE
-  pol RECORD;
+DECLARE pol RECORD;
 BEGIN
   FOR pol IN
-    SELECT policyname, tablename
-    FROM pg_policies
+    SELECT policyname, tablename FROM pg_policies
     WHERE schemaname = 'public'
       AND tablename IN ('ruangan_ujian', 'peserta_ruangan', 'pengawas_ruangan')
   LOOP
@@ -61,142 +54,16 @@ BEGIN
 END;
 $$;
 
--- 5. Buat ulang policy dengan USING + WITH CHECK eksplisit
---    Ini memastikan INSERT tidak diblokir oleh RLS
+-- 4. Buat policy cbt_all (true) — konsisten dengan app_config, master_classes, users
+--    VHD berjalan di jaringan LAN tertutup; akses control di level UI React
+CREATE POLICY "cbt_all" ON public.ruangan_ujian    FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "cbt_all" ON public.peserta_ruangan  FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "cbt_all" ON public.pengawas_ruangan FOR ALL USING (true) WITH CHECK (true);
 
-CREATE POLICY "pengawas_ruangan_select" ON public.ruangan_ujian
-  FOR SELECT USING (
-    EXISTS (
-      SELECT 1 FROM public.users
-      WHERE id = auth.uid()
-        AND role IN ('admin', 'teacher', 'pengawas')
-    )
-  );
-
-CREATE POLICY "pengawas_ruangan_insert" ON public.ruangan_ujian
-  FOR INSERT WITH CHECK (
-    EXISTS (
-      SELECT 1 FROM public.users
-      WHERE id = auth.uid()
-        AND role IN ('admin', 'teacher', 'pengawas')
-    )
-  );
-
-CREATE POLICY "pengawas_ruangan_update" ON public.ruangan_ujian
-  FOR UPDATE
-  USING (
-    EXISTS (
-      SELECT 1 FROM public.users
-      WHERE id = auth.uid()
-        AND role IN ('admin', 'teacher', 'pengawas')
-    )
-  )
-  WITH CHECK (
-    EXISTS (
-      SELECT 1 FROM public.users
-      WHERE id = auth.uid()
-        AND role IN ('admin', 'teacher', 'pengawas')
-    )
-  );
-
-CREATE POLICY "pengawas_ruangan_delete" ON public.ruangan_ujian
-  FOR DELETE USING (
-    EXISTS (
-      SELECT 1 FROM public.users
-      WHERE id = auth.uid()
-        AND role IN ('admin', 'teacher', 'pengawas')
-    )
-  );
-
--- peserta_ruangan
-CREATE POLICY "peserta_ruangan_select" ON public.peserta_ruangan
-  FOR SELECT USING (
-    EXISTS (
-      SELECT 1 FROM public.users
-      WHERE id = auth.uid()
-        AND role IN ('admin', 'teacher', 'pengawas')
-    )
-  );
-
-CREATE POLICY "peserta_ruangan_insert" ON public.peserta_ruangan
-  FOR INSERT WITH CHECK (
-    EXISTS (
-      SELECT 1 FROM public.users
-      WHERE id = auth.uid()
-        AND role IN ('admin', 'teacher', 'pengawas')
-    )
-  );
-
-CREATE POLICY "peserta_ruangan_update" ON public.peserta_ruangan
-  FOR UPDATE
-  USING (
-    EXISTS (
-      SELECT 1 FROM public.users
-      WHERE id = auth.uid()
-        AND role IN ('admin', 'teacher', 'pengawas')
-    )
-  )
-  WITH CHECK (
-    EXISTS (
-      SELECT 1 FROM public.users
-      WHERE id = auth.uid()
-        AND role IN ('admin', 'teacher', 'pengawas')
-    )
-  );
-
-CREATE POLICY "peserta_ruangan_delete" ON public.peserta_ruangan
-  FOR DELETE USING (
-    EXISTS (
-      SELECT 1 FROM public.users
-      WHERE id = auth.uid()
-        AND role IN ('admin', 'teacher', 'pengawas')
-    )
-  );
-
--- pengawas_ruangan
-CREATE POLICY "pengawas_assignment_select" ON public.pengawas_ruangan
-  FOR SELECT USING (
-    EXISTS (
-      SELECT 1 FROM public.users
-      WHERE id = auth.uid()
-        AND role IN ('admin', 'teacher', 'pengawas')
-    )
-  );
-
-CREATE POLICY "pengawas_assignment_insert" ON public.pengawas_ruangan
-  FOR INSERT WITH CHECK (
-    EXISTS (
-      SELECT 1 FROM public.users
-      WHERE id = auth.uid()
-        AND role IN ('admin', 'teacher', 'pengawas')
-    )
-  );
-
-CREATE POLICY "pengawas_assignment_update" ON public.pengawas_ruangan
-  FOR UPDATE
-  USING (
-    EXISTS (
-      SELECT 1 FROM public.users
-      WHERE id = auth.uid()
-        AND role IN ('admin', 'teacher', 'pengawas')
-    )
-  )
-  WITH CHECK (
-    EXISTS (
-      SELECT 1 FROM public.users
-      WHERE id = auth.uid()
-        AND role IN ('admin', 'teacher', 'pengawas')
-    )
-  );
-
-CREATE POLICY "pengawas_assignment_delete" ON public.pengawas_ruangan
-  FOR DELETE USING (
-    EXISTS (
-      SELECT 1 FROM public.users
-      WHERE id = auth.uid()
-        AND role IN ('admin', 'teacher', 'pengawas')
-    )
-  );
+-- 5. GRANT ke authenticated dan anon
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.ruangan_ujian    TO authenticated, anon;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.peserta_ruangan  TO authenticated, anon;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.pengawas_ruangan TO authenticated, anon;
 
 -- 6. Index (idempotent)
 CREATE INDEX IF NOT EXISTS idx_peserta_ruangan_ruangan   ON public.peserta_ruangan(ruangan_id);
