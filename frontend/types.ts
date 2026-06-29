@@ -30,6 +30,8 @@ export enum AdminView {
   BACKUP_DATA,
   CONFIG,
   CETAK_ADMIN_CARD,
+  CETAK_GURU_CARD,
+  CETAK_PENGAWAS_CARD,
   LICENSE, // New License Menu
   AUDIT_LOG, // Log Aktivitas Admin
   TOKEN, // Menu Token Ujian Global
@@ -114,6 +116,7 @@ export interface AppConfig {
   timezone?: string; // Zona waktu: Asia/Jakarta (WIB) | Asia/Makassar (WITA) | Asia/Jayapura (WIT)
   serverIp?: string; // IP Address server LAN manual (agar siswa tahu URL akses)
   examNetworkMode?: 'offline' | 'online'; // Mode jaringan ujian: offline = blokir internet, online = izinkan internet
+  showScoreAfterExam?: boolean; // Tampilkan skor/nilai ke siswa setelah ujian selesai
 }
 
 export interface User {

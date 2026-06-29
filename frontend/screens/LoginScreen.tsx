@@ -85,7 +85,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ config, onStudentLogin, onAdm
 
   // Helper untuk Admin Modal (Hidden Feature via Logo Click)
   const handleAdminModalLogin = async (u: string, p: string) => {
-      const email = u.toLowerCase() === 'admin' ? 'admin@cbtschool.com' : u;
+      const email = u.toLowerCase() === 'admin' ? 'admin@official.sman1mojosari.com' : u;
       const err = await onAdminLogin(email, p);
       return !err;
   };
@@ -175,6 +175,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ config, onStudentLogin, onAdm
                         onLogin={handlePengawasSubmit}
                         isLoading={isLoading}
                         config={config}
+                        onOpenQR={() => setIsScannerOpen(true)}
                     />
                 )}
             </div>

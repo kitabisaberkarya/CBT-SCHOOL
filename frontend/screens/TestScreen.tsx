@@ -18,7 +18,7 @@ function mathHtml(text: string): string {
 }
 
 interface TestScreenProps {
-  onFinishTest: () => void;
+  onFinishTest: (score?: number) => void;
   user: User;
   onLogout: () => void;
   questions: Question[];
@@ -88,10 +88,18 @@ const isIOSDevice = () =>
   /iPad|iPhone|iPod/.test(navigator.userAgent) ||
   (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
+// Helper: cek apakah browser mendukung Fullscreen API
+const supportsFullscreenAPI = () => {
+  const el = document.documentElement as any;
+  return !!(el.requestFullscreen || el.webkitRequestFullscreen || el.mozRequestFullScreen || el.msRequestFullscreen);
+};
+
 // Helper untuk mengecek status fullscreen di berbagai browser
 const checkIsFullScreen = () => {
   // iOS tidak punya Fullscreen API — anggap selalu fullscreen agar tidak terkunci
   if (isIOSDevice()) return true;
+  // Browser/WebView yang tidak support Fullscreen API — bypass agar tidak terkunci selamanya
+  if (!supportsFullscreenAPI()) return true;
   const doc = document as any;
   return !!(doc.fullscreenElement ||
             doc.webkitFullscreenElement ||
@@ -101,8 +109,8 @@ const checkIsFullScreen = () => {
 
 // Helper untuk meminta fullscreen (cross-browser)
 const requestFullScreen = async (isRequestingRef?: React.MutableRefObject<boolean>) => {
-  // iOS tidak support requestFullscreen — skip agar tidak error
-  if (isIOSDevice()) return;
+  // iOS dan browser tanpa Fullscreen API — skip
+  if (isIOSDevice() || !supportsFullscreenAPI()) return;
   const docEl = document.documentElement as any;
   const requestMethod = docEl.requestFullscreen ||
                         docEl.webkitRequestFullscreen ||
@@ -296,7 +304,7 @@ const TestScreen: React.FC<TestScreenProps> = ({ onFinishTest, user, onLogout, q
                 // Ini mencegah nilai yang sudah baik tertimpa oleh nilai baru yang lebih rendah.
                 if (session.status === 'Selesai') {
                     setIsSessionLoading(false);
-                    onFinishTest();
+                    onFinishTest(session.score ?? undefined);
                     return;
                 }
 
@@ -437,7 +445,7 @@ const TestScreen: React.FC<TestScreenProps> = ({ onFinishTest, user, onLogout, q
           // 5. Bersihkan localStorage (DB sudah jadi sumber kebenaran)
           localStorage.removeItem(storageKey);
 
-          onFinishTest();
+          onFinishTest(finalScore);
       } catch (err: any) {
           console.error("Failed to finish exam:", err);
           alert("Gagal mengumpulkan jawaban. Silakan coba lagi atau hubungi pengawas. Error: " + err.message);
@@ -581,7 +589,7 @@ const TestScreen: React.FC<TestScreenProps> = ({ onFinishTest, user, onLogout, q
 
           // Admin force-finish → langsung ke halaman hasil
           if (n.status === 'Selesai') {
-              onFinishTest();
+              onFinishTest(n.score ?? undefined);
               return;
           }
 
@@ -785,6 +793,9 @@ const TestScreen: React.FC<TestScreenProps> = ({ onFinishTest, user, onLogout, q
     // 1. Visibility Change (Tab Switching / Minimize / Split Screen)
     const onVisibilityChange = () => {
         if (document.hidden && !isDisqualified) {
+            // Tampilkan overlay hitam segera saat halaman tersembunyi
+            // (menangkap sebagian kasus screenshot mobile yang briefly hide page)
+            triggerScreenshotBlock(5000);
             // iOS: beri jeda 800ms sebelum mulai countdown (mencegah false-positive saat keyboard/address bar muncul)
             if (isIOSDevice()) {
                 setTimeout(() => { if (document.hidden) startLeaveCountdown(); }, 800);
@@ -792,6 +803,7 @@ const TestScreen: React.FC<TestScreenProps> = ({ onFinishTest, user, onLogout, q
                 startLeaveCountdown();
             }
         } else if (!document.hidden) {
+            hideScreenshotBlock(); // Sembunyikan overlay saat kembali ke halaman
             cancelLeaveCountdown();
         }
     };
@@ -830,7 +842,10 @@ const TestScreen: React.FC<TestScreenProps> = ({ onFinishTest, user, onLogout, q
     // ── SCREENSHOT BLOCKER ──────────────────────────────────────────────────
     // Gunakan DOM manipulation langsung (bukan React state) agar overlay muncul
     // SINKRON sebelum browser sempat menangkap screenshot.
-    const triggerScreenshotBlock = () => {
+    // Ref untuk timer overlay agar tidak stack
+    const screenshotBlockTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    const triggerScreenshotBlock = (durationMs: number = 3000) => {
         const overlay = document.getElementById('cbt-screenshot-blocker');
         if (overlay) overlay.style.display = 'flex';
         setIsScreenshotBlocked(true);
@@ -844,10 +859,23 @@ const TestScreen: React.FC<TestScreenProps> = ({ onFinishTest, user, onLogout, q
             document.execCommand('copy');
             document.body.removeChild(ta);
         } catch {}
-        setTimeout(() => {
+        // Reset timer jika sudah ada (hindari timer stack)
+        if (screenshotBlockTimerRef.current) clearTimeout(screenshotBlockTimerRef.current);
+        screenshotBlockTimerRef.current = setTimeout(() => {
             setIsScreenshotBlocked(false);
             if (overlay) overlay.style.display = 'none';
-        }, 3000);
+            screenshotBlockTimerRef.current = null;
+        }, durationMs);
+    };
+
+    const hideScreenshotBlock = () => {
+        if (screenshotBlockTimerRef.current) {
+            clearTimeout(screenshotBlockTimerRef.current);
+            screenshotBlockTimerRef.current = null;
+        }
+        const overlay = document.getElementById('cbt-screenshot-blocker');
+        if (overlay) overlay.style.display = 'none';
+        setIsScreenshotBlocked(false);
     };
 
     // 1. Blokir keyboard: PrintScreen + semua kombinasi screenshot lazim
@@ -1518,7 +1546,7 @@ const TestScreen: React.FC<TestScreenProps> = ({ onFinishTest, user, onLogout, q
 
       {/* --- SCREEN BLOCKER FOR ANTI-CHEAT --- */}
       {config.enableAntiCheat && !isFullscreenMode && !isDisqualified && (
-          <div className="fixed inset-0 z-[9999] bg-white/95 backdrop-blur-3xl flex flex-col items-center justify-center p-4 sm:p-8 text-center animate-fade-in">
+          <div className="fixed inset-0 z-[9999] bg-white flex flex-col items-center justify-center p-4 sm:p-8 text-center animate-fade-in">
               <div className="w-16 h-16 sm:w-24 sm:h-24 bg-red-100 rounded-full flex items-center justify-center mb-4 sm:mb-6 shadow-xl animate-bounce">
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 sm:h-12 sm:w-12 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />

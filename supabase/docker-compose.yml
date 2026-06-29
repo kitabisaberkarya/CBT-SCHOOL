@@ -112,6 +112,9 @@ services:
       REPLICATION_MODE: RLS
       # FIX: SECRET_KEY_BASE wajib ada untuk Elixir/Phoenix realtime service
       SECRET_KEY_BASE: ${SECRET_KEY_BASE:-xqRx7HI8qn1sd19x4blPdr7Bx5S03ABu18wt/ThXGH7ugC2W8Bu2X4TXXw9cbtschool2026}
+      FLY_APP_NAME: realtime
+      API_JWT_SECRET: ${JWT_SECRET}
+      DB_ENC_KEY: mta0qKkmXjrwXk5ECA55uw==
       ERL_AFLAGS: -proto_dist inet_tcp
       SECURE_CHANNELS: "false"
       # Pool koneksi Realtime ke PostgreSQL

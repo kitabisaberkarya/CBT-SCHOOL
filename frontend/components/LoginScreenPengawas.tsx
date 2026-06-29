@@ -6,9 +6,10 @@ interface LoginScreenPengawasProps {
   onLogin: (email: string, password: string) => Promise<string>;
   isLoading: boolean;
   config: AppConfig;
+  onOpenQR: () => void;
 }
 
-const LoginScreenPengawas: React.FC<LoginScreenPengawasProps> = ({ onLogin, isLoading, config }) => {
+const LoginScreenPengawas: React.FC<LoginScreenPengawasProps> = ({ onLogin, isLoading, config, onOpenQR }) => {
   const [username, setUsername]         = useState('');
   const [password, setPassword]         = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -159,6 +160,27 @@ const LoginScreenPengawas: React.FC<LoginScreenPengawasProps> = ({ onLogin, isLo
           {isLoading ? 'Memproses...' : 'Masuk Panel Pengawas'}
         </button>
       </form>
+
+      {config.allowAdminQrLogin && (
+        <div className="mt-8">
+          <div
+            onClick={onOpenQR}
+            role="button"
+            className="group cursor-pointer w-full bg-emerald-600 rounded-2xl p-4 flex items-center gap-4 shadow-lg shadow-emerald-200 hover:shadow-xl hover:bg-emerald-700 transition-all duration-300 transform hover:-translate-y-1 relative overflow-hidden"
+          >
+            <div className="absolute -right-4 -bottom-4 w-24 h-24 bg-white/10 rounded-full blur-xl group-hover:bg-white/20 transition-all"></div>
+            <div className="w-14 h-14 bg-white/20 rounded-xl flex items-center justify-center backdrop-blur-sm border border-white/30 flex-shrink-0 group-hover:scale-110 transition-transform duration-300">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
+              </svg>
+            </div>
+            <div className="flex-1 relative z-10">
+              <h3 className="text-lg font-bold text-white leading-tight">Scan Kode QR</h3>
+              <p className="text-emerald-100 text-xs mt-0.5">Login cepat menggunakan kartu ID Pengawas.</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="mt-6 p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-700">
         <p className="font-semibold mb-1">Info Login Pengawas</p>

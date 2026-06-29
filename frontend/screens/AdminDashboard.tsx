@@ -17,6 +17,7 @@ import DashboardHome from '../components/DashboardHome';
 import ExamSchedule from '../components/TestManagement';
 import BackupScreen from '../components/BackupScreen';
 import AdminCard from '../components/AdminCard';
+import StaffCard from '../components/StaffCard';
 import ToastNotification from '../components/ToastNotification';
 import BulkImportProgress from '../components/BulkImportProgress';
 import RestoreProgressModal from '../components/RestoreProgressModal';
@@ -28,6 +29,7 @@ import { useCbtschoolLicense } from '../src/hooks/useCbtschoolLicense';
 import LicenseActivation from '../components/LicenseActivation';
 import SequentialUpdatePanel from '../src/components/SequentialUpdatePanel';
 import UpdateNotification from '../src/components/UpdateNotification';
+import AuditLogScreen from '../components/AuditLogScreen';
 import { Lock, ShieldCheck, AlertTriangle, RefreshCw, Sparkles, Building2, Hash, Zap, ChevronRight, RotateCcw } from 'lucide-react';
 // @ts-ignore — vite resolves JSON imports
 import { version as APP_VERSION } from '../package.json';
@@ -308,11 +310,23 @@ const AdminDocumentsWrapper: React.FC<AdminDocumentsWrapperProps> = ({ users, te
 
 // ─────────────────────────────────────────────────────────────────────────────
 
+const UsersLoadingSpinner: React.FC = () => (
+  <div className="flex flex-col items-center justify-center py-32 text-gray-400 gap-4">
+    <svg className="animate-spin h-10 w-10 text-blue-500" fill="none" viewBox="0 0 24 24">
+      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+    </svg>
+    <p className="text-sm font-medium">Memuat data pengguna...</p>
+  </div>
+);
+
+
 const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
   const { user, onLogout, config, onUpdateConfig, setIsBatchProcessing, isLocked: propsIsLocked, isDemoMode: propsIsDemoMode = false, licenseProfile: propsLicenseProfile, licenseError: propsLicenseError } = props;
   
   const [isDataLoading, setIsDataLoading] = useState(false); // Default false for instant render
   const [isInitialLoad, setIsInitialLoad] = useState(true);
+  const [isUsersLoaded, setIsUsersLoaded] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [users, setUsers] = useState<User[]>([]);
   const [tests, setTests] = useState<Map<string, Test>>(new Map());
@@ -506,11 +520,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
     try {
       const cachedCounts = sessionStorage.getItem(COUNTS_CACHE_KEY);
       if (cachedCounts) {
-        const { student, teacher, admin, total } = JSON.parse(cachedCounts);
-        if (student > 0) setRealStudentCount(student);
-        if (teacher > 0) setRealTeacherCount(teacher);
-        if (admin > 0)   setRealAdminCount(admin);
-        if (total > 0)   setTotalUserCount(total);
+        const { student, teacher, admin, total, pengawas } = JSON.parse(cachedCounts);
+        if (student > 0)  setRealStudentCount(student);
+        if (teacher > 0)  setRealTeacherCount(teacher);
+        if (admin > 0)    setRealAdminCount(admin);
+        if (total > 0)    setTotalUserCount(total);
+        if (pengawas > 0) setRealPengawasCount(pengawas);
       }
     } catch (_) {}
     try {
@@ -538,7 +553,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
       const cachedUsers = sessionStorage.getItem(USERS_CACHE_KEY);
       if (cachedUsers) {
         const usersArr: User[] = JSON.parse(cachedUsers);
-        if (usersArr.length > 0) setUsers(usersArr);
+        if (usersArr.length > 0) { setUsers(usersArr); setIsUsersLoaded(true); }
       }
     } catch (_) {}
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -617,7 +632,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
       if (sCount !== null && tCount !== null && aCount !== null && uCount !== null) {
         try {
           sessionStorage.setItem(COUNTS_CACHE_KEY, JSON.stringify({
-            student: sCount, teacher: tCount, admin: aCount, total: uCount,
+            student: sCount, teacher: tCount, admin: aCount, total: uCount, pengawas: pgCount ?? 0,
           }));
         } catch (_) {}
       }
@@ -688,6 +703,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
       const { data: usersData, error: usersError } = await supabase.from('users').select('*');
       const { data: sessionsData, error: sessionsError } = await supabase.from('student_exam_sessions').select('*, schedule:schedules(test_id)');
 
+      setIsUsersLoaded(true);
       if (!usersError && usersData) {
           const mappedUsers = usersData.map((u: any): User => {
             const gender  = u.gender || 'Laki-laki';
@@ -1227,8 +1243,11 @@ const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
     { id: AdminView.BACKUP_DATA, label: 'Backup & Restore', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" /></svg> },
     { id: AdminView.CONFIG, label: 'Konfigurasi', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.96.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clipRule="evenodd" /></svg> },
     { id: AdminView.CETAK_ADMIN_CARD, label: 'Cetak Kartu Admin', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M10 2a4 4 0 00-4 4v1H5a1 1 0 00-.994.89l-1 9A1 1 0 004 18h12a1 1 0 001-1.11l-1-9A1 1 0 0015 7h-1V6a4 4 0 00-4-4zm2 5V6a2 2 0 10-4 0v1h4zm-6 3a1 1 0 112 0 1 1 0 01-2 0zm7-1a1 1 0 100 2 1 1 0 000-2z" clipRule="evenodd" /></svg> },
+    { id: AdminView.CETAK_GURU_CARD, label: 'Cetak Kartu Guru', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v1h8v-1zM6 8a2 2 0 11-4 0 2 2 0 014 0zM16 18v-1a5.972 5.972 0 00-.75-2.906A3.005 3.005 0 0119 15v1h-3zM4.75 14.094A5.973 5.973 0 004 17v1H1v-1a3 3 0 013.75-2.906z" /></svg> },
+    { id: AdminView.CETAK_PENGAWAS_CARD, label: 'Cetak Kartu Pengawas', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" /></svg> },
     { id: AdminView.TOKEN, label: 'Token Ujian', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M18 8a6 6 0 01-7.743 5.743L10 14l-1 1-1 1H6v2H2v-4l4.257-4.257A6 6 0 1118 8zm-6-4a1 1 0 100 2 2 2 0 012 2 1 1 0 102 0 4 4 0 00-4-4z" clipRule="evenodd" /></svg> },
-    { id: AdminView.LICENSE, label: 'Info Lisensi', icon: <ShieldCheck className="h-5 w-5" />, badge: updateBadgeCount }
+    { id: AdminView.LICENSE, label: 'Info Lisensi', icon: <ShieldCheck className="h-5 w-5" />, badge: updateBadgeCount },
+    { id: AdminView.AUDIT_LOG, label: 'Audit Log', icon: <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1V4zm0 6a1 1 0 011-1h12a1 1 0 011 1v2a1 1 0 01-1 1H4a1 1 0 01-1-1v-2zm0 6a1 1 0 011-1h6a1 1 0 010 2H4a1 1 0 01-1-1z" clipRule="evenodd" /></svg> }
   ];
   }, [isLocked, isDemoMode, updateBadgeCount]);
 
@@ -1311,16 +1330,19 @@ const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
       case AdminView.MANAJEMEN_PENGAWAS: return <PengawasManagement config={config} />;
       case AdminView.JADWAL_UJIAN: return <ExamSchedule schedules={schedules} tests={tests} masterData={masterData} students={studentUsers} onAddSchedule={handleAddSchedule} onUpdateSchedule={handleUpdateSchedule} onDeleteSchedule={handleDeleteSchedule} isDemoMode={isDemoMode} />;
       case AdminView.QUESTION_BANK: return <QuestionBank tests={tests} onAddQuestion={handleAddQuestion} onUpdateQuestion={handleUpdateQuestion} onDeleteQuestion={handleDeleteQuestion} onAddTest={handleAddTest} onUpdateTest={handleUpdateTest} onDeleteTest={handleDeleteTest} onBulkAddQuestions={handleBulkAddQuestions} onImportError={(msg) => showToast(msg, 'error')} preselectedToken={preselectedTestToken} onRefresh={() => fetchTestsData()} onFetchQuestions={fetchQuestionsForTest} isFetchingQuestions={isFetchingQuestions} isDemoMode={isDemoMode} examTypes={effectiveExamTypes} teachers={users.filter(u => u.role === 'teacher')} />;
-      case AdminView.UBK: return <UbkMonitor users={users} tests={tests} />;
-      case AdminView.CETAK: return <ExamCards users={studentUsers} config={config} />;
-      case AdminView.CETAK_DOKUMEN: return <AdminDocumentsWrapper users={studentUsers} tests={tests} examSessions={examSessions} config={config} masterData={masterData} />;
-      case AdminView.REKAPITULASI_NILAI: return <GradeRecap tests={tests} users={studentUsers} examSessions={examSessions} schedules={mappedSchedules} preselectedToken={preselectedTestToken} config={config} onRefresh={() => fetchData(true)} />;
-      case AdminView.ANALISA_SOAL: return <QuestionAnalysis tests={tests} users={studentUsers} />;
-      case AdminView.ANALISA_JAWABAN: return <StudentAnswerAnalysis tests={tests} users={studentUsers} />;
-      case AdminView.BACKUP_DATA: return <BackupScreen config={config} users={users} tests={tests} masterData={masterData} announcements={announcements} schedules={schedules} onRestoreData={handleRestoreData} onDeleteData={handleDeleteData} isProcessing={isProcessing} isDemoMode={isDemoMode} />;
+      case AdminView.UBK: return isUsersLoaded ? <UbkMonitor users={users} tests={tests} /> : <UsersLoadingSpinner />;
+      case AdminView.CETAK: return isUsersLoaded ? <ExamCards users={studentUsers} config={config} /> : <UsersLoadingSpinner />;
+      case AdminView.CETAK_DOKUMEN: return isUsersLoaded ? <AdminDocumentsWrapper users={studentUsers} tests={tests} examSessions={examSessions} config={config} masterData={masterData} /> : <UsersLoadingSpinner />;
+      case AdminView.REKAPITULASI_NILAI: return isUsersLoaded ? <GradeRecap tests={tests} users={studentUsers} examSessions={examSessions} schedules={mappedSchedules} preselectedToken={preselectedTestToken} config={config} onRefresh={() => fetchData(true)} /> : <UsersLoadingSpinner />;
+      case AdminView.ANALISA_SOAL: return isUsersLoaded ? <QuestionAnalysis tests={tests} users={studentUsers} /> : <UsersLoadingSpinner />;
+      case AdminView.ANALISA_JAWABAN: return isUsersLoaded ? <StudentAnswerAnalysis tests={tests} users={studentUsers} /> : <UsersLoadingSpinner />;
+      case AdminView.BACKUP_DATA: return isUsersLoaded ? <BackupScreen config={config} users={users} tests={tests} masterData={masterData} announcements={announcements} schedules={schedules} onRestoreData={handleRestoreData} onDeleteData={handleDeleteData} isProcessing={isProcessing} isDemoMode={isDemoMode} /> : <UsersLoadingSpinner />;
       case AdminView.CONFIG: return <ConfigurationScreen config={config} onUpdateConfig={onUpdateConfig} user={user} onLogout={onLogout} onAdminPasswordChange={handleAdminPasswordChange} onSyncAdminPasswordForQR={handleSyncAdminPasswordForQR} isProcessing={isProcessing} isLicensed={!isLocked} licenseProfile={licenseProfile} isDemoMode={isDemoMode} />;
       case AdminView.TOKEN: return <TokenManagement isDemoMode={isDemoMode} />;
       case AdminView.CETAK_ADMIN_CARD: return <AdminCard adminUser={user} config={config} />;
+      case AdminView.CETAK_GURU_CARD: return isUsersLoaded ? <StaffCard staffUsers={users.filter(u => u.role === 'teacher')} config={config} role="teacher" /> : <UsersLoadingSpinner />;
+      case AdminView.CETAK_PENGAWAS_CARD: return isUsersLoaded ? <StaffCard staffUsers={users.filter(u => u.role === 'pengawas')} config={config} role="pengawas" /> : <UsersLoadingSpinner />;
+      case AdminView.AUDIT_LOG: return <AuditLogScreen />;
       case AdminView.LICENSE:
         if (isLocked) {
             return <LicenseActivation onActivate={async (key) => {
@@ -1333,95 +1355,153 @@ const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
             }} loading={isLicenseLoading} globalError={licenseError} />;
         } else {
             return (
-                <div className="space-y-5">
+                <div className="space-y-6 pb-6">
 
-                    <UpdateNotification />
-
-                    {/* ── HERO CARD: Status Lisensi ── */}
-                    <div className={`relative overflow-hidden rounded-2xl p-6 text-white shadow-xl ${isDemoMode
-                        ? 'bg-gradient-to-br from-amber-500 via-orange-500 to-red-500'
-                        : 'bg-gradient-to-br from-slate-800 via-slate-900 to-indigo-950'
-                    }`}>
-                        {/* decorative blobs */}
-                        <div className="pointer-events-none absolute -top-10 -right-10 w-48 h-48 rounded-full opacity-10 bg-white" />
-                        <div className="pointer-events-none absolute -bottom-8 -left-8 w-36 h-36 rounded-full opacity-10 bg-white" />
-
-                        <div className="relative z-10">
-                            {/* Badge */}
-                            <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold mb-4 ${isDemoMode
-                                ? 'bg-white/20 text-white'
-                                : 'bg-emerald-400/20 text-emerald-300 border border-emerald-400/30'
-                            }`}>
-                                {isDemoMode
-                                    ? <><Lock className="w-3 h-3" /> MODE DEMO</>
-                                    : <><ShieldCheck className="w-3 h-3" /> TERLISENSI RESMI</>
-                                }
-                            </div>
-
-                            <h2 className="text-2xl font-bold mb-1">
-                                {isDemoMode ? 'Mode Demo Aktif' : 'CBT School Enterprise'}
-                            </h2>
-                            <p className="text-sm opacity-75 mb-5">
-                                {isDemoMode
-                                    ? 'Beberapa fitur dibatasi. Upgrade untuk akses penuh.'
-                                    : 'Lisensi aktif & valid. Semua fitur enterprise tersedia.'}
-                            </p>
-
-                            {/* School info row (licensed only) */}
-                            {!isDemoMode && licenseProfile && (
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 border border-white/10">
-                                        <div className="flex items-center gap-2 mb-1">
-                                            <Building2 className="w-3.5 h-3.5 text-slate-300" />
-                                            <span className="text-xs text-slate-300 font-medium uppercase tracking-wide">Sekolah</span>
-                                        </div>
-                                        <p className="text-sm font-bold text-white leading-tight">{licenseProfile.school_name}</p>
-                                    </div>
-                                    <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 border border-white/10">
-                                        <div className="flex items-center gap-2 mb-1">
-                                            <Hash className="w-3.5 h-3.5 text-slate-300" />
-                                            <span className="text-xs text-slate-300 font-medium uppercase tracking-wide">NPSN</span>
-                                        </div>
-                                        <p className="text-sm font-bold text-white font-mono">{licenseProfile.npsn}</p>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Demo CTA */}
-                            {isDemoMode && (
-                                <button onClick={handleResetLicenseClick} disabled={isResettingLicense}
-                                    className="flex items-center gap-2 px-5 py-2.5 bg-white text-amber-600 font-bold text-sm rounded-xl shadow-lg hover:bg-amber-50 transition-all">
-                                    <Sparkles className="w-4 h-4" />
-                                    Masukkan Lisensi Resmi
-                                    <ChevronRight className="w-4 h-4" />
-                                </button>
+                    {/* ── PAGE HEADER ── */}
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                        <div>
+                            <h1 className="text-2xl font-bold text-slate-800">Lisensi &amp; Pembaruan</h1>
+                            <p className="text-sm text-slate-500 mt-0.5">Kelola lisensi aplikasi dan perbarui sistem CBT sekolah Anda.</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 rounded-full text-xs font-mono font-semibold text-slate-600 border border-slate-200">
+                                <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 inline-block" />
+                                v{APP_VERSION}
+                            </span>
+                            {!isDemoMode && (
+                                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 rounded-full text-xs font-bold text-emerald-700 border border-emerald-200">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse inline-block" />
+                                    Aktif
+                                </span>
                             )}
                         </div>
                     </div>
+
+                    {/* ── HERO CARD: Status Lisensi ── */}
+                    <div className={`relative overflow-hidden rounded-2xl shadow-xl ${isDemoMode
+                        ? 'bg-gradient-to-br from-amber-500 via-orange-500 to-red-500'
+                        : 'bg-gradient-to-br from-slate-800 via-slate-900 to-indigo-950'
+                    }`}>
+                        {/* Decorative circles */}
+                        <div className="pointer-events-none absolute -top-16 -right-16 w-64 h-64 rounded-full opacity-[0.07] bg-white" />
+                        <div className="pointer-events-none absolute -bottom-12 -left-12 w-48 h-48 rounded-full opacity-[0.07] bg-white" />
+                        <div className="pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 rounded-full opacity-[0.03] bg-white" />
+
+                        <div className="relative z-10 p-6 md:p-8">
+                            <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-6">
+                                {/* Left: info */}
+                                <div className="flex-1">
+                                    <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold mb-4 ${isDemoMode
+                                        ? 'bg-white/20 text-white border border-white/20'
+                                        : 'bg-emerald-400/20 text-emerald-300 border border-emerald-400/30'
+                                    }`}>
+                                        {isDemoMode
+                                            ? <><Lock className="w-3 h-3" /> MODE DEMO</>
+                                            : <><ShieldCheck className="w-3 h-3" /> TERLISENSI RESMI</>
+                                        }
+                                    </div>
+                                    <h2 className="text-2xl md:text-3xl font-bold text-white mb-1">
+                                        {isDemoMode ? 'Mode Demo Aktif' : 'CBT School Enterprise'}
+                                    </h2>
+                                    <p className="text-sm text-white/60 mb-5">
+                                        {isDemoMode
+                                            ? 'Beberapa fitur dibatasi. Masukkan kode lisensi untuk akses penuh.'
+                                            : 'Lisensi aktif & valid. Semua fitur enterprise tersedia untuk sekolah Anda.'}
+                                    </p>
+
+                                    {/* School info (licensed only) */}
+                                    {!isDemoMode && licenseProfile && (
+                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                            <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3.5 border border-white/10">
+                                                <div className="flex items-center gap-2 mb-1.5">
+                                                    <Building2 className="w-3.5 h-3.5 text-white/50" />
+                                                    <span className="text-[10px] text-white/50 font-semibold uppercase tracking-widest">Sekolah</span>
+                                                </div>
+                                                <p className="text-sm font-bold text-white leading-tight">{licenseProfile.school_name}</p>
+                                            </div>
+                                            <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3.5 border border-white/10">
+                                                <div className="flex items-center gap-2 mb-1.5">
+                                                    <Hash className="w-3.5 h-3.5 text-white/50" />
+                                                    <span className="text-[10px] text-white/50 font-semibold uppercase tracking-widest">NPSN</span>
+                                                </div>
+                                                <p className="text-sm font-bold text-white font-mono">{licenseProfile.npsn ?? '—'}</p>
+                                            </div>
+                                            <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3.5 border border-white/10">
+                                                <div className="flex items-center gap-2 mb-1.5">
+                                                    <Zap className="w-3.5 h-3.5 text-white/50" />
+                                                    <span className="text-[10px] text-white/50 font-semibold uppercase tracking-widest">Versi</span>
+                                                </div>
+                                                <p className="text-sm font-bold text-white font-mono">v{APP_VERSION}</p>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Demo CTA */}
+                                    {isDemoMode && (
+                                        <button onClick={handleResetLicenseClick} disabled={isResettingLicense}
+                                            className="inline-flex items-center gap-2 px-5 py-2.5 bg-white text-amber-600 font-bold text-sm rounded-xl shadow-lg hover:bg-amber-50 active:scale-95 transition-all">
+                                            <Sparkles className="w-4 h-4" />
+                                            Masukkan Lisensi Resmi
+                                            <ChevronRight className="w-4 h-4" />
+                                        </button>
+                                    )}
+                                </div>
+
+                                {/* Right: shield icon */}
+                                <div className="hidden md:flex items-center justify-center w-24 h-24 rounded-2xl bg-white/10 border border-white/10 flex-shrink-0">
+                                    {isDemoMode
+                                        ? <Lock className="w-10 h-10 text-white/80" />
+                                        : <ShieldCheck className="w-10 h-10 text-emerald-300" />
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* ── BANNER UPDATE (jika ada) ── */}
+                    <UpdateNotification />
 
                     {/* ── DEMO: Feature grid ── */}
                     {isDemoMode && (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
-                                <p className="text-xs font-bold text-emerald-600 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                                <p className="text-xs font-bold text-emerald-600 uppercase tracking-wider mb-4 flex items-center gap-2">
                                     <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" /> Tersedia di Demo
                                 </p>
-                                <ul className="space-y-2 text-sm text-slate-700">
-                                    {['Dashboard & Statistik','Pemantauan Ujian (UBK)','Rekapitulasi Nilai','Analisa Soal'].map(f => (
-                                        <li key={f} className="flex items-center gap-2"><span className="text-emerald-500">✓</span>{f}</li>
+                                <ul className="space-y-2.5 text-sm">
+                                    {[
+                                        'Dashboard & Statistik',
+                                        'Pemantauan Ujian (UBK)',
+                                        'Pengawas & Ruangan',
+                                        'Rekapitulasi Nilai',
+                                        'Analisa Soal',
+                                        'Analisa Jawaban Siswa',
+                                        'Token Ujian',
+                                        'Cetak Kartu Siswa & Admin',
+                                        'Berita Acara & Absen',
+                                    ].map(f => (
+                                        <li key={f} className="flex items-center gap-2.5 text-slate-700">
+                                            <span className="w-4 h-4 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center text-[10px] font-black flex-shrink-0">✓</span>
+                                            {f}
+                                        </li>
                                     ))}
-                                    {['Bank Soal (lihat saja)','Jadwal Ujian (lihat saja)','Data Master (lihat saja)'].map(f => (
-                                        <li key={f} className="flex items-center gap-2 text-slate-400"><span>👁</span>{f}</li>
+                                    {['Bank Soal (lihat saja)','Jadwal Ujian (lihat saja)','Data Master (lihat saja)','Manajemen User (lihat saja)'].map(f => (
+                                        <li key={f} className="flex items-center gap-2.5 text-slate-400">
+                                            <span className="w-4 h-4 rounded-full bg-slate-100 flex items-center justify-center text-[10px] flex-shrink-0">👁</span>
+                                            {f}
+                                        </li>
                                     ))}
                                 </ul>
                             </div>
                             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
-                                <p className="text-xs font-bold text-rose-500 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                                <p className="text-xs font-bold text-rose-500 uppercase tracking-wider mb-4 flex items-center gap-2">
                                     <span className="w-2 h-2 rounded-full bg-rose-500 inline-block" /> Terkunci di Demo
                                 </p>
-                                <ul className="space-y-2 text-sm text-slate-500">
-                                    {['Tambah / Edit / Hapus Data','Backup & Restore Database','Konfigurasi Sekolah','Cetak Kartu Siswa & Admin','Berita Acara & Absen','Import Soal & Pengguna'].map(f => (
-                                        <li key={f} className="flex items-center gap-2"><Lock className="w-3.5 h-3.5 text-rose-400 flex-shrink-0" />{f}</li>
+                                <ul className="space-y-2.5 text-sm">
+                                    {['Tambah / Edit / Hapus Data','Backup & Restore Database','Konfigurasi Sekolah','Import Soal & Pengguna','Simpan Pengaturan Token'].map(f => (
+                                        <li key={f} className="flex items-center gap-2.5 text-slate-500">
+                                            <Lock className="w-3.5 h-3.5 text-rose-400 flex-shrink-0" />{f}
+                                        </li>
                                     ))}
                                 </ul>
                             </div>
@@ -1437,34 +1517,77 @@ const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
                         onUpdateFound={(count) => setUpdateBadgeCount(count)}
                     />
 
-                    {/* ── RIWAYAT SINKRONISASI UPDATE ── */}
-                    <UpdateSyncHistoryTable />
+                    {/* ── GRID BAWAH: Riwayat + Pengaturan ── */}
+                    <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
 
-                    {/* ── PENGATURAN LISENSI ── */}
-                    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
-                        <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-4 flex items-center gap-2">
-                            <span className="w-2 h-2 rounded-full bg-slate-400 inline-block" /> Pengaturan Lisensi
-                        </h3>
-                        <div className="flex items-center justify-between p-4 bg-rose-50 rounded-xl border border-rose-100">
-                            <div className="flex items-center gap-3">
-                                <div className="bg-rose-100 rounded-xl p-2.5">
-                                    <RotateCcw className="w-4 h-4 text-rose-600" />
-                                </div>
-                                <div>
-                                    <p className="font-semibold text-slate-800 text-sm">Reset Lisensi Aplikasi</p>
-                                    <p className="text-xs text-slate-500 mt-0.5">Hapus lisensi aktif dan kunci aplikasi ke mode default.</p>
+                        {/* Riwayat Sinkronisasi — 2/3 lebar di xl */}
+                        <div className="xl:col-span-2">
+                            <UpdateSyncHistoryTable />
+                        </div>
+
+                        {/* Pengaturan Lisensi — 1/3 lebar di xl */}
+                        <div className="xl:col-span-1 flex flex-col gap-4">
+
+                            {/* Info Card */}
+                            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+                                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+                                    <ShieldCheck className="w-3.5 h-3.5 text-slate-400" /> Informasi Sistem
+                                </h3>
+                                <ul className="space-y-3">
+                                    <li className="flex items-center justify-between text-sm">
+                                        <span className="text-slate-500">Status</span>
+                                        {isDemoMode
+                                            ? <span className="text-xs font-bold text-amber-600 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-full">Demo</span>
+                                            : <span className="text-xs font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"/>Aktif</span>
+                                        }
+                                    </li>
+                                    <li className="flex items-center justify-between text-sm">
+                                        <span className="text-slate-500">Versi Aplikasi</span>
+                                        <span className="text-xs font-mono font-bold text-slate-700 bg-slate-100 px-2.5 py-1 rounded-full">v{APP_VERSION}</span>
+                                    </li>
+                                    {!isDemoMode && licenseProfile?.npsn && (
+                                        <li className="flex items-center justify-between text-sm">
+                                            <span className="text-slate-500">NPSN</span>
+                                            <span className="text-xs font-mono font-bold text-slate-700">{licenseProfile.npsn}</span>
+                                        </li>
+                                    )}
+                                    {!isDemoMode && licenseProfile?.school_name && (
+                                        <li className="flex items-start justify-between text-sm gap-2">
+                                            <span className="text-slate-500 flex-shrink-0">Sekolah</span>
+                                            <span className="text-xs font-semibold text-slate-700 text-right leading-tight">{licenseProfile.school_name}</span>
+                                        </li>
+                                    )}
+                                </ul>
+                            </div>
+
+                            {/* Reset Card */}
+                            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+                                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+                                    <RotateCcw className="w-3.5 h-3.5 text-slate-400" /> Pengaturan Lisensi
+                                </h3>
+                                <div className="rounded-xl border border-rose-100 bg-rose-50/60 p-4">
+                                    <div className="flex items-start gap-3 mb-4">
+                                        <div className="bg-rose-100 rounded-xl p-2.5 flex-shrink-0 mt-0.5">
+                                            <RotateCcw className="w-4 h-4 text-rose-600" />
+                                        </div>
+                                        <div>
+                                            <p className="font-semibold text-slate-800 text-sm">Reset Lisensi Aplikasi</p>
+                                            <p className="text-xs text-slate-500 mt-1 leading-relaxed">Hapus lisensi aktif dan kembalikan aplikasi ke mode terkunci.</p>
+                                        </div>
+                                    </div>
+                                    <button
+                                        onClick={handleResetLicenseClick}
+                                        disabled={isResettingLicense}
+                                        className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-rose-600 hover:bg-rose-700 disabled:bg-rose-400 text-white font-semibold text-sm rounded-xl transition-all active:scale-95 shadow-sm shadow-rose-200"
+                                    >
+                                        {isResettingLicense
+                                            ? <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Mereset...</>
+                                            : <><RotateCcw className="w-3.5 h-3.5" /> Reset Lisensi</>
+                                        }
+                                    </button>
                                 </div>
                             </div>
-                            <button
-                                onClick={handleResetLicenseClick}
-                                disabled={isResettingLicense}
-                                className="flex items-center gap-2 px-4 py-2 bg-rose-600 hover:bg-rose-700 disabled:bg-rose-400 text-white font-semibold text-sm rounded-xl transition-all active:scale-95 shadow-sm"
-                            >
-                                {isResettingLicense
-                                    ? <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Mereset...</>
-                                    : <><RotateCcw className="w-3.5 h-3.5" /> Reset</>
-                                }
-                            </button>
+
                         </div>
                     </div>
 

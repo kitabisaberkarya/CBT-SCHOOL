@@ -25,6 +25,7 @@ interface QuestionMeta {
   answerKey: number[] | null;  // untuk complex_multiple_choice: array of correct indices
   options: string[];
   type: string;
+  weight: number;
 }
 
 const StudentAnswerAnalysis: React.FC<StudentAnswerAnalysisProps> = ({ tests, users }) => {
@@ -57,7 +58,7 @@ const StudentAnswerAnalysis: React.FC<StudentAnswerAnalysisProps> = ({ tests, us
         // 1. Fetch questions
         const { data: qData, error: qErr } = await supabase
           .from('questions')
-          .select('id, question, options, correct_answer_index, answer_key, type')
+          .select('id, question, options, correct_answer_index, answer_key, type, weight')
           .eq('test_id', testId)
           .order('id', { ascending: true });
 
@@ -82,6 +83,7 @@ const StudentAnswerAnalysis: React.FC<StudentAnswerAnalysisProps> = ({ tests, us
             answerKey,
             options: q.options ?? [],
             type: q.type,
+            weight: q.weight || 1,
           };
         });
         setQuestions(parsedQuestions);
@@ -249,25 +251,56 @@ const StudentAnswerAnalysis: React.FC<StudentAnswerAnalysisProps> = ({ tests, us
   }, []);
 
   // ─── Per-student score calculation ─────────────────────────────────────
+  // Formula sengaja disamakan persis dengan scoring.ts (weighted average)
+  // agar nilai di kolom % konsisten dengan nilai di Rekapitulasi Nilai.
   const getScore = (row: StudentRow) => {
-    let correct = 0;
-    let answered = 0;
+    let correct = 0;    // jumlah soal benar (untuk display kolom "Benar")
+    let totalScore = 0; // skor berbobot
+    let totalWeight = 0;
+
     questions.forEach(q => {
       const ans = row.answers[q.id];
+      const weight = q.weight || 1;
       const hasAnswer = ans && (ans.idx !== null || ans.raw !== null);
-      if (hasAnswer) {
-        answered++;
-        if (q.type === 'true_false') {
-          if (isTrueFalseCorrect(ans.raw, q.correctAnswerIndex)) correct++;
-        } else if (q.type === 'complex_multiple_choice') {
-          if (isComplexMcCorrect(ans.raw, q.answerKey)) correct++;
-        } else if (ans.idx !== null && ans.idx === q.correctAnswerIndex) {
-          correct++;
-        }
+
+      // Soal tidak diterima siswa (questionsToDisplay / soal tidak tampil) → skip
+      if (!hasAnswer) return;
+
+      if (q.type === 'essay') {
+        // Essay SELALU masuk penyebut (identik dengan scoring.ts setelah fix).
+        // Nilai = 0 jika belum dikoreksi, sehingga skor tidak inflated.
+        totalWeight += weight;
+        // Tidak ada auto-score untuk essay di sini — kontribusi ke totalScore = 0
+        return;
+      }
+
+      if (q.type === 'matching') {
+        // Matching proporsioanal di scoring.ts; untuk tampilan analisa cukup skip
+        // karena student_answers matching di sini tidak bisa dihitung per-pasangan
+        return;
+      }
+
+      totalWeight += weight;
+
+      let isCorrect = false;
+      if (q.type === 'true_false') {
+        isCorrect = isTrueFalseCorrect(ans.raw, q.correctAnswerIndex);
+      } else if (q.type === 'complex_multiple_choice') {
+        isCorrect = isComplexMcCorrect(ans.raw, q.answerKey);
+      } else {
+        // multiple_choice
+        isCorrect = ans.idx !== null && ans.idx === q.correctAnswerIndex;
+      }
+
+      if (isCorrect) {
+        correct++;
+        totalScore += weight;
       }
     });
-    const pct = questions.length > 0 ? (correct / questions.length) * 100 : 0;
-    return { correct, answered, total: questions.length, pct };
+
+    // Gunakan Math.round agar identik dengan scoring.ts
+    const pct = totalWeight > 0 ? Math.round((totalScore / totalWeight) * 100) : 0;
+    return { correct, answered: correct, total: questions.length, pct };
   };
 
   // ─── Per-question correct % across filtered rows ────────────────────────

@@ -196,24 +196,35 @@ const DashboardHome: React.FC<DashboardHomeProps> = ({ adminUser, config, studen
 
     const hasExamData = useMemo(() => examSessions && examSessions.length > 0, [examSessions]);
 
+    // Reverse map: testId (uuid) → Test — karena session.schedule?.test_id adalah UUID
+    const testByIdMap = useMemo(() => {
+        const map = new Map<string, ReturnType<typeof tests.get>>();
+        tests.forEach((test) => {
+            if (test.details?.id) map.set(test.details.id, test);
+        });
+        return map;
+    }, [tests]);
+
     // REAL DATA: Calculate performance based on actual completed sessions
     const performanceData = useMemo(() => {
         const completedSessions = examSessions?.filter(s => s.status === 'Selesai' && s.score != null) || [];
         if (completedSessions.length === 0) return [];
-        
+
         let passedCount = 0;
         completedSessions.forEach(session => {
-            if (session.score >= 75) { // Assuming 75 is the passing grade
-                passedCount++;
-            }
+            // session.schedule?.test_id adalah UUID ujian (hasil JOIN saat fetch)
+            const testId = session.schedule?.test_id;
+            const test   = testId ? testByIdMap.get(testId) : undefined;
+            const kkm    = test?.details?.kkm ?? 70;
+            if (session.score >= kkm) passedCount++;
         });
-        
+
         const failedCount = completedSessions.length - passedCount;
         return [
             { name: 'Lulus', value: passedCount, color: '#10B981' },
             { name: 'Tidak Lulus', value: failedCount, color: '#EF4444' },
         ];
-    }, [examSessions]);
+    }, [examSessions, testByIdMap]);
 
     // REAL DATA: Calculate exam completion stats
     const completionData = useMemo(() => {

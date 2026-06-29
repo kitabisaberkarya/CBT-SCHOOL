@@ -447,6 +447,7 @@ const App: React.FC = () => {
       timezone: newConfig.timezone || 'Asia/Jakarta',
       server_ip: newConfig.serverIp || null,
       exam_network_mode: newConfig.examNetworkMode || 'offline',
+      show_score_after_exam: newConfig.showScoreAfterExam ?? false,
     };
 
     try {
@@ -739,7 +740,11 @@ const App: React.FC = () => {
 
   const handleConfirmBiodata = () => setAppState(AppState.EXAM_SELECTION);
   const handleStartTest = () => setAppState(AppState.TESTING);
-  const handleFinishTest = () => setAppState(AppState.FINISHED);
+  const [lastExamScore, setLastExamScore] = useState<number | null>(null);
+  const handleFinishTest = (score?: number) => {
+    setLastExamScore(score ?? null);
+    setAppState(AppState.FINISHED);
+  };
 
   const handleSelectExam = async (exam: AvailableExam): Promise<void> => {
     if (!currentUser) return;
@@ -871,7 +876,7 @@ const App: React.FC = () => {
                   setTimeout(() => setAppState(AppState.LOGIN), 0);
                   return null;
               }
-              return <FinishScreen onLogout={handleLogout} user={currentUser} config={safeConfig} />;
+              return <FinishScreen onLogout={handleLogout} user={currentUser} config={safeConfig} finalScore={lastExamScore} />;
             
             case AppState.ADMIN_DASHBOARD:
               if (!currentUser) {

@@ -657,6 +657,26 @@ const ConfigurationScreen: React.FC<ConfigurationScreenProps> = (props) => {
                               <input type="number" name="antiCheatViolationLimit" id="antiCheatViolationLimit" value={formData.antiCheatViolationLimit} onChange={handleChange} min="1" className="mt-1 w-32 p-2 border-2 border-gray-200 focus:border-red-400 rounded-xl text-center font-bold text-lg" disabled={!formData.enableAntiCheat}/>
                             </div>
                           </div>
+
+                          {/* ── Tampilkan Skor ke Siswa ── */}
+                          <div className="border rounded-xl p-4 space-y-3">
+                            <div className="flex items-center gap-2 mb-1">
+                              <div className="h-7 w-7 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-500 flex items-center justify-center shadow-sm">
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
+                              </div>
+                              <h3 className="text-base font-bold text-gray-800">Hasil Ujian Siswa</h3>
+                            </div>
+                            <ToggleSwitch
+                              id="showScoreAfterExam"
+                              label="Tampilkan nilai/skor ke siswa setelah ujian selesai"
+                              checked={formData.showScoreAfterExam ?? false}
+                              onChange={handleChange}
+                            />
+                            <p className="text-xs text-gray-400">
+                              Jika diaktifkan, siswa akan melihat nilai akhirnya di halaman selesai ujian.
+                              Jika dinonaktifkan, halaman hanya menampilkan konfirmasi bahwa ujian telah dikumpulkan.
+                            </p>
+                          </div>
                         </div>
                       )}
                       {activeTab === 'login' && (

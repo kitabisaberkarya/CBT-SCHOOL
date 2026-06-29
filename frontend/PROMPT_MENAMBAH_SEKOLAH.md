@@ -14,9 +14,9 @@ Kamu adalah system administrator VPS CBT School Enterprise milik Ari Wijaya. Tug
 ## DATA SEKOLAH BARU (ISI SEBELUM DIJALANKAN)
 
 ```
-NAMA_SEKOLAH   = SMA Kristen Petra Kediri
-SLUG           = smakpetrakediri          <- huruf kecil, tanpa spasi/simbol
-DOMAIN         = smakpetrakediri.cbtschool.click
+NAMA_SEKOLAH   = SMK TARBIYATUL ISLAM NWDI WANASABA
+SLUG           = smktinsaba          <- huruf kecil, tanpa spasi/simbol
+DOMAIN         = smktinsaba.cbtschool.click
 ADMIN_EMAIL    = 
 ADMIN_PASSWORD = 
 ```
@@ -676,3 +676,7 @@ UNION ALL SELECT 'public', count(*) FROM public.users;
 ---
 
 *Dibuat berdasarkan pengalaman setup nyata CBT School Enterprise — Ari Wijaya / 2026*
+
+CATATAN: anda bisa clone aplikasi cbt school dari exam.cbtschool.click beserta databasenya, lalu ubah nama link urlnya seperti materi di atas.
+.
+dan ingat, jangan merusak/merubah/menyentuh cbt school sekolah sekolah yang lain.

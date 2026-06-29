@@ -32,7 +32,6 @@ export const triggerDemoSeed = async (): Promise<void> => {
     const { data, error } = await localSupabase.rpc('seed_demo_data');
 
     if (error) {
-      // Jika fungsi belum ada di DB (misal versi lama), jangan crash app
       if (
         error.message?.includes('Could not find') ||
         error.message?.includes('does not exist') ||
@@ -49,8 +48,13 @@ export const triggerDemoSeed = async (): Promise<void> => {
     const result = data as { status: string; message: string };
     console.log('[DemoSeed] Status:', result?.status, '—', result?.message);
 
-    if (result?.status === 'success' || result?.status === 'already_seeded') {
-      // Tandai di localStorage agar tidak perlu memanggil RPC lagi
+    if (result?.status === 'success' || result?.status === 'already_seeded' || result?.status === 'updated') {
+      // Seed data pengawas & ruangan (modul 34) — idempoten, aman dipanggil ulang
+      localSupabase.rpc('seed_demo_pengawas').then(({ data: pd, error: pe }) => {
+        if (pe) console.warn('[DemoSeed] Pengawas seed:', pe.message);
+        else console.log('[DemoSeed] Pengawas:', (pd as any)?.message);
+      }).catch(() => {});
+
       localStorage.setItem(DEMO_SEED_DONE_KEY, 'true');
     }
 

@@ -62,7 +62,7 @@ const UbkMonitor: React.FC<UbkMonitorProps> = ({ users, tests }) => {
   const [activeSessions, setActiveSessions] = useState<StudentSession[]>([]);
   const [lockedUsers, setLockedUsers] = useState<LockedUser[]>([]);
 
-  const [modalState, setModalState] = useState<{ type: 'reset' | 'finish' | 'resume' | 'unlock_device' | 'full_reset' | 'suspend' | 'unsuspend'; session: StudentSession | null; user?: LockedUser | null }>({ type: 'reset', session: null, user: null });
+  const [modalState, setModalState] = useState<{ type: 'reset' | 'finish' | 'resume' | 'unlock_device' | 'full_reset' | 'suspend' | 'unsuspend' | 'disqualify'; session: StudentSession | null; user?: LockedUser | null }>({ type: 'reset', session: null, user: null });
 
   // Add Time Modal
   const [addTimeModal, setAddTimeModal] = useState<{ session: StudentSession | null; minutes: number }>({ session: null, minutes: 10 });
@@ -133,8 +133,12 @@ const UbkMonitor: React.FC<UbkMonitorProps> = ({ users, tests }) => {
       return ['all', ...Array.from(new Set(subjects)).sort()];
   }, [activeSessions]);
 
+  // Ref untuk dateFilter agar bisa diakses dari interval/realtime tanpa re-subscribe
+  const dateFilterRef = useRef(dateFilter);
+  dateFilterRef.current = dateFilter;
+
   // --- DATA FETCHERS ---
-  const fetchSessions = async (silent = false) => {
+  const fetchSessions = async (silent = false, forDate?: string) => {
     try {
         if (!silent) setIsInitialLoading(true);
         else setIsRefreshing(true);
@@ -142,17 +146,19 @@ const UbkMonitor: React.FC<UbkMonitorProps> = ({ users, tests }) => {
         const { data: schedulesData } = await supabase.from('schedules').select('id,test_id');
         const latestSchedules: any[] = schedulesData || [];
 
-        // Filter hanya sesi hari ini untuk mengurangi beban query
-        const todayStart = new Date();
-        todayStart.setHours(0, 0, 0, 0);
-        const tomorrowStart = new Date(todayStart);
-        tomorrowStart.setDate(tomorrowStart.getDate() + 1);
+        // Gunakan tanggal dari parameter atau dateFilter aktif (bukan hardcoded hari ini)
+        const targetDate = forDate ?? dateFilterRef.current;
+        const dayStart = targetDate
+            ? new Date(targetDate + 'T00:00:00')
+            : (() => { const d = new Date(); d.setHours(0,0,0,0); return d; })();
+        const dayEnd = new Date(dayStart);
+        dayEnd.setDate(dayEnd.getDate() + 1);
 
         const { data, error } = await supabase
             .from('student_exam_sessions')
             .select('*')
-            .gte('started_at', todayStart.toISOString())
-            .lt('started_at', tomorrowStart.toISOString());
+            .gte('started_at', dayStart.toISOString())
+            .lt('started_at', dayEnd.toISOString());
 
         // Fetch status suspend semua user sekali
         const { data: suspendData } = await supabase.from('users').select('id,is_suspended');
@@ -222,6 +228,12 @@ const UbkMonitor: React.FC<UbkMonitorProps> = ({ users, tests }) => {
       fetchLockedUsers(silent);
   };
 
+  // Refetch saat tanggal filter berubah
+  useEffect(() => {
+    fetchSessions(false, dateFilter);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dateFilter]);
+
   useEffect(() => {
     refreshAll(false);
     fetchActiveSchedules();
@@ -234,6 +246,11 @@ const UbkMonitor: React.FC<UbkMonitorProps> = ({ users, tests }) => {
     const channel = supabase
         .channel('ubk_monitor_changes')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'student_exam_sessions' }, (payload: any) => {
+            // Realtime update hanya aktif saat melihat data hari ini
+            const today = new Date();
+            const todayStr = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+            if (dateFilterRef.current !== todayStr) return;
+
             // Update in-place hanya baris yang berubah, tidak full refetch
             const updated = payload.new;
             if (!updated) return;
@@ -400,6 +417,14 @@ const UbkMonitor: React.FC<UbkMonitorProps> = ({ users, tests }) => {
             });
             if (error) throw error;
             alert(`Siswa ${modalState.session.user.fullName} berhasil diaktifkan kembali.`);
+        } else if (modalState.type === 'disqualify' && modalState.session) {
+            const newViolations = (modalState.session.violations || 0) + 1;
+            const { error } = await supabase.from('student_exam_sessions').update({
+                status: 'Diskualifikasi',
+                violations: newViolations,
+                submitted_at: new Date().toISOString(),
+            }).eq('id', modalState.session.id);
+            if (error) throw error;
         }
 
         refreshAll(true);
@@ -584,6 +609,7 @@ const UbkMonitor: React.FC<UbkMonitorProps> = ({ users, tests }) => {
           case 'full_reset': return 'Mulai dari Awal?';
           case 'suspend': return 'Tangguhkan Akses Siswa?';
           case 'unsuspend': return 'Aktifkan Kembali Siswa?';
+          case 'disqualify': return 'Diskualifikasi Siswa?';
           default: return '';
       }
   };
@@ -601,6 +627,7 @@ const UbkMonitor: React.FC<UbkMonitorProps> = ({ users, tests }) => {
           case 'full_reset': return `Reset ujian ${name}? Semua jawaban dan progress akan dihapus. Siswa akan mengerjakan dari soal pertama.`;
           case 'suspend': return `Siswa ${name} akan DITANGGUHKAN. Mereka tidak dapat login atau mengerjakan ujian apapun sampai diaktifkan kembali oleh admin.`;
           case 'unsuspend': return `Siswa ${name} akan diaktifkan kembali dan dapat login/mengerjakan ujian seperti biasa.`;
+          case 'disqualify': return `Siswa ${name} akan DIDISKUALIFIKASI. Status ujian berubah menjadi 'Diskualifikasi'. Gunakan tombol Lanjutkan untuk memulihkan jika diperlukan.`;
           default: return '';
       }
   };
@@ -614,6 +641,7 @@ const UbkMonitor: React.FC<UbkMonitorProps> = ({ users, tests }) => {
           case 'full_reset': return 'red';
           case 'suspend': return 'red';
           case 'unsuspend': return 'green';
+          case 'disqualify': return 'red';
           default: return 'blue';
       }
   };
@@ -825,6 +853,7 @@ const UbkMonitor: React.FC<UbkMonitorProps> = ({ users, tests }) => {
                         onFullReset={() => setModalState({ type: 'full_reset', session: item })}
                         onSuspend={() => setModalState({ type: 'suspend', session: item })}
                         onUnsuspend={() => setModalState({ type: 'unsuspend', session: item })}
+                        onDisqualify={() => setModalState({ type: 'disqualify', session: item })}
                     />
                 ))}
             </div>
@@ -1035,9 +1064,10 @@ interface SessionCardProps {
     onFullReset: () => void;
     onSuspend: () => void;
     onUnsuspend: () => void;
+    onDisqualify: () => void;
 }
 
-const SessionCard: React.FC<SessionCardProps> = ({ session, isSelected, onSelect, onForceFinish, onReset, onResume, onAddTime, onReopen, onFullReset, onSuspend, onUnsuspend }) => {
+const SessionCard: React.FC<SessionCardProps> = ({ session, isSelected, onSelect, onForceFinish, onReset, onResume, onAddTime, onReopen, onFullReset, onSuspend, onUnsuspend, onDisqualify }) => {
     const { user, test, status, progress, timeLeft, violations, currentQuestionNumber, isSuspended } = session;
     const totalQuestions = test.questions.length;
     const progressPercentage = totalQuestions > 0 ? (progress / totalQuestions) * 100 : 0;
@@ -1157,14 +1187,26 @@ const SessionCard: React.FC<SessionCardProps> = ({ session, isSelected, onSelect
 
             {/* Action Buttons */}
             <div className="p-3 border-t bg-gray-50 rounded-b-xl flex flex-col gap-2">
+                {/* Lanjutkan Ujian — tampil untuk Diskualifikasi atau ada pelanggaran */}
                 {(status === 'Diskualifikasi' || (status === 'Mengerjakan' && violations > 0)) && (
                     <button
                         onClick={onResume}
                         className="w-full text-xs font-bold text-white bg-green-500 hover:bg-green-600 rounded-md px-3 py-2 transition flex items-center justify-center space-x-1 shadow-sm"
-                        title="Hapus pelanggaran dan izinkan lanjut"
+                        title="Hapus pelanggaran dan izinkan siswa lanjut ujian"
                     >
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-                        <span>Lanjutkan (Safe)</span>
+                        <span>Lanjutkan Ujian</span>
+                    </button>
+                )}
+                {/* Diskualifikasi Manual — hanya untuk siswa yang sedang Mengerjakan */}
+                {status === 'Mengerjakan' && (
+                    <button
+                        onClick={onDisqualify}
+                        className="w-full text-xs font-bold text-white bg-red-700 hover:bg-red-800 rounded-md px-3 py-2 transition flex items-center justify-center space-x-1 shadow-sm"
+                        title="Diskualifikasi siswa secara manual"
+                    >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>
+                        <span>Diskualifikasi</span>
                     </button>
                 )}
                 {status === 'Selesai' && (
@@ -1177,7 +1219,7 @@ const SessionCard: React.FC<SessionCardProps> = ({ session, isSelected, onSelect
                         <span>Buka Kembali</span>
                     </button>
                 )}
-                {/* Tombol Mulai dari Awal — hapus semua jawaban & reset progress via RPC atomic */}
+                {/* Tombol Mulai dari Awal */}
                 <button
                     onClick={onFullReset}
                     className="w-full text-xs font-bold text-white bg-purple-600 hover:bg-purple-700 rounded-md px-3 py-2 transition flex items-center justify-center space-x-1 shadow-sm mb-1.5"

@@ -252,10 +252,10 @@ export const useCbtschoolLicense = () => {
   // --------------------------------------------------------------------------
   const resetLocalConfig = async () => {
     try {
+      // logo_url & left_logo_url TIDAK direset — logo sekolah diatur oleh admin
+      // dan tidak boleh ditimpa oleh event lisensi
       await localSupabase.from('app_config').update({
-        school_name: 'SEKOLAH KITA BISA BERKARYA',
-        logo_url:    'https://upload.wikimedia.org/wikipedia/commons/9/9c/Logo_of_Ministry_of_Education_and_Culture_of_Republic_of_Indonesia.svg',
-        left_logo_url: '',
+        school_name:   'SEKOLAH KITA BISA BERKARYA',
         school_domain: null,
         npsn:          null,
       }).eq('id', 1);

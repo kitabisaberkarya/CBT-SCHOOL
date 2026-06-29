@@ -157,6 +157,7 @@ export const getConfig = async (defaultConfig: AppConfig): Promise<AppConfig> =>
       timezone:                data.timezone             || 'Asia/Jakarta',
       serverIp:                data.server_ip            || '',
       examNetworkMode:         (data.exam_network_mode as 'offline' | 'online') || 'offline',
+      showScoreAfterExam:      data.show_score_after_exam ?? false,
     };
   } catch (err) {
     console.warn('[getConfig] Gagal ambil config dari DB, pakai default.', err);

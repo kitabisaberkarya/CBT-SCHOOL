@@ -1,5 +1,5 @@
 
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { Test, Question, QuestionDifficulty, TestDetails, MasterDataItem, User } from '../types';
 import QuestionModal from './QuestionModal';
 import ConfirmationModal from './ConfirmationModal';
@@ -84,6 +84,8 @@ const QuestionBank: React.FC<QuestionBankProps> = ({ tests, onAddQuestion, onUpd
   const [teacherSearch, setTeacherSearch] = useState('');
   const [isSending, setIsSending] = useState(false);
   const [sendResult, setSendResult] = useState<{ ok: boolean; msg: string } | null>(null);
+
+  const [isExportingPdf, setIsExportingPdf] = useState(false);
 
   // Filters for detail view (Questions)
   const [searchTerm, setSearchTerm] = useState('');
@@ -174,6 +176,107 @@ const QuestionBank: React.FC<QuestionBankProps> = ({ tests, onAddQuestion, onUpd
 
   const handleOpenModalForAdd = () => { setEditingQuestion(null); setIsModalOpen(true); };
   const handleOpenModalForEdit = (question: Question) => { setEditingQuestion(question); setIsModalOpen(true); };
+
+  // ── Export bank soal ke PDF ──
+  const handleExportPdf = useCallback(async () => {
+    if (!selectedTest) return;
+    setIsExportingPdf(true);
+    try {
+      const html2pdf = (await import('html2pdf.js')).default;
+      const details = selectedTest.details;
+
+      // Ambil soal langsung dari DB (selectedTest.questions sengaja dikosongkan untuk efisiensi)
+      const { data: rawQuestions, error: qErr } = await supabase
+        .from('questions')
+        .select('*')
+        .eq('test_id', details.id);
+      if (qErr) throw qErr;
+      const questions: any[] = rawQuestions || [];
+      if (questions.length === 0) {
+        alert('Tidak ada soal untuk diekspor.');
+        setIsExportingPdf(false);
+        return;
+      }
+
+      const typeLabel: Record<string, string> = {
+        multiple_choice:         'Pilihan Ganda',
+        complex_multiple_choice: 'PG Kompleks',
+        matching:                'Menjodohkan',
+        essay:                   'Uraian',
+        true_false:              'Benar/Salah',
+      };
+      const diffLabel: Record<string, string> = { Easy: 'Mudah', Medium: 'Sedang', Hard: 'Sulit' };
+
+      const questionsHtml = questions.map((q: any, idx: number) => {
+        // options bisa berupa array string atau JSON string
+        let opts: string[] = [];
+        if (Array.isArray(q.options)) opts = q.options;
+        else if (typeof q.options === 'string') { try { opts = JSON.parse(q.options); } catch {} }
+
+        const optsHtml = opts.map((o: string, i: number) => `
+          <div style="margin:2px 0 2px 16px;font-size:11px;">
+            ${String.fromCharCode(65 + i)}. ${o}
+          </div>`).join('');
+
+        let matchingPairs: { left: string; right: string }[] = [];
+        if (Array.isArray(q.matching_pairs)) matchingPairs = q.matching_pairs;
+        else if (typeof q.matching_pairs === 'string') { try { matchingPairs = JSON.parse(q.matching_pairs); } catch {} }
+
+        const matchingHtml = matchingPairs.length > 0
+          ? `<table style="width:100%;border-collapse:collapse;margin:4px 0;font-size:11px;">
+              <tr><th style="text-align:left;padding:2px 6px;border:1px solid #ddd;background:#f5f5f5">Kolom A</th>
+                  <th style="text-align:left;padding:2px 6px;border:1px solid #ddd;background:#f5f5f5">Kolom B</th></tr>
+              ${matchingPairs.map((p: any) => `<tr>
+                <td style="padding:2px 6px;border:1px solid #ddd;">${p.left ?? ''}</td>
+                <td style="padding:2px 6px;border:1px solid #ddd;">${p.right ?? ''}</td>
+              </tr>`).join('')}
+            </table>` : '';
+
+        return `
+          <div style="margin-bottom:12px;page-break-inside:avoid;">
+            <div style="font-size:11px;color:#888;margin-bottom:2px;">
+              No.${idx + 1} &nbsp;|&nbsp; ${typeLabel[q.type] || q.type}
+              &nbsp;|&nbsp; ${diffLabel[q.difficulty] || q.difficulty}
+              &nbsp;|&nbsp; Bobot: ${q.weight ?? 1}
+              ${q.topic ? `&nbsp;|&nbsp; Topik: ${q.topic}` : ''}
+            </div>
+            <div style="font-size:12px;font-weight:600;margin-bottom:4px;">${idx + 1}. ${q.question}</div>
+            ${optsHtml}
+            ${matchingHtml}
+          </div>`;
+      }).join('');
+
+      const container = document.createElement('div');
+      container.style.cssText = 'font-family:Arial,sans-serif;padding:24px;color:#111;';
+      container.innerHTML = `
+        <div style="text-align:center;margin-bottom:20px;border-bottom:2px solid #222;padding-bottom:10px;">
+          <h2 style="margin:0;font-size:16px;font-weight:800;">${details.name}</h2>
+          <p style="margin:4px 0;font-size:12px;">Mata Pelajaran: <strong>${details.subject}</strong>
+            &nbsp;|&nbsp; Token: <strong>${details.token || selectedToken}</strong>
+            &nbsp;|&nbsp; Durasi: <strong>${details.time} menit</strong>
+            &nbsp;|&nbsp; KKM: <strong>${details.kkm ?? 70}</strong>
+          </p>
+          <p style="margin:2px 0;font-size:11px;color:#555;">
+            Total Soal: ${questions.length}
+            &nbsp;|&nbsp; Dicetak: ${new Date().toLocaleDateString('id-ID',{day:'2-digit',month:'long',year:'numeric'})}
+          </p>
+        </div>
+        ${questionsHtml}
+      `;
+
+      await html2pdf().set({
+        margin:      [10, 10, 10, 10],
+        filename:    `BankSoal_${details.subject.replace(/\s+/g,'_')}_${selectedToken}.pdf`,
+        html2canvas: { scale: 2, useCORS: true },
+        jsPDF:       { unit: 'mm', format: 'a4', orientation: 'portrait' },
+      }).from(container).save();
+
+    } catch (err: any) {
+      alert('Gagal export PDF: ' + err.message);
+    } finally {
+      setIsExportingPdf(false);
+    }
+  }, [selectedTest, selectedToken]);
   
   const handleSaveQuestion = async (questionData: Omit<Question, 'id'> | Question, closeAfterSave: boolean = true) => {
     let success = false;
@@ -279,8 +382,20 @@ const QuestionBank: React.FC<QuestionBankProps> = ({ tests, onAddQuestion, onUpd
                         <span className="text-xs bg-gray-100 px-2 py-1 rounded text-gray-600 uppercase font-bold">{selectedTest?.details.examType || 'Umum'}</span>
                     </div>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap">
                     {selectedTest && (<button onClick={(e) => handlePreviewTest(selectedTest, e)} className="flex items-center space-x-2 bg-purple-500 hover:bg-purple-600 text-white font-semibold py-2 px-4 rounded-lg shadow"><span>Preview</span></button>)}
+                    {selectedTest && (
+                      <button
+                        onClick={handleExportPdf}
+                        disabled={isExportingPdf}
+                        className="flex items-center space-x-2 bg-rose-500 hover:bg-rose-600 disabled:bg-rose-300 text-white font-semibold py-2 px-4 rounded-lg shadow transition-all"
+                      >
+                        {isExportingPdf
+                          ? <><svg className="animate-spin h-4 w-4 mr-1" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg><span>Mengekspor…</span></>
+                          : <><svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg><span>Export PDF</span></>
+                        }
+                      </button>
+                    )}
                     {!isDemoMode && <button onClick={handleOpenEditTestModal} className="flex items-center space-x-2 bg-yellow-500 hover:bg-yellow-600 text-white font-semibold py-2 px-4 rounded-lg shadow"><span>Edit Info</span></button>}
                 </div>
             </div>

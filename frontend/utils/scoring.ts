@@ -66,20 +66,19 @@ export const calculateScore = (questions: Question[], answers: Record<number, An
                 }
 
                 case 'essay':
-                    // Essay HANYA masuk denominator jika sudah dinilai manual atau cocok persis.
-                    // Essay yang belum dikoreksi (manual_score kosong, jawaban tidak cocok persis)
-                    // dikecualikan dari pembagi agar tidak menurunkan nilai soal lain.
+                    // Essay SELALU masuk denominator agar skor tidak inflated saat essay belum dikoreksi.
+                    // Sebelum dikoreksi: totalWeight += weight, totalScore += 0 (nilai essay = 0).
+                    // Setelah dikoreksi: totalScore += kontribusi sesuai manual_score atau exact match.
+                    totalWeight += weight;
                     if (userAnswer?.manual_score !== null && userAnswer?.manual_score !== undefined) {
-                        totalWeight += weight;
                         totalScore += (userAnswer.manual_score / 100) * weight;
                     } else if (userAnswer && userAnswer.value !== null && userAnswer.value !== undefined) {
                         const userText = (userAnswer.value as string || '').trim().toLowerCase();
                         const keyText = (q.answerKey?.text as string || '').trim().toLowerCase();
                         if (userText && keyText && userText === keyText) {
-                            totalWeight += weight;
                             totalScore += weight;
                         }
-                        // else: belum dikoreksi → skip, tidak pengaruhi nilai
+                        // else: belum dikoreksi → 0 poin, tapi bobot tetap masuk penyebut
                     }
                     break;
             }
