@@ -1,0 +1,30 @@
+# Secrets
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+
+# Supabase runtime data (contains student PII)
+supabase/volumes/
+
+# Backups (contains student PII)
+backups/
+
+# Node
+frontend/node_modules/
+node_modules/
+
+# Build output
+frontend/dist/
+dist/
+
+# Editor / tooling
+.vscode/
+.claude/
+frontend/.claude/
+
+# Logs
+*.log
+releases/release.log
