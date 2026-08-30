@@ -1,11 +1,3 @@
-# Secrets
-.env
-.env.*
-!.env.example
-**/.env
-**/.env.*
-!**/.env.example
-
 # Supabase runtime data (contains student PII)
 supabase/volumes/
 
