@@ -1,8 +1,10 @@
 
 import React, { useState, useEffect } from 'react';
-import { ArrowRight, ChevronRight, Users, PlayCircle } from 'lucide-react';
+import { ArrowRight, ChevronRight, Users, PlayCircle, ShieldCheck, Sparkles, Smartphone } from 'lucide-react';
 import { useContent } from '../context/ContentContext';
 import { useLanguage } from '../context/LanguageContext';
+import PlayStoreButton from './PlayStoreButton';
+import { EXAM_BROWSER_APK_URL } from './ExamBrowserCard';
 
 const Hero: React.FC = () => {
   const { heroImage, heroImage2, heroImage3, heroVideo, heroContent } = useContent();
@@ -61,7 +63,7 @@ const Hero: React.FC = () => {
               {displayContent.description}
             </p>
             
-            <div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start">
+            <div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start mb-6">
               <a 
                 href="#pricing" 
                 className="group bg-secondary hover:bg-blue-600 text-white px-8 py-4 rounded-full font-semibold transition-all shadow-lg shadow-blue-500/25 flex items-center justify-center"
@@ -76,6 +78,25 @@ const Hero: React.FC = () => {
                 {t('hero.cta_secondary')}
                 <ChevronRight className="ml-2 w-5 h-5 text-slate-500 dark:text-slate-400 group-hover:text-slate-900 dark:group-hover:text-white" />
               </a>
+            </div>
+
+            {/* PlayStore Style Exam Browser Download Badge */}
+            <div className="pt-2 flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-4">
+              <PlayStoreButton 
+                href={EXAM_BROWSER_APK_URL}
+                size="md"
+                variant="dark"
+                subText="UNDUH APK ANDROID"
+                mainText="Exam Browser CBT"
+              />
+              <div className="text-left text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                <ShieldCheck className="w-4 h-4 text-emerald-500 flex-shrink-0" />
+                <span>
+                  {language === 'id' 
+                    ? "Fitur Anti-Contek & Lockdown Screen v1.0.0" 
+                    : "Anti-Cheating & Screen Lockdown v1.0.0"}
+                </span>
+              </div>
             </div>
           </div>
 
