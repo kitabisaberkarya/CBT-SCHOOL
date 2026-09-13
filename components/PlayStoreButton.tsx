@@ -60,7 +60,7 @@ export const PlayStoreIcon: React.FC<{ className?: string }> = ({ className = "w
 );
 
 const PlayStoreButton: React.FC<PlayStoreButtonProps> = ({
-  href = "https://github.com/kitabisaberkarya/cbt-school-exam-browser-releases/releases/download/v1.0.0/CBT.School.apk",
+  href = "https://github.com/kitabisaberkarya/cbt-school-exam-browser-releases/releases/download/v1.2.0/CBT.School.apk",
   className = "",
   onClick,
   subText = "GET IT ON / UNDUH APK",

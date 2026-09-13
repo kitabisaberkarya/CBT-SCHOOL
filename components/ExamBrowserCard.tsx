@@ -20,7 +20,7 @@ interface ExamBrowserCardProps {
   className?: string;
 }
 
-export const EXAM_BROWSER_APK_URL = "https://github.com/kitabisaberkarya/cbt-school-exam-browser-releases/releases/download/v1.0.0/CBT.School.apk";
+export const EXAM_BROWSER_APK_URL = "https://github.com/kitabisaberkarya/cbt-school-exam-browser-releases/releases/download/v1.2.0/CBT.School.apk";
 
 const ExamBrowserCard: React.FC<ExamBrowserCardProps> = ({ 
   variant = 'full',
@@ -44,14 +44,14 @@ const ExamBrowserCard: React.FC<ExamBrowserCardProps> = ({
     subtitle: isId 
       ? "Aplikasi Android Anti-Contek & Lockdown Browser Ujian" 
       : "Anti-Cheating Android Exam Browser & Lockdown System",
-    developer: "KITA BISA BERKARYA • v1.0.0 (Official Release)",
+    developer: "KITA BISA BERKARYA • v1.2.0 (Official Release)",
     desc: isId
       ? "Sekarang aplikasi CBT School dapat diakses menggunakan Exam Browser khusus. Siswa saat ujian tetap fokus penuh ke lembar soal tanpa bisa membuka aplikasi lain, split screen, floating apps, maupun menyontek."
       : "Now CBT School can be accessed via the dedicated CBT School Exam Browser. Students stay 100% focused on their test without the ability to switch apps, split screens, use floating tools, or cheat.",
     stats: [
       { label: isId ? "Keamanan" : "Security", value: "100% Anti-Cheat" },
       { label: isId ? "Ukuran File" : "File Size", value: "~12 MB (Ringan)" },
-      { label: isId ? "Versi" : "Version", value: "v1.0.0 Stable" },
+      { label: isId ? "Versi" : "Version", value: "v1.2.0 Stable" },
       { label: isId ? "Platform" : "Platform", value: "Android 5.0+" },
     ],
     features: isId ? [

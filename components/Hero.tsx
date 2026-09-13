@@ -96,8 +96,8 @@ const Hero: React.FC = () => {
                 <ShieldCheck className="w-4 h-4 text-emerald-500 flex-shrink-0" />
                 <span>
                   {language === 'id' 
-                    ? "Fitur Anti-Contek & Lockdown Screen v1.0.0" 
-                    : "Anti-Cheating & Screen Lockdown v1.0.0"}
+                    ? "Fitur Anti-Contek & Lockdown Screen v1.2.0" 
+                    : "Anti-Cheating & Screen Lockdown v1.2.0"}
                 </span>
               </div>
             </div>

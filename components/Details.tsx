@@ -89,7 +89,7 @@ const Details: React.FC = () => {
                     <Smartphone className="w-5 h-5" />
                   </div>
                   <div>
-                    <h5 className="text-xs font-bold text-slate-900 dark:text-white">Exam Browser APK v1.0.0</h5>
+                    <h5 className="text-xs font-bold text-slate-900 dark:text-white">Exam Browser APK v1.2.0</h5>
                     <p className="text-[11px] text-slate-500 dark:text-slate-400">{language === 'id' ? 'Khusus Android Siswa (Anti-Contek)' : 'For Student Android (Anti-Cheat)'}</p>
                   </div>
                 </div>
