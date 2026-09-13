@@ -1348,7 +1348,7 @@ const AdminPanel: React.FC = () => {
             {/* CONTACT */}
             {activeTab === 'contact' && (
                 <div className="space-y-8 animate-fade-in max-w-4xl mx-auto">
-                  <div className="grid md:grid-cols-2 gap-6">
+                  <div className={`grid ${localContacts.length === 1 ? 'max-w-lg mx-auto grid-cols-1' : 'md:grid-cols-2'} gap-6`}>
                     {localContacts.map((contact, idx) => (
                       <div key={contact.id} className="bg-slate-800/40 p-8 rounded-3xl border border-white/5 space-y-6 relative overflow-hidden">
                         <div className="absolute top-0 left-0 w-1 h-full bg-secondary"></div>

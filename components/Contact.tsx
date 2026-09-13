@@ -13,7 +13,7 @@ const Contact: React.FC = () => {
         <div className="glass-card rounded-3xl p-8 md:p-12 border border-slate-200 dark:border-white/10 text-center" data-aos="fade-up">
           <h2 className="text-3xl font-bold text-slate-900 dark:text-white mb-12">{t('contact.title')}</h2>
           
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 md:gap-12">
+          <div className={`grid ${contacts.length === 1 ? 'max-w-md mx-auto grid-cols-1' : 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3'} gap-8 md:gap-12`}>
             {contacts.map((contact) => (
               <div key={contact.id} className="flex flex-col items-center justify-center gap-6 p-6 rounded-2xl bg-white/50 dark:bg-white/5 border border-slate-200 dark:border-white/10 hover:border-secondary/50 transition-all duration-300 group">
                 <div className="flex flex-col items-center gap-6 w-full">
