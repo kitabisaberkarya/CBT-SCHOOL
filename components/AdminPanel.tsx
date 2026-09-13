@@ -4,9 +4,10 @@ import { useContent } from '../context/ContentContext';
 import { supabase } from '../lib/supabaseClient';
 import { 
   X, Image, Save, Lock, LayoutDashboard, Type, 
-  CreditCard, Phone, List, Layers, LogOut, Upload, Loader2, Trash2, Plus, Video, Users, ArrowLeft, Menu, Images, User, Network
+  CreditCard, Phone, List, Layers, LogOut, Upload, Loader2, Trash2, Plus, Video, Users, ArrowLeft, Menu, Images, User, Network, CheckCircle2, PlayCircle, Eye, AlertCircle
 } from 'lucide-react';
 import { Feature, DocItem, PricingPlan, ContactInfo } from '../types';
+import { parseVideoUrl } from '../utils/videoHelper';
 
 type TabId = 'dashboard' | 'hero' | 'features' | 'docs' | 'network-docs' | 'pricing' | 'contact' | 'clients';
 
@@ -177,15 +178,48 @@ const AdminPanel: React.FC = () => {
   // --- SAVE HANDLERS ---
 
   const handleSaveHero = async () => {
-    if (!window.confirm("Simpan perubahan pada Hero Section?")) return;
     try {
       await setHeroContent(localHeroContent);
       await setHeroImage(localHeroImages.img1);
       await setHeroImage2(localHeroImages.img2);
       await setHeroImage3(localHeroImages.img3);
       await setHeroVideo(localHeroVideo);
-      alert("Berhasil disimpan!");
-    } catch (e) { alert("Gagal menyimpan."); }
+      alert("✅ Semua perubahan Hero Section berhasil disimpan dan aktif!");
+    } catch (e) { alert("Gagal menyimpan hero section."); }
+  };
+
+  const handleSave3DSlider = async () => {
+    try {
+      await setHeroImage(localHeroImages.img1);
+      await setHeroImage2(localHeroImages.img2);
+      await setHeroImage3(localHeroImages.img3);
+      alert("✅ Berhasil! Pengaturan 3D Image Slider telah disimpan dan diperbarui di website.");
+    } catch (e) {
+      alert("Gagal menyimpan 3D Image Slider.");
+    }
+  };
+
+  const handleSaveHeroVideo = async () => {
+    try {
+      await setHeroVideo(localHeroVideo);
+      if (localHeroVideo.trim()) {
+        alert("✅ Berhasil! Video promosi telah disimpan dan aktif di tampilan website.");
+      } else {
+        alert("✅ Video dikosongkan. Tampilan website kini kembali menampilkan 3D Image Slider.");
+      }
+    } catch (e) {
+      alert("Gagal menyimpan video promosi.");
+    }
+  };
+
+  const handleClearHeroVideo = async () => {
+    try {
+      setLocalHeroVideo('');
+      await setHeroVideo('');
+      alert("✅ Video dinonaktifkan. Tampilan website kini beralih ke 3D Image Slider.");
+    } catch (e) {
+      alert("Gagal menonaktifkan video.");
+    }
   };
 
   const handleSaveFeature = async (id: string) => {
@@ -579,145 +613,265 @@ const AdminPanel: React.FC = () => {
                     </div>
                 </div>
 
-                {/* 3D Slider & Video */}
+                {/* 3D Slider & Video Controls */}
                 <div className="grid md:grid-cols-2 gap-8">
                    
-                   {/* IMAGE SLIDER */}
-                   <div className="space-y-6">
-                      <h3 className="text-lg font-bold text-white border-b border-white/5 pb-2">3D Image Slider</h3>
-                      
-                      {/* SLIDE 1 */}
-                      <div className="space-y-2">
-                         <label className="text-xs font-bold text-secondary uppercase tracking-wider">Slide 1 (Utama)</label>
-                         <div className="relative group w-full h-32 bg-slate-900 rounded-xl overflow-hidden border-2 border-dashed border-slate-700 hover:border-secondary transition-colors cursor-pointer">
-                            <img 
-                              src={localHeroImages.img1} 
-                              alt="Slide 1" 
-                              className="w-full h-full object-cover opacity-70 group-hover:opacity-100 transition-opacity" 
-                            />
-                            <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 opacity-0 group-hover:opacity-100 transition-all pointer-events-none z-20">
-                                <Upload className="w-8 h-8 text-white mb-1" />
-                                <span className="text-[10px] font-bold text-white uppercase">Ganti Gambar 1</span>
-                            </div>
-                            <input 
-                                type="file" 
-                                onChange={(e) => handleFileUpload(e, 'hero', (url) => setLocalHeroImages(prev => ({...prev, img1: url})), 'hero1')}
-                                className="absolute inset-0 opacity-0 cursor-pointer z-30"
-                                accept="image/*"
-                                title="Klik untuk mengubah foto"
-                                onClick={(e) => (e.target as HTMLInputElement).value = ''}
-                            />
-                            {uploadingState.isUploading && uploadingState.id === 'hero1' && (
-                                <div className="absolute inset-0 bg-black/80 flex items-center justify-center z-40">
-                                    <Loader2 className="animate-spin text-white w-8 h-8" />
-                                </div>
-                            )}
-                         </div>
+                   {/* 3D IMAGE SLIDER PANEL */}
+                   <div className="bg-slate-800/40 p-6 rounded-3xl border border-white/5 space-y-6 flex flex-col justify-between">
+                      <div>
+                        <div className="flex items-center justify-between border-b border-white/5 pb-3 mb-4">
+                           <div className="flex items-center gap-2">
+                             <Images size={20} className="text-secondary" />
+                             <h3 className="text-lg font-bold text-white">Pengaturan Slide Gambar 3D</h3>
+                           </div>
+                           <span className={`text-[11px] font-bold px-2.5 py-1 rounded-full ${
+                             !localHeroVideo 
+                               ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' 
+                               : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                           }`}>
+                             {!localHeroVideo ? '● Tampil di Web' : '○ Tertutup Video'}
+                           </span>
+                        </div>
+                        
+                        <p className="text-xs text-slate-400 mb-4">
+                          Upload foto atau masukkan URL foto untuk 3 slide animasi 3D hero.
+                        </p>
+
+                        {/* SLIDE 1 */}
+                        <div className="space-y-2 mb-5">
+                           <div className="flex items-center justify-between">
+                              <label className="text-xs font-bold text-secondary uppercase tracking-wider">Slide 1 (Utama)</label>
+                              <span className="text-[10px] text-slate-500">Rekomendasi: 16:9 / Landscape</span>
+                           </div>
+                           <div className="relative group w-full h-32 bg-slate-900 rounded-xl overflow-hidden border-2 border-dashed border-slate-700 hover:border-secondary transition-colors cursor-pointer">
+                              <img 
+                                src={localHeroImages.img1} 
+                                alt="Slide 1" 
+                                className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" 
+                              />
+                              <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 opacity-0 group-hover:opacity-100 transition-all pointer-events-none z-20">
+                                  <Upload className="w-8 h-8 text-white mb-1" />
+                                  <span className="text-[10px] font-bold text-white uppercase">Upload Foto Slide 1</span>
+                              </div>
+                              <input 
+                                  type="file" 
+                                  onChange={(e) => handleFileUpload(e, 'hero', (url) => setLocalHeroImages(prev => ({...prev, img1: url})), 'hero1')}
+                                  className="absolute inset-0 opacity-0 cursor-pointer z-30"
+                                  accept="image/*"
+                                  title="Klik untuk mengubah foto"
+                                  onClick={(e) => (e.target as HTMLInputElement).value = ''}
+                              />
+                              {uploadingState.isUploading && uploadingState.id === 'hero1' && (
+                                  <div className="absolute inset-0 bg-black/80 flex items-center justify-center z-40">
+                                      <Loader2 className="animate-spin text-white w-8 h-8" />
+                                  </div>
+                              )}
+                           </div>
+                           <input 
+                              type="text"
+                              value={localHeroImages.img1}
+                              onChange={(e) => setLocalHeroImages(prev => ({...prev, img1: e.target.value}))}
+                              placeholder="URL Foto Slide 1 (https://...)"
+                              className="w-full bg-slate-950/50 border border-white/10 rounded-lg px-3 py-1.5 text-xs text-white placeholder:text-slate-600 focus:border-secondary transition-colors"
+                           />
+                        </div>
+
+                        {/* SLIDES 2 & 3 */}
+                        <div className="grid grid-cols-2 gap-4 mb-4">
+                           {/* Slide 2 */}
+                           <div className="space-y-2">
+                              <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Slide 2</label>
+                              <div className="relative group w-full h-24 bg-slate-900 rounded-xl overflow-hidden border border-white/10 hover:border-secondary transition-colors cursor-pointer">
+                                  <img src={localHeroImages.img2} className="w-full h-full object-cover opacity-70 group-hover:opacity-100" />
+                                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 opacity-0 group-hover:opacity-100 transition-all pointer-events-none z-20">
+                                      <Upload className="w-5 h-5 text-white mb-1" />
+                                      <span className="text-[9px] font-bold text-white uppercase">Upload</span>
+                                  </div>
+                                  <input 
+                                     type="file" 
+                                     onChange={(e) => handleFileUpload(e, 'hero', (url) => setLocalHeroImages(prev => ({...prev, img2: url})), 'hero2')}
+                                     className="absolute inset-0 opacity-0 cursor-pointer z-30"
+                                     accept="image/*"
+                                     title="Klik untuk mengubah foto"
+                                     onClick={(e) => (e.target as HTMLInputElement).value = ''}
+                                  />
+                                  {uploadingState.isUploading && uploadingState.id === 'hero2' && (
+                                      <div className="absolute inset-0 bg-black/80 flex items-center justify-center z-40">
+                                          <Loader2 className="animate-spin text-white" />
+                                      </div>
+                                  )}
+                              </div>
+                              <input 
+                                 type="text"
+                                 value={localHeroImages.img2}
+                                 onChange={(e) => setLocalHeroImages(prev => ({...prev, img2: e.target.value}))}
+                                 placeholder="URL Slide 2"
+                                 className="w-full bg-slate-950/50 border border-white/10 rounded-lg px-2.5 py-1 text-[11px] text-white placeholder:text-slate-600 focus:border-secondary transition-colors"
+                              />
+                           </div>
+
+                           {/* Slide 3 */}
+                           <div className="space-y-2">
+                              <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Slide 3</label>
+                              <div className="relative group w-full h-24 bg-slate-900 rounded-xl overflow-hidden border border-white/10 hover:border-secondary transition-colors cursor-pointer">
+                                  <img src={localHeroImages.img3} className="w-full h-full object-cover opacity-70 group-hover:opacity-100" />
+                                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 opacity-0 group-hover:opacity-100 transition-all pointer-events-none z-20">
+                                      <Upload className="w-5 h-5 text-white mb-1" />
+                                      <span className="text-[9px] font-bold text-white uppercase">Upload</span>
+                                  </div>
+                                  <input 
+                                     type="file" 
+                                     onChange={(e) => handleFileUpload(e, 'hero', (url) => setLocalHeroImages(prev => ({...prev, img3: url})), 'hero3')}
+                                     className="absolute inset-0 opacity-0 cursor-pointer z-30"
+                                     accept="image/*"
+                                     title="Klik untuk mengubah foto"
+                                     onClick={(e) => (e.target as HTMLInputElement).value = ''}
+                                  />
+                                  {uploadingState.isUploading && uploadingState.id === 'hero3' && (
+                                      <div className="absolute inset-0 bg-black/80 flex items-center justify-center z-40">
+                                          <Loader2 className="animate-spin text-white" />
+                                      </div>
+                                  )}
+                              </div>
+                              <input 
+                                 type="text"
+                                 value={localHeroImages.img3}
+                                 onChange={(e) => setLocalHeroImages(prev => ({...prev, img3: e.target.value}))}
+                                 placeholder="URL Slide 3"
+                                 className="w-full bg-slate-950/50 border border-white/10 rounded-lg px-2.5 py-1 text-[11px] text-white placeholder:text-slate-600 focus:border-secondary transition-colors"
+                              />
+                           </div>
+                        </div>
                       </div>
 
-                      {/* SLIDES 2 & 3 */}
-                      <div className="grid grid-cols-2 gap-4">
-                         <div className="space-y-2">
-                            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Slide 2</label>
-                            <div className="relative group w-full h-24 bg-slate-900 rounded-xl overflow-hidden border border-white/10 hover:border-secondary transition-colors cursor-pointer">
-                                <img src={localHeroImages.img2} className="w-full h-full object-cover opacity-60 group-hover:opacity-100" />
-                                <input 
-                                   type="file" 
-                                   onChange={(e) => handleFileUpload(e, 'hero', (url) => setLocalHeroImages(prev => ({...prev, img2: url})), 'hero2')}
-                                   className="absolute inset-0 opacity-0 cursor-pointer z-30"
-                                   accept="image/*"
-                                   title="Klik untuk mengubah foto"
-                                   onClick={(e) => (e.target as HTMLInputElement).value = ''}
-                                />
-                                {uploadingState.isUploading && uploadingState.id === 'hero2' && (
-                                    <div className="absolute inset-0 bg-black/80 flex items-center justify-center z-40">
-                                        <Loader2 className="animate-spin text-white" />
-                                    </div>
-                                )}
-                            </div>
-                         </div>
-                         <div className="space-y-2">
-                            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Slide 3</label>
-                            <div className="relative group w-full h-24 bg-slate-900 rounded-xl overflow-hidden border border-white/10 hover:border-secondary transition-colors cursor-pointer">
-                                <img src={localHeroImages.img3} className="w-full h-full object-cover opacity-60 group-hover:opacity-100" />
-                                <input 
-                                   type="file" 
-                                   onChange={(e) => handleFileUpload(e, 'hero', (url) => setLocalHeroImages(prev => ({...prev, img3: url})), 'hero3')}
-                                   className="absolute inset-0 opacity-0 cursor-pointer z-30"
-                                   accept="image/*"
-                                   title="Klik untuk mengubah foto"
-                                   onClick={(e) => (e.target as HTMLInputElement).value = ''}
-                                />
-                                {uploadingState.isUploading && uploadingState.id === 'hero3' && (
-                                    <div className="absolute inset-0 bg-black/80 flex items-center justify-center z-40">
-                                        <Loader2 className="animate-spin text-white" />
-                                    </div>
-                                )}
-                            </div>
-                         </div>
-                      </div>
+                      {/* SAVE BUTTON FOR 3D SLIDER */}
+                      <button 
+                        onClick={handleSave3DSlider}
+                        className="w-full bg-emerald-600 hover:bg-emerald-500 text-white py-3 rounded-xl font-bold flex items-center justify-center shadow-lg shadow-emerald-900/20 transition-all transform hover:-translate-y-0.5 active:translate-y-0"
+                      >
+                        <Save size={16} className="mr-2" /> Simpan Slide Gambar 3D
+                      </button>
                    </div>
 
                    {/* VIDEO SECTION */}
-                   <div className="space-y-6">
-                      <h3 className="text-lg font-bold text-white border-b border-white/5 pb-2 flex items-center gap-2">
-                         <Video size={18} className="text-secondary" /> Video Promosi
-                      </h3>
-                      <div className="bg-slate-800/40 p-5 rounded-2xl border border-white/5">
-                        <p className="text-xs text-slate-400 mb-4 leading-relaxed">
-                           Video akan menggantikan Image Slider jika aktif. Kosongkan URL untuk kembali ke Slider.
-                        </p>
-
-                        <div className="w-full aspect-video bg-black rounded-lg border border-slate-700 flex items-center justify-center overflow-hidden mb-4 relative">
-                           {localHeroVideo ? (
-                              <video 
-                                key={localHeroVideo} // Add key for immediate refresh 
-                                src={localHeroVideo} 
-                                controls 
-                                className="w-full h-full object-contain" 
-                              />
-                           ) : (
-                              <div className="text-center text-slate-600">
-                                 <Video size={28} className="mx-auto mb-1 opacity-50" />
-                                 <p className="text-[10px]">No active video</p>
-                              </div>
-                           )}
-                           
-                           {/* Upload Button Overlay */}
-                           <div className="absolute bottom-3 right-3 z-30">
-                              <button className="bg-white/10 hover:bg-white/20 backdrop-blur text-white px-3 py-1.5 rounded-lg text-xs font-bold border border-white/10 flex items-center relative overflow-hidden">
-                                 {uploadingState.isUploading && uploadingState.id === 'video_upload' ? <Loader2 className="animate-spin mr-1" size={12}/> : <Upload className="mr-1" size={12}/>}
-                                 Upload Video
-                                 <input 
-                                    type="file" 
-                                    accept="video/mp4,video/webm"
-                                    onChange={(e) => handleFileUpload(e, 'videos', (url) => setLocalHeroVideo(url), 'video_upload')}
-                                    className="absolute inset-0 opacity-0 cursor-pointer"
-                                 />
-                              </button>
+                   <div className="bg-slate-800/40 p-6 rounded-3xl border border-white/5 space-y-6 flex flex-col justify-between">
+                      <div>
+                        <div className="flex items-center justify-between border-b border-white/5 pb-3 mb-4">
+                           <div className="flex items-center gap-2">
+                             <Video size={20} className="text-secondary" />
+                             <h3 className="text-lg font-bold text-white">Pengaturan Video Promosi</h3>
                            </div>
+                           <span className={`text-[11px] font-bold px-2.5 py-1 rounded-full ${
+                             localHeroVideo 
+                               ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' 
+                               : 'bg-slate-700/50 text-slate-400'
+                           }`}>
+                             {localHeroVideo ? '● Video Aktif' : '○ Video Nonaktif'}
+                           </span>
                         </div>
 
-                        <div className="space-y-2">
-                           <label className="text-[10px] font-bold uppercase text-slate-500">URL Manual</label>
+                        <p className="text-xs text-slate-400 mb-4 leading-relaxed">
+                           Jika video aktif, website akan menampilkan video player ini di bagian Hero. Kosongkan link video jika ingin menampilkan 3D Image Slider.
+                        </p>
+
+                        {/* VIDEO PREVIEW PLAYER */}
+                        {(() => {
+                          const parsed = parseVideoUrl(localHeroVideo);
+                          return (
+                            <div className="w-full aspect-video bg-black rounded-xl border border-slate-700 flex items-center justify-center overflow-hidden mb-4 relative shadow-inner">
+                               {parsed.isEmbed ? (
+                                  <iframe 
+                                    key={parsed.embedUrl}
+                                    src={parsed.embedUrl}
+                                    title="Preview Video Promosi"
+                                    className="w-full h-full border-0"
+                                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                    allowFullScreen
+                                  />
+                               ) : parsed.isDirectVideo ? (
+                                  <video 
+                                    key={localHeroVideo}
+                                    src={localHeroVideo} 
+                                    controls 
+                                    className="w-full h-full object-contain" 
+                                  />
+                               ) : (
+                                  <div className="text-center text-slate-500 p-4">
+                                     <Video size={36} className="mx-auto mb-2 opacity-40 text-secondary" />
+                                     <p className="text-xs font-semibold text-slate-300">Belum Ada Video Aktif</p>
+                                     <p className="text-[10px] text-slate-500 mt-1">Website saat ini menampilkan 3D Image Slider</p>
+                                  </div>
+                               )}
+                               
+                               {/* Upload Direct Video Button Overlay */}
+                               <div className="absolute bottom-3 right-3 z-30">
+                                  <button className="bg-black/70 hover:bg-black/90 backdrop-blur text-white px-3 py-1.5 rounded-lg text-xs font-bold border border-white/20 flex items-center relative overflow-hidden shadow-lg transition-colors">
+                                     {uploadingState.isUploading && uploadingState.id === 'video_upload' ? <Loader2 className="animate-spin mr-1" size={14}/> : <Upload className="mr-1" size={14}/>}
+                                     Upload File MP4
+                                     <input 
+                                        type="file" 
+                                        accept="video/mp4,video/webm"
+                                        onChange={(e) => handleFileUpload(e, 'videos', (url) => setLocalHeroVideo(url), 'video_upload')}
+                                        className="absolute inset-0 opacity-0 cursor-pointer"
+                                        onClick={(e) => (e.target as HTMLInputElement).value = ''}
+                                     />
+                                  </button>
+                               </div>
+                            </div>
+                          );
+                        })()}
+
+                        {/* URL INPUT & CLEAR */}
+                        <div className="space-y-2 mb-4">
+                           <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                             URL Video YouTube / Video Link
+                           </label>
                            <div className="flex gap-2">
                               <input 
                                  type="text" 
                                  value={localHeroVideo}
                                  onChange={(e) => setLocalHeroVideo(e.target.value)}
-                                 placeholder="https://..."
-                                 className="flex-1 bg-slate-950/50 border border-white/10 rounded-lg px-3 py-2 text-xs text-white"
+                                 placeholder="Contoh: https://www.youtube.com/watch?v=... atau https://youtu.be/..."
+                                 className="flex-1 bg-slate-950/50 border border-white/10 rounded-xl px-4 py-2.5 text-xs text-white placeholder:text-slate-600 focus:border-secondary transition-colors"
                               />
                               {localHeroVideo && (
                                  <button 
-                                    onClick={() => setLocalHeroVideo('')}
-                                    className="bg-red-500/20 text-red-400 hover:bg-red-500 hover:text-white px-3 py-2 rounded-lg"
+                                    onClick={handleClearHeroVideo}
+                                    title="Hapus Video & Kembali ke 3D Slider"
+                                    className="bg-red-500/20 text-red-400 hover:bg-red-500 hover:text-white px-3.5 py-2.5 rounded-xl transition-colors flex items-center justify-center flex-shrink-0"
                                  >
                                     <Trash2 size={16} />
                                  </button>
                               )}
                            </div>
+                           <div className="bg-slate-900/60 rounded-lg p-2.5 border border-white/5 text-[11px] text-slate-400 space-y-1">
+                             <p className="flex items-center text-slate-300 font-medium">
+                               <CheckCircle2 size={12} className="text-emerald-400 mr-1.5 flex-shrink-0" />
+                               Mendukung YouTube (watch, youtu.be, shorts, live) & Vimeo
+                             </p>
+                             <p className="text-slate-500 text-[10px] pl-4">
+                               Cukup paste URL YouTube apa saja, sistem otomatis mengonversi ke player video modern.
+                             </p>
+                           </div>
                         </div>
+                      </div>
+
+                      {/* ACTIONS FOR VIDEO */}
+                      <div className="flex gap-3">
+                        <button 
+                          onClick={handleSaveHeroVideo}
+                          className="flex-1 bg-secondary hover:bg-blue-500 text-white py-3 rounded-xl font-bold flex items-center justify-center shadow-lg shadow-blue-900/20 transition-all transform hover:-translate-y-0.5 active:translate-y-0"
+                        >
+                          <Save size={16} className="mr-2" /> Simpan Pengaturan Video
+                        </button>
+                        {localHeroVideo && (
+                          <button 
+                            onClick={handleClearHeroVideo}
+                            className="bg-slate-700 hover:bg-slate-600 text-slate-200 px-4 py-3 rounded-xl font-semibold text-xs transition-colors flex items-center"
+                          >
+                            Matikan Video
+                          </button>
+                        )}
                       </div>
                    </div>
 
@@ -1367,7 +1521,17 @@ const AdminPanel: React.FC = () => {
                      {clients.map((client) => (
                         <div key={client.id} className="bg-slate-800/30 border border-white/5 p-4 rounded-xl flex flex-col items-center justify-center text-center gap-3 group hover:bg-slate-800/50 transition-colors relative">
                            <div className="w-full h-24 bg-black/20 rounded-lg p-4 flex items-center justify-center">
-                                 <img src={client.logoUrl} alt={client.name} className="max-w-full max-h-full object-contain filter grayscale group-hover:grayscale-0 transition-all duration-500" />
+                              <img 
+                                src={client.logoUrl} 
+                                alt={client.name} 
+                                referrerPolicy="no-referrer"
+                                className="max-w-full max-h-full object-contain filter grayscale group-hover:grayscale-0 transition-all duration-500" 
+                                onError={(e) => {
+                                  const target = e.target as HTMLImageElement;
+                                  target.onerror = null;
+                                  target.src = "https://res.cloudinary.com/dt1nrarpq/image/upload/v1771116105/Desain_tanpa_judul_6_qslcij.png";
+                                }}
+                              />
                            </div>
                            <span className="font-medium text-white text-sm line-clamp-2 min-h-[2.5em]">{client.name}</span>
                            <button 
