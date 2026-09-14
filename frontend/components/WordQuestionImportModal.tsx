@@ -405,7 +405,7 @@ const WordQuestionImportModal: React.FC<WordQuestionImportModalProps> = ({ testT
             }),
             new Paragraph({
               alignment: AlignmentType.CENTER, spacing: { after: 160 },
-              children: [new TextRun({ text: 'Format Tabel 6 Kolom: NO | SOAL | JENIS | OPSI | JAWABAN | KUNCI', italics: true, size: 16, color: '555555' })],
+              children: [new TextRun({ text: 'Format Tabel 6 Kolom: NO | SOAL | JENIS | OPSI | JAWABAN | KUNCI (kolom ke-7 opsional "POIN" bisa ditambahkan manual untuk poin per sub-soal PG Kompleks/Benar-Salah/Menjodohkan)', italics: true, size: 16, color: '555555' })],
             }),
             table,
             new Paragraph({
@@ -728,7 +728,8 @@ const WordQuestionImportModal: React.FC<WordQuestionImportModalProps> = ({ testT
                 bold: true, color: 'C62828', size: 15,
                 text: '★ HAPUS SEMUA BARIS CONTOH (No. 1–15) sebelum mengisi soal Anda. '
                   + 'Pertahankan baris HEADER (NO | SOAL | JENIS | OPSI | JAWABAN | KUNCI). '
-                  + 'Untuk soal bergarbar: sisipkan gambar langsung di dalam sel SOAL atau JAWABAN.',
+                  + 'Untuk soal bergarbar: sisipkan gambar langsung di dalam sel SOAL atau JAWABAN. '
+                  + 'Opsional: tambahkan kolom ke-7 "POIN" untuk mengisi poin manual per opsi/pernyataan/pasangan (PG Kompleks, Benar-Salah, Menjodohkan).',
               })],
             }),
           ],
@@ -970,6 +971,16 @@ const WordQuestionImportModal: React.FC<WordQuestionImportModalProps> = ({ testT
       const COL_OPSI   = findCol(['opsi','pilihan','option']) !== -1 ? findCol(['opsi','pilihan','option']) : 3;
       const COL_JAWABAN= findCol(['jawaban','answer']) !== -1 ? findCol(['jawaban','answer']) : 4;
       const COL_KUNCI  = findCol(['kunci','key','benar']) !== -1 ? findCol(['kunci','key','benar']) : 5;
+      const COL_POIN   = findCol(['poin','point','nilai']); // opsional — -1 jika kolom tidak ada di tabel
+
+      // Baca poin manual opsional per baris (kolom POIN). undefined jika kolom tidak ada / sel kosong.
+      const getPoin = (r: number): number | undefined => {
+        if (COL_POIN === -1) return undefined;
+        const val = (textGrid[r][COL_POIN] ?? '').trim();
+        if (val === '') return undefined;
+        const n = parseFloat(val.replace(',', '.'));
+        return isNaN(n) ? undefined : n;
+      };
 
       // Grouping soal: deteksi soal baru saat kolom NO berubah ke angka berbeda
       const groups: number[][] = [];
@@ -1084,6 +1095,7 @@ const WordQuestionImportModal: React.FC<WordQuestionImportModalProps> = ({ testT
           const isCorrectMark = (k: string) =>
             k === 'V' || k === '✓' || k === '√' || k === '✔' || k === '☑' || k === '✅';
 
+          const pgkPoints: Record<string, number> = {};
           rowIndices.forEach((r) => {
             const jawabanText = (textGrid[r][COL_JAWABAN] ?? '').trim();   // plain — for non-empty check
             const jawabanHtml = (htmlGrid[r][COL_JAWABAN] ?? '').trim();   // rich — stored in DB
@@ -1092,6 +1104,8 @@ const WordQuestionImportModal: React.FC<WordQuestionImportModalProps> = ({ testT
               const optIdx = opts.length; // indeks SEBELUM push
               opts.push(jawabanHtml || jawabanText);
               if (isCorrectMark(kunci)) correct.push(optIdx);
+              const poin = getPoin(r);
+              if (poin !== undefined) pgkPoints[String(optIdx)] = poin;
             }
           });
 
@@ -1166,13 +1180,16 @@ const WordQuestionImportModal: React.FC<WordQuestionImportModalProps> = ({ testT
               errors.push(`Soal #${soalNo}: PG Kompleks harus memiliki minimal 1 kunci (V).`);
               return;
             }
-            qObj.answer_key = { indices: correct };
+            qObj.answer_key = Object.keys(pgkPoints).length > 0
+              ? { indices: correct, points: pgkPoints, mode: 'partial', penaltyPerWrong: 0 }
+              : { indices: correct };
           }
         } else if (jenis === 3) {
           // Menjodohkan: JAWABAN=item kiri, KUNCI=pasangan kanan
           const left: string[] = [];
           const right: string[] = [];
           const pairs: Record<string, string> = {};
+          const leftPoints: (number | undefined)[] = [];
           rowIndices.forEach((r, i) => {
             const col1Text = (textGrid[r][COL_JAWABAN] ?? '').trim();
             const col1Html = (htmlGrid[r][COL_JAWABAN] ?? '').trim();
@@ -1186,20 +1203,27 @@ const WordQuestionImportModal: React.FC<WordQuestionImportModalProps> = ({ testT
             if (!leftEmpty) {
               left.push(leftItem);
               right.push(rightItem);
-              pairs[`L${i + 1}`] = `R${i + 1}`;
+              pairs[`L${left.length}`] = `R${left.length}`;
+              leftPoints.push(getPoin(r));
             }
           });
           qObj.options = left;
           qObj.matching_right_options = right;
           qObj.answer_key = { pairs };
           // Metadata diperlukan agar soal menjodohkan dapat dirender
-          const matchingLeft = left.map((content, mi) => ({ id: `L${mi + 1}`, content }));
+          const hasAnyMatchingPoin = leftPoints.some(p => p !== undefined);
+          const matchingLeft = left.map((content, mi) => ({
+            id: `L${mi + 1}`,
+            content,
+            ...(hasAnyMatchingPoin ? { poin: leftPoints[mi] ?? 0 } : {}),
+          }));
           const matchingRight = right.map((content, mi) => ({ id: `R${mi + 1}`, content }));
           qObj.metadata = { matchingLeft, matchingRight };
         } else if (jenis === 4) {
           // Benar/Salah: JAWABAN=pernyataan, KUNCI=B/S/Benar/Salah
           const stmts: string[] = [];
           const tfKey: Record<string, boolean> = {};
+          const tfPoints: Record<string, number> = {};
           const isTrueMark = (k: string) => k === 'B' || k === 'BENAR' || k === 'TRUE' || k === 'T' || k === '1';
           let stmtIdx = 0;
           rowIndices.forEach((r) => {
@@ -1207,8 +1231,11 @@ const WordQuestionImportModal: React.FC<WordQuestionImportModalProps> = ({ testT
             const jawabanHtml = (htmlGrid[r][COL_JAWABAN] ?? '').trim();
             const kunci = (textGrid[r][COL_KUNCI] ?? '').trim().toUpperCase();
             if (jawabanText) {
+              const idx = stmtIdx++;
               stmts.push(jawabanHtml || jawabanText);
-              tfKey[String(stmtIdx++)] = isTrueMark(kunci);
+              tfKey[String(idx)] = isTrueMark(kunci);
+              const poin = getPoin(r);
+              if (poin !== undefined) tfPoints[String(idx)] = poin;
             }
           });
           // Fallback: jika JAWABAN kosong, gunakan SOAL sebagai satu pernyataan
@@ -1220,11 +1247,14 @@ const WordQuestionImportModal: React.FC<WordQuestionImportModalProps> = ({ testT
             if (firstKunci !== undefined) {
               stmts.push(soalHtml || soalText);
               tfKey['0'] = isTrueMark(firstKunci);
+              const poin = getPoin(rowIndices[0]);
+              if (poin !== undefined) tfPoints['0'] = poin;
               qObj._isSingleStatement = true; // tandai untuk penggabungan post-process
             }
           }
           qObj.options = stmts;
-          qObj.answer_key = tfKey;
+          qObj.answer_key = Object.keys(tfPoints).length > 0 ? { tf: tfKey, points: tfPoints } : tfKey;
+          qObj._tfPoints = tfPoints; // dipakai post-process merge (dihapus sebelum push final)
         } else if (jenis === 5) {
           // Essay: JAWABAN=kunci/rubrik penilaian (preserve rich HTML)
           qObj.options = [];
@@ -1259,25 +1289,32 @@ const WordQuestionImportModal: React.FC<WordQuestionImportModalProps> = ({ testT
         if (tfGroup.length > 1) {
           const mergedOptions: string[] = [];
           const mergedKey: Record<string, boolean> = {};
+          const mergedPoints: Record<string, number> = {};
           tfGroup.forEach((tq: any, mIdx: number) => {
             mergedOptions.push(tq.options[0]);
-            mergedKey[String(mIdx)] = (tq.answer_key as Record<string, boolean>)['0'] ?? false;
+            const rawKey = tq.answer_key?.tf ?? tq.answer_key;
+            mergedKey[String(mIdx)] = (rawKey as Record<string, boolean>)?.['0'] ?? false;
+            const poin = (tq._tfPoints as Record<string, number> | undefined)?.['0'];
+            if (poin !== undefined) mergedPoints[String(mIdx)] = poin;
           });
           // Jika semua punya teks instruksi sama → gunakan, jika beda → teks default
           const uniqueInstructions = [...new Set(tfGroup.map((tq: any) => tq.question))];
           const instruction = uniqueInstructions.length === 1 && uniqueInstructions[0]
             ? uniqueInstructions[0]
             : 'Tentukan apakah pernyataan berikut benar atau salah!';
-          const { _isSingleStatement: _removed, ...baseQ } = tfGroup[0];
-          mergedQuestions.push({ ...baseQ, question: instruction, options: mergedOptions, answer_key: mergedKey });
+          const { _isSingleStatement: _removed, _tfPoints: _removed2, ...baseQ } = tfGroup[0];
+          const mergedAnswerKey = Object.keys(mergedPoints).length > 0
+            ? { tf: mergedKey, points: mergedPoints }
+            : mergedKey;
+          mergedQuestions.push({ ...baseQ, question: instruction, options: mergedOptions, answer_key: mergedAnswerKey });
           qi = qj;
         } else {
-          const { _isSingleStatement: _removed, ...cleanQ } = q;
+          const { _isSingleStatement: _removed, _tfPoints: _removed2, ...cleanQ } = q;
           mergedQuestions.push(cleanQ);
           qi++;
         }
       } else {
-        const { _isSingleStatement: _removed, ...cleanQ } = q;
+        const { _isSingleStatement: _removed, _tfPoints: _removed2, ...cleanQ } = q;
         mergedQuestions.push(cleanQ);
         qi++;
       }
@@ -1478,6 +1515,7 @@ const WordQuestionImportModal: React.FC<WordQuestionImportModalProps> = ({ testT
               <p className="text-xs text-blue-600">
                 Template berbentuk tabel dengan kolom: <strong>NO | SOAL | JENIS | OPSI | JAWABAN | KUNCI</strong>.
                 Isi soal sesuai contoh, lalu simpan sebagai .docx.
+                Opsional: tambahkan kolom ke-7 <strong>POIN</strong> untuk poin manual per opsi/pernyataan/pasangan (PG Kompleks, Benar-Salah, Menjodohkan).
               </p>
             </div>
             <button onClick={handleDownloadTemplate} className="flex items-center px-4 py-2 bg-white border border-blue-300 text-blue-700 font-bold rounded-lg hover:bg-blue-50 shadow-sm text-xs whitespace-nowrap">

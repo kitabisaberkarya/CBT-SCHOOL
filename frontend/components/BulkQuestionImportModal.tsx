@@ -49,6 +49,9 @@ const BulkQuestionImportModal: React.FC<BulkQuestionImportModalProps> = ({ testT
       { header: 'BOBOT', key: 'weight', width: 8 },
       { header: 'TOPIK', key: 'topic', width: 20 },
       { header: 'URL MEDIA (Gambar/Audio/Video)', key: 'media_url', width: 45 },
+      { header: 'POIN OPSI/PERNYATAAN/PASANGAN (pisah ;, opsional)', key: 'poin', width: 32 },
+      { header: 'MODE PENILAIAN PGK (PARSIAL/KETAT)', key: 'pgk_mode', width: 20 },
+      { header: 'PENALTI PGK (opsional)', key: 'pgk_penalty', width: 12 },
     ];
 
     // --- STYLE HEADER ---
@@ -277,6 +280,9 @@ const BulkQuestionImportModal: React.FC<BulkQuestionImportModalProps> = ({ testT
       ['LEVEL KOGNITIF', 'L1 = Mengingat/Memahami  |  L2 = Mengaplikasikan/Menganalisis  |  L3 = Mengevaluasi/Mencipta'],
       ['KESULITAN', 'Easy | Medium | Hard'],
       ['BOBOT', 'Nilai poin soal (angka). Contoh: 1, 2, 5, 10'],
+      ['POIN OPSI/PERNYATAAN/PASANGAN', 'Opsional — poin manual per opsi PGK / pernyataan Benar-Salah / pasangan Menjodohkan, dipisah ";" sesuai urutan OPSI A-E yang diisi. Contoh: 2;1;1. Kosongkan jika tidak pakai poin manual.'],
+      ['MODE PENILAIAN PGK', 'Opsional, khusus PG Kompleks — PARSIAL (default, jumlah poin opsi benar dikurangi penalti) atau KETAT (semua-atau-tidak).'],
+      ['PENALTI PGK', 'Opsional, khusus PG Kompleks mode PARSIAL — poin dikurangi per opsi salah yang dipilih.'],
       ['TOPIK', 'Nama topik/materi soal. Contoh: Matematika, Biologi, PKN'],
       ['URL MEDIA', 'Link URL gambar/audio/video. Kosongkan jika tidak ada media. Contoh: https://...jpg'],
       ['', ''],
@@ -409,7 +415,26 @@ const BulkQuestionImportModal: React.FC<BulkQuestionImportModalProps> = ({ testT
                         errors.push(`Baris ${i}: Kunci jawaban PG Kompleks tidak valid.`);
                         continue;
                     }
-                    qObj.answer_key = { indices }; 
+                    qObj.answer_key = { indices };
+
+                    // POIN opsional per opsi (kolom 15), dipisah ";", urut sesuai opts (posisi setelah difilter)
+                    const poinRaw = getCell(15);
+                    if (poinRaw) {
+                        const poinParts = poinRaw.split(';').map(p => parseFloat(p.trim()));
+                        const points: Record<string, number> = {};
+                        opts.forEach((_, oi) => {
+                            if (!isNaN(poinParts[oi])) points[String(oi)] = poinParts[oi];
+                        });
+                        if (Object.keys(points).length > 0) {
+                            const modeRaw = (getCell(16) || '').toUpperCase();
+                            qObj.answer_key = {
+                                indices,
+                                points,
+                                mode: modeRaw === 'KETAT' ? 'strict' : 'partial',
+                                penaltyPerWrong: parseFloat(getCell(17)) || 0,
+                            };
+                        }
+                    }
                 }
             }
             // 2. MATCHING
@@ -460,8 +485,22 @@ const BulkQuestionImportModal: React.FC<BulkQuestionImportModalProps> = ({ testT
                     }
                 });
                 qObj.answer_key = { pairs: finalPairs };
+
+                // POIN opsional per pasangan/premis kiri (kolom 15), dipisah ";", urut sesuai leftOpts
+                const poinRaw = getCell(15);
+                let leftPoints: (number | undefined)[] = leftOpts.map(() => undefined);
+                if (poinRaw) {
+                    const poinParts = poinRaw.split(';').map(p => parseFloat(p.trim()));
+                    leftPoints = leftOpts.map((_, li) => (!isNaN(poinParts[li]) ? poinParts[li] : undefined));
+                }
+                const hasAnyMatchingPoin = leftPoints.some(p => p !== undefined);
+
                 // Metadata agar soal menjodohkan bisa dirender di TestScreen (konsisten dengan TXT/Word)
-                const matchingLeft = leftOpts.map((content, mi) => ({ id: `L${mi + 1}`, content }));
+                const matchingLeft = leftOpts.map((content, mi) => ({
+                    id: `L${mi + 1}`,
+                    content,
+                    ...(hasAnyMatchingPoin ? { poin: leftPoints[mi] ?? 0 } : {}),
+                }));
                 const matchingRight = rightOpts.map((content, mi) => ({ id: `R${mi + 1}`, content }));
                 qObj.metadata = { matchingLeft, matchingRight };
             }
@@ -494,7 +533,18 @@ const BulkQuestionImportModal: React.FC<BulkQuestionImportModalProps> = ({ testT
                         }
                     }
                 });
-                qObj.answer_key = tfKey;
+                // POIN opsional per pernyataan (kolom 15), dipisah ";", urut sesuai stmts
+                const poinRaw = getCell(15);
+                if (poinRaw) {
+                    const poinParts = poinRaw.split(';').map(p => parseFloat(p.trim()));
+                    const points: Record<string, number> = {};
+                    stmts.forEach((_, si) => {
+                        if (!isNaN(poinParts[si])) points[String(si)] = poinParts[si];
+                    });
+                    qObj.answer_key = Object.keys(points).length > 0 ? { tf: tfKey, points } : tfKey;
+                } else {
+                    qObj.answer_key = tfKey;
+                }
             }
 
             parsedQuestions.push(qObj);

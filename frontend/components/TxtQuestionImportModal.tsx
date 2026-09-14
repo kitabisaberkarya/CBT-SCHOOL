@@ -27,6 +27,13 @@ ATURAN PENULISAN:
 6. KESULITAN: Easy | Medium | Hard
 7. BOBOT   : poin soal, angka (default: 1)
 8. TOPIK   : nama materi/bab soal
+9. POIN MANUAL PER SUB-SOAL (opsional, khusus MULTIPLE/TRUE_FALSE/MATCHING):
+   - MULTIPLE   : POIN_A, POIN_B, ... (poin per opsi benar)
+                  MODE_PENILAIAN: PARSIAL (default) | KETAT
+                  PENALTI: poin dikurangi per opsi salah yang dipilih (mode PARSIAL)
+   - TRUE_FALSE : POIN_1, POIN_2, ... (poin per pernyataan, urut sesuai PERNYATAAN_n)
+   - MATCHING   : POIN_1, POIN_2, ... (poin per pasangan, urut sesuai KIRI_n)
+   Jika tidak diisi sama sekali, soal ternilai seperti biasa (tanpa poin manual).
 =======================================================
 
 
@@ -298,7 +305,7 @@ TOPIK: PKN Demokrasi
       if (!typeRaw || !questionText) {
         // Jika tidak ada key soal yang dikenal → blok panduan/header, skip diam-diam
         const hasSoalKey = lines.some(l =>
-          /^(TIPE|SOAL|JAWABAN|OPSI_[A-E]|PERNYATAAN_\d+|KIRI_\d+|KANAN|MEDIA|LEVEL|KESULITAN|BOBOT|TOPIK)\s*:/i.test(l)
+          /^(TIPE|SOAL|JAWABAN|OPSI_[A-E]|PERNYATAAN_\d+|KIRI_\d+|KANAN|MEDIA|LEVEL|KESULITAN|BOBOT|TOPIK|POIN_[A-E]|POIN_\d+|MODE_PENILAIAN|PENALTI)\s*:/i.test(l)
         );
         if (!hasSoalKey) return;
         if (lines.length < 3) return;
@@ -362,6 +369,26 @@ TOPIK: PKN Demokrasi
            const parts = answerRaw.split(',').map(p => p.trim().toUpperCase());
            const indices = parts.map(p => p.charCodeAt(0) - 65).filter(i => i >= 0 && i < opts.length);
            qObj.answer_key = { indices: indices };
+
+           // POIN_A, POIN_B, ... (opsional — per opsi, hanya aktif jika minimal 1 diisi)
+           const pgkPoints: Record<string, number> = {};
+           let hasAnyPgkPoin = false;
+           ['A', 'B', 'C', 'D', 'E'].forEach((char, i) => {
+              const val = getValue(`POIN_${char}`);
+              if (val !== '' && i < opts.length) {
+                 pgkPoints[String(i)] = parseFloat(val) || 0;
+                 hasAnyPgkPoin = true;
+              }
+           });
+           if (hasAnyPgkPoin) {
+              const modeRaw = getValue('MODE_PENILAIAN').toUpperCase();
+              qObj.answer_key = {
+                 indices: indices,
+                 points: pgkPoints,
+                 mode: modeRaw === 'KETAT' ? 'strict' : 'partial',
+                 penaltyPerWrong: parseFloat(getValue('PENALTI')) || 0,
+              };
+           }
         }
       } 
       else if (systemType === 'matching') {
@@ -381,7 +408,17 @@ TOPIK: PKN Demokrasi
 
          // ── FIX MATCHING: Bangun metadata dengan struktur yang sama seperti QuestionModal ──
          // Ini diperlukan agar soal menjodohkan bisa tampil dengan benar di bank soal & ujian
-         const matchingLeft = leftOpts.map((content, i) => ({ id: `L${i + 1}`, content }));
+         // POIN_1, POIN_2, ... (opsional — per pasangan/premis kiri, hanya aktif jika minimal 1 diisi)
+         const matchingPoints: (number | undefined)[] = leftOpts.map((_, i) => {
+            const val = getValue(`POIN_${i + 1}`);
+            return val !== '' ? (parseFloat(val) || 0) : undefined;
+         });
+         const hasAnyMatchingPoin = matchingPoints.some(p => p !== undefined);
+         const matchingLeft = leftOpts.map((content, i) => ({
+            id: `L${i + 1}`,
+            content,
+            ...(hasAnyMatchingPoin ? { poin: matchingPoints[i] ?? 0 } : {}),
+         }));
          const matchingRight = rightOpts.map((content, i) => ({ id: `R${i + 1}`, content }));
          qObj.metadata = { matchingLeft, matchingRight };
 
@@ -422,7 +459,18 @@ TOPIK: PKN Demokrasi
                if (!isNaN(idx)) tfKey[idx.toString()] = boolVal;
             }
          });
-         qObj.answer_key = tfKey;
+
+         // POIN_1, POIN_2, ... (opsional — per pernyataan, hanya aktif jika minimal 1 diisi)
+         const tfPoints: Record<string, number> = {};
+         let hasAnyTfPoin = false;
+         stmts.forEach((_, i) => {
+            const val = getValue(`POIN_${i + 1}`);
+            if (val !== '') {
+               tfPoints[String(i)] = parseFloat(val) || 0;
+               hasAnyTfPoin = true;
+            }
+         });
+         qObj.answer_key = hasAnyTfPoin ? { tf: tfKey, points: tfPoints } : tfKey;
       }
       else if (systemType === 'essay') {
          qObj.options = [];
