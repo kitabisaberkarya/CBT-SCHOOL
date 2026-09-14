@@ -71,6 +71,16 @@ const SingleCard: React.FC<SingleCardProps> = ({ staffUser, config, rc, cardRef 
     : null;
   const subInfo = rc.subInfo(staffUser);
 
+  // Ukuran font nama menyesuaikan panjang nama agar tidak terpotong.
+  // Catatan: sebelumnya pakai -webkit-line-clamp (2 baris), tapi html2canvas
+  // (dipakai saat download PDF) tidak mendukung properti ini dengan benar —
+  // hasilnya nama panjang terpotong mentah tanpa "..." khusus di file PDF,
+  // meski tampil normal di preview browser biasa. Perkecil font secara
+  // proaktif untuk nama panjang jauh lebih andal karena hanya mengandalkan
+  // word-wrap standar yang di-render sama persis di preview, PDF, dan print.
+  const nameLen = displayName.length;
+  const nameFontSize = nameLen > 32 ? 8.5 : nameLen > 26 ? 9.5 : nameLen > 20 ? 11 : nameLen > 14 ? 12 : 13;
+
   return (
     <div
       ref={cardRef}
@@ -99,7 +109,7 @@ const SingleCard: React.FC<SingleCardProps> = ({ staffUser, config, rc, cardRef 
             <img src={config.logoUrl} alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ color: 'white', fontWeight: 800, fontSize: '9.5px', lineHeight: 1.25, textTransform: 'uppercase', letterSpacing: '0.04em', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as any }}>
+            <div style={{ color: 'white', fontWeight: 800, fontSize: (config.schoolName || '').length > 28 ? '7.5px' : (config.schoolName || '').length > 20 ? '8.5px' : '9.5px', lineHeight: 1.25, textTransform: 'uppercase', letterSpacing: '0.03em', wordBreak: 'break-word' }}>
               {config.schoolName}
             </div>
             <div style={{ color: rc.accentColor, fontSize: '7px', fontWeight: 600, marginTop: '2px', letterSpacing: '0.1em', textTransform: 'uppercase' }}>
@@ -119,7 +129,7 @@ const SingleCard: React.FC<SingleCardProps> = ({ staffUser, config, rc, cardRef 
         </div>
 
         {/* Nama */}
-        <div style={{ color: 'white', fontWeight: 900, fontSize: '13px', letterSpacing: '0.06em', textTransform: 'uppercase', textAlign: 'center', lineHeight: 1.25, marginBottom: '6px', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as any }}>
+        <div style={{ color: 'white', fontWeight: 900, fontSize: `${nameFontSize}px`, letterSpacing: '0.04em', textTransform: 'uppercase', textAlign: 'center', lineHeight: 1.2, marginBottom: '6px', wordBreak: 'break-word', padding: '0 2px' }}>
           {displayName}
         </div>
 
