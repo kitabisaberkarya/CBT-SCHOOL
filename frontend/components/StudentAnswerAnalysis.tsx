@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import ExcelJS from 'exceljs';
 import { Test, User } from '../types';
 import { supabase } from '../supabaseClient';
+import { scorePgk, scoreTrueFalse, scoreMatching } from '../utils/scoring';
 
 interface StudentAnswerAnalysisProps {
   tests: Map<string, Test>;
@@ -22,7 +23,8 @@ interface QuestionMeta {
   id: number;
   question: string;
   correctAnswerIndex: number;
-  answerKey: number[] | null;  // untuk complex_multiple_choice: array of correct indices
+  answerKey: any; // shape penuh (indices/tf/pairs + points opsional) — lihat scoring.ts
+  metadata?: { matchingLeft?: { id: string; poin?: number }[] };
   options: string[];
   type: string;
   weight: number;
@@ -58,7 +60,7 @@ const StudentAnswerAnalysis: React.FC<StudentAnswerAnalysisProps> = ({ tests, us
         // 1. Fetch questions
         const { data: qData, error: qErr } = await supabase
           .from('questions')
-          .select('id, question, options, correct_answer_index, answer_key, type, weight')
+          .select('id, question, options, correct_answer_index, answer_key, metadata, type, weight')
           .eq('test_id', testId)
           .order('id', { ascending: true });
 
@@ -68,19 +70,24 @@ const StudentAnswerAnalysis: React.FC<StudentAnswerAnalysisProps> = ({ tests, us
         }
 
         const parsedQuestions: QuestionMeta[] = qData.map((q: any) => {
-          let answerKey: number[] | null = null;
-          if (q.type === 'complex_multiple_choice' && q.answer_key) {
+          let answerKey: any = null;
+          if (q.answer_key) {
             try {
-              const ak = typeof q.answer_key === 'string' ? JSON.parse(q.answer_key) : q.answer_key;
-              if (Array.isArray(ak?.indices)) answerKey = ak.indices.map(Number);
-              else if (Array.isArray(ak)) answerKey = ak.map(Number);
-            } catch { /* ignore */ }
+              answerKey = typeof q.answer_key === 'string' ? JSON.parse(q.answer_key) : q.answer_key;
+            } catch { answerKey = null; }
+          }
+          let metadata: any = undefined;
+          if (q.metadata) {
+            try {
+              metadata = typeof q.metadata === 'string' ? JSON.parse(q.metadata) : q.metadata;
+            } catch { metadata = undefined; }
           }
           return {
             id: q.id,
             question: q.question,
             correctAnswerIndex: q.correct_answer_index ?? -1,
             answerKey,
+            metadata,
             options: q.options ?? [],
             type: q.type,
             weight: q.weight || 1,
@@ -202,59 +209,35 @@ const StudentAnswerAnalysis: React.FC<StudentAnswerAnalysisProps> = ({ tests, us
     return studentRows.filter(r => r.studentClass === filterClass);
   }, [studentRows, filterClass]);
 
-  // ─── Helper: parse nilai true/false dari berbagai format storage ─────────
-  // Format DB aktual: {"0":true} atau {"0":false} (JSON object dari TestScreen)
-  // Format lama: "true"/"false"/"benar"/"salah"/"1"/"0"
-  const parseTrueFalseValue = useCallback((raw: string | null): boolean | null => {
+  // ─── Adapter: parse raw JSON jawaban lalu delegasikan ke scoring.ts ──────
+  // Memakai fungsi yang SAMA dengan yang dipakai TestScreen.tsx agar skor di
+  // layar ini selalu konsisten (menghindari drift antara dua implementasi).
+  const parseJsonRaw = useCallback(<T,>(raw: string | null): T | null => {
     if (raw === null) return null;
-    // Format JSON object: {"0":true} atau {"0":false}
-    try {
-      const parsed = JSON.parse(raw);
-      if (typeof parsed === 'object' && parsed !== null && '0' in parsed) {
-        return Boolean(parsed['0']);
-      }
-      if (typeof parsed === 'boolean') return parsed;
-    } catch { /* bukan JSON, lanjut ke pengecekan string */ }
-    // Format string biasa
-    const val = raw.toLowerCase().trim();
-    if (val === 'true'  || val === 'benar' || val === '1') return true;
-    if (val === 'false' || val === 'salah' || val === '0') return false;
-    return null;
+    try { return JSON.parse(raw) as T; } catch { return null; }
   }, []);
 
-  // ─── Helper: cek jawaban benar untuk soal true/false ──────────────────
-  const isTrueFalseCorrect = useCallback((raw: string | null, correctIdx: number): boolean => {
-    if (correctIdx < 0) return false;
-    const boolVal = parseTrueFalseValue(raw);
-    if (boolVal === null) return false;
-    if (correctIdx === 0) return boolVal === true;  // kunci = Benar
-    if (correctIdx === 1) return boolVal === false; // kunci = Salah
-    return false;
-  }, [parseTrueFalseValue]);
+  const pgkResult = useCallback((raw: string | null, q: QuestionMeta) =>
+    scorePgk(parseJsonRaw<number[]>(raw), q.answerKey, q.weight || 1), [parseJsonRaw]);
 
-  // ─── Helper: cek jawaban benar untuk PG Kompleks ──────────────────────
-  const isComplexMcCorrect = useCallback((raw: string | null, answerKey: number[] | null): boolean => {
-    if (!raw || !answerKey || answerKey.length === 0) return false;
-    try {
-      const selected: number[] = JSON.parse(raw);
-      if (!Array.isArray(selected) || selected.length !== answerKey.length) return false;
-      const sortedSel = [...selected].map(Number).sort((a, b) => a - b);
-      const sortedKey = [...answerKey].map(Number).sort((a, b) => a - b);
-      return sortedSel.every((v, i) => v === sortedKey[i]);
-    } catch { return false; }
-  }, []);
+  const tfResult = useCallback((raw: string | null, q: QuestionMeta) =>
+    scoreTrueFalse(parseJsonRaw<Record<number, boolean>>(raw), q.answerKey, q.weight || 1), [parseJsonRaw]);
+
+  const matchingResult = useCallback((raw: string | null, q: QuestionMeta) =>
+    scoreMatching(parseJsonRaw<Record<string, string>>(raw), q.answerKey, q.metadata, q.weight || 1), [parseJsonRaw]);
 
   // ─── Helper: format kunci jawaban PG Kompleks → "A,B,D" ──────────────
-  const formatComplexMcKey = useCallback((answerKey: number[] | null): string => {
-    if (!answerKey || answerKey.length === 0) return '—';
-    return [...answerKey].sort((a, b) => a - b).map(i => String.fromCharCode(65 + i)).join(',');
+  const formatComplexMcKey = useCallback((answerKey: any): string => {
+    const indices: number[] = Array.isArray(answerKey?.indices) ? answerKey.indices : [];
+    if (indices.length === 0) return '—';
+    return [...indices].sort((a, b) => a - b).map(i => String.fromCharCode(65 + i)).join(',');
   }, []);
 
   // ─── Per-student score calculation ─────────────────────────────────────
   // Formula sengaja disamakan persis dengan scoring.ts (weighted average)
   // agar nilai di kolom % konsisten dengan nilai di Rekapitulasi Nilai.
   const getScore = (row: StudentRow) => {
-    let correct = 0;    // jumlah soal benar (untuk display kolom "Benar")
+    let correct = 0;    // jumlah soal FULL CREDIT (untuk display kolom "Benar")
     let totalScore = 0; // skor berbobot
     let totalWeight = 0;
 
@@ -267,35 +250,27 @@ const StudentAnswerAnalysis: React.FC<StudentAnswerAnalysisProps> = ({ tests, us
       if (!hasAnswer) return;
 
       if (q.type === 'essay') {
-        // Essay SELALU masuk penyebut (identik dengan scoring.ts setelah fix).
-        // Nilai = 0 jika belum dikoreksi, sehingga skor tidak inflated.
+        // Essay SELALU masuk penyebut (identik dengan scoring.ts).
+        // Nilai = 0 di layar ini (tidak ada manual_score) — konsisten dgn sebelumnya.
         totalWeight += weight;
-        // Tidak ada auto-score untuk essay di sini — kontribusi ke totalScore = 0
-        return;
-      }
-
-      if (q.type === 'matching') {
-        // Matching proporsioanal di scoring.ts; untuk tampilan analisa cukup skip
-        // karena student_answers matching di sini tidak bisa dihitung per-pasangan
         return;
       }
 
       totalWeight += weight;
 
-      let isCorrect = false;
+      let earned = 0;
       if (q.type === 'true_false') {
-        isCorrect = isTrueFalseCorrect(ans.raw, q.correctAnswerIndex);
+        earned = tfResult(ans.raw, q).earned;
       } else if (q.type === 'complex_multiple_choice') {
-        isCorrect = isComplexMcCorrect(ans.raw, q.answerKey);
-      } else {
-        // multiple_choice
-        isCorrect = ans.idx !== null && ans.idx === q.correctAnswerIndex;
+        earned = pgkResult(ans.raw, q).earned;
+      } else if (q.type === 'matching') {
+        earned = matchingResult(ans.raw, q).earned;
+      } else if (ans.idx !== null && ans.idx === q.correctAnswerIndex) {
+        earned = weight;
       }
 
-      if (isCorrect) {
-        correct++;
-        totalScore += weight;
-      }
+      totalScore += earned;
+      if (earned >= weight - 0.001) correct++;
     });
 
     // Gunakan Math.round agar identik dengan scoring.ts
@@ -313,23 +288,26 @@ const StudentAnswerAnalysis: React.FC<StudentAnswerAnalysisProps> = ({ tests, us
         const hasAnswer = ans && (ans.idx !== null || ans.raw !== null);
         if (hasAnswer) {
           answered++;
+          const weight = q.weight || 1;
           if (q.type === 'true_false') {
-            if (isTrueFalseCorrect(ans.raw, q.correctAnswerIndex)) correct++;
+            if (tfResult(ans.raw, q).earned >= weight - 0.001) correct++;
           } else if (q.type === 'complex_multiple_choice') {
-            if (isComplexMcCorrect(ans.raw, q.answerKey)) correct++;
+            if (pgkResult(ans.raw, q).earned >= weight - 0.001) correct++;
+          } else if (q.type === 'matching') {
+            if (matchingResult(ans.raw, q).earned >= weight - 0.001) correct++;
           } else if (ans.idx !== null && ans.idx === q.correctAnswerIndex) {
             correct++;
           }
         }
       });
-      // essay/matching: tampilkan % dijawab bukan % benar
-      const isAutoScore = q.type !== 'essay' && q.type !== 'matching';
+      // essay: tampilkan % dijawab bukan % benar (belum ada auto-score)
+      const isAutoScore = q.type !== 'essay';
       const pct = filteredRows.length > 0
         ? (isAutoScore ? (correct / filteredRows.length) : (answered / filteredRows.length)) * 100
         : 0;
       return { correct, answered, pct, isAutoScore };
     });
-  }, [questions, filteredRows, isTrueFalseCorrect, isComplexMcCorrect]);
+  }, [questions, filteredRows, tfResult, pgkResult, matchingResult]);
 
   // ─── Format display string per tipe soal ──────────────────────────────
   const formatAnswerDisplay = (ans: { idx: number | null; raw: string | null }, q: QuestionMeta): string => {
@@ -346,17 +324,22 @@ const StudentAnswerAnalysis: React.FC<StudentAnswerAnalysisProps> = ({ tests, us
         return ans.raw.substring(0, 8) || '?';
       }
       case 'true_false': {
-        // Gunakan parseTrueFalseValue agar handle format {"0":true}/{"0":false}
-        const boolVal = parseTrueFalseValue(ans.raw);
-        if (boolVal === true)  return 'Benar';
-        if (boolVal === false) return 'Salah';
+        // Format matriks per-baris: {"0":true,"1":false,...} — tampilkan ringkasan jumlah benar/total baris
+        try {
+          const tf = JSON.parse(ans.raw);
+          if (tf && typeof tf === 'object') {
+            const entries = Object.entries(tf);
+            const trueCount = entries.filter(([, v]) => v === true).length;
+            return `${trueCount}/${entries.length} Benar`;
+          }
+        } catch { /* ignore */ }
         return '?';
       }
       case 'matching': {
         try {
           const pairs = JSON.parse(ans.raw);
-          if (Array.isArray(pairs)) {
-            return pairs.map((p: unknown, i: number) => `${String.fromCharCode(65 + i)}→${p}`).join(' ');
+          if (pairs && typeof pairs === 'object' && !Array.isArray(pairs)) {
+            return Object.entries(pairs).map(([l, r]) => `${l}→${r}`).join(' ');
           }
         } catch { /* ignore */ }
         return ans.raw.substring(0, 10);
@@ -455,7 +438,10 @@ const StudentAnswerAnalysis: React.FC<StudentAnswerAnalysisProps> = ({ tests, us
         if (q.type === 'multiple_choice' && q.correctAnswerIndex >= 0) {
           keyLabel = String.fromCharCode(65 + q.correctAnswerIndex);
         } else if (q.type === 'true_false') {
-          keyLabel = q.correctAnswerIndex === 0 ? 'Benar' : 'Salah';
+          const tf = q.answerKey?.tf || q.answerKey || {};
+          const rows = Object.keys(tf);
+          const trueCount = rows.filter(k => tf[k] === true).length;
+          keyLabel = rows.length > 0 ? `${trueCount}/${rows.length} Benar` : '-';
         } else if (q.type === 'complex_multiple_choice') {
           keyLabel = formatComplexMcKey(q.answerKey);
         }
@@ -558,14 +544,30 @@ const StudentAnswerAnalysis: React.FC<StudentAnswerAnalysisProps> = ({ tests, us
             if (!hasAnswer) {
               cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: C.gray100 } };
               cell.font = { size: 9, color: { argb: C.gray700 } };
-            } else if (ans.idx !== null && ans.idx === q.correctAnswerIndex) {
-              cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: C.lightGreen } };
-              cell.font = { bold: true, size: 9, color: { argb: C.green } };
-            } else if (ans.idx !== null && ans.idx !== q.correctAnswerIndex) {
-              cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: C.lightRed } };
-              cell.font = { bold: true, size: 9, color: { argb: C.red } };
+            } else if (q.type === 'multiple_choice') {
+              if (ans.idx === q.correctAnswerIndex) {
+                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: C.lightGreen } };
+                cell.font = { bold: true, size: 9, color: { argb: C.green } };
+              } else {
+                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: C.lightRed } };
+                cell.font = { bold: true, size: 9, color: { argb: C.red } };
+              }
+            } else if (q.type === 'complex_multiple_choice' || q.type === 'true_false' || q.type === 'matching') {
+              const result = q.type === 'complex_multiple_choice' ? pgkResult(ans.raw, q)
+                : q.type === 'true_false' ? tfResult(ans.raw, q)
+                : matchingResult(ans.raw, q);
+              if (result.earned >= result.max - 0.001) {
+                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: C.lightGreen } };
+                cell.font = { bold: true, size: 9, color: { argb: C.green } };
+              } else if (result.earned > 0.001) {
+                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: C.lightAmber } };
+                cell.font = { bold: true, size: 9, color: { argb: C.amber } };
+              } else {
+                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: C.lightRed } };
+                cell.font = { bold: true, size: 9, color: { argb: C.red } };
+              }
             } else {
-              // Non-PG answered
+              // essay
               cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: C.lightBlue } };
               cell.font = { bold: true, size: 9, color: { argb: C.blue } };
             }
@@ -992,36 +994,44 @@ const StudentAnswerAnalysis: React.FC<StudentAnswerAnalysisProps> = ({ tests, us
                         }
                         const display = formatAnswerDisplay(ans, q);
                         const isPg      = q.type === 'multiple_choice';
-                        const isComplex = q.type === 'complex_multiple_choice';
-                        const isTf      = q.type === 'true_false';
-                        const isEssay   = q.type === 'essay' || q.type === 'matching';
-                        const isCorrect = isPg
-                          ? (ans.idx !== null && ans.idx === q.correctAnswerIndex)
-                          : isComplex
-                          ? isComplexMcCorrect(ans.raw, q.answerKey)
-                          : isTf
-                          ? isTrueFalseCorrect(ans.raw, q.correctAnswerIndex)
-                          : false;
-                        const isWrong = !isEssay && !isCorrect;
+                        const isEssay   = q.type === 'essay';
+                        const isAutoType = q.type === 'complex_multiple_choice' || q.type === 'true_false' || q.type === 'matching';
+                        const weight = q.weight || 1;
 
-                        const tooltipText = isTf
-                          ? `Jawaban: ${display} | Kunci: ${q.correctAnswerIndex === 0 ? 'Benar' : 'Salah'}`
-                          : isEssay
+                        let earned = 0;
+                        if (isPg) {
+                          earned = (ans.idx !== null && ans.idx === q.correctAnswerIndex) ? weight : 0;
+                        } else if (q.type === 'complex_multiple_choice') {
+                          earned = pgkResult(ans.raw, q).earned;
+                        } else if (q.type === 'true_false') {
+                          earned = tfResult(ans.raw, q).earned;
+                        } else if (q.type === 'matching') {
+                          earned = matchingResult(ans.raw, q).earned;
+                        }
+
+                        const isFull    = !isEssay && earned >= weight - 0.001;
+                        const isPartial = isAutoType && !isFull && earned > 0.001;
+                        const isZero    = !isEssay && !isFull && !isPartial;
+
+                        const tooltipText = isEssay
                           ? (ans.raw ? `Jawaban Essay: ${ans.raw}` : 'Belum dijawab')
+                          : isAutoType
+                          ? `Jawaban: ${display} | Poin: ${earned}/${weight}`
                           : undefined;
 
-                        const cellLabel = isTf
-                          ? (isCorrect ? `✓ ${display}` : `✗ ${display}`)
+                        const cellLabel = q.type === 'true_false'
+                          ? (isFull ? `✓ ${display}` : isPartial ? `± ${display}` : `✗ ${display}`)
                           : display;
 
                         return (
                           <td key={q.id}
                             title={tooltipText}
                             className={`px-1 py-1.5 text-center font-bold border border-gray-200 text-[11px] max-w-[64px] truncate ${
-                              isEssay    ? 'bg-blue-50 text-blue-700' :
-                              isCorrect  ? 'bg-green-100 text-green-800' :
-                              isWrong    ? 'bg-red-100 text-red-700' :
-                                           'bg-blue-50 text-blue-700'
+                              isEssay   ? 'bg-blue-50 text-blue-700' :
+                              isFull    ? 'bg-green-100 text-green-800' :
+                              isPartial ? 'bg-amber-100 text-amber-800' :
+                              isZero    ? 'bg-red-100 text-red-700' :
+                                          'bg-blue-50 text-blue-700'
                             }`}>
                             {cellLabel}
                           </td>
