@@ -37,12 +37,16 @@ const QuestionModal: React.FC<QuestionModalProps> = ({ questionToEdit, onSave, o
     options: ['', '', '', '', ''],
     mcKey: 0,
     complexMcKeys: [] as number[],
+    complexMcPoints: {} as Record<number, number>,
+    complexMcMode: 'partial' as 'partial' | 'strict',
+    complexMcPenalty: 0,
     matchingLeft: [{ id: 'L1', content: '' }],
     matchingRight: [{ id: 'R1', content: '' }],
     matchingPairs: {} as Record<string, string>,
     essayKey: '',
-    trueFalseStatements: ['', '', ''], 
+    trueFalseStatements: ['', '', ''],
     trueFalseKey: {} as Record<number, boolean>,
+    trueFalsePoints: {} as Record<number, number>,
   };
 
   const [formData, setFormData] = useState(questionToEdit ? {
@@ -55,12 +59,22 @@ const QuestionModal: React.FC<QuestionModalProps> = ({ questionToEdit, onSave, o
       : initialFormData.options,
     mcKey: typeof questionToEdit.answerKey?.index === 'number' ? questionToEdit.answerKey.index : 0,
     complexMcKeys: Array.isArray(questionToEdit.answerKey?.indices) ? questionToEdit.answerKey.indices : [],
+    complexMcPoints: questionToEdit.answerKey?.points
+      ? Object.fromEntries(Object.entries(questionToEdit.answerKey.points).map(([k, v]) => [Number(k), v as number]))
+      : {},
+    complexMcMode: questionToEdit.answerKey?.mode === 'strict' ? 'strict' : 'partial',
+    complexMcPenalty: questionToEdit.answerKey?.penaltyPerWrong ?? 0,
     matchingLeft: questionToEdit.metadata?.matchingLeft || initialFormData.matchingLeft,
     matchingRight: questionToEdit.metadata?.matchingRight || initialFormData.matchingRight,
     matchingPairs: questionToEdit.answerKey?.pairs || {},
     essayKey: questionToEdit.answerKey?.text || '',
     trueFalseStatements: questionToEdit.type === 'true_false' && questionToEdit.options ? questionToEdit.options : initialFormData.trueFalseStatements,
-    trueFalseKey: questionToEdit.type === 'true_false' && questionToEdit.answerKey ? questionToEdit.answerKey : {},
+    trueFalseKey: questionToEdit.type === 'true_false' && questionToEdit.answerKey
+      ? (questionToEdit.answerKey.tf || questionToEdit.answerKey)
+      : {},
+    trueFalsePoints: questionToEdit.type === 'true_false' && questionToEdit.answerKey?.tf && questionToEdit.answerKey?.points
+      ? Object.fromEntries(Object.entries(questionToEdit.answerKey.points).map(([k, v]) => [Number(k), v as number]))
+      : {},
   } : initialFormData);
 
   // ─── Upload ke Supabase Storage ───────────────────────────────────────────
@@ -168,6 +182,14 @@ const QuestionModal: React.FC<QuestionModalProps> = ({ questionToEdit, onSave, o
     }));
   };
 
+  const updateMatchingPoin = (index: number, poin: number) => {
+    setFormData(prev => {
+        const newList = [...prev.matchingLeft];
+        newList[index] = { ...newList[index], poin };
+        return { ...prev, matchingLeft: newList };
+    });
+  };
+
   // --- TRUE/FALSE LOGIC ---
   const addTrueFalseStatement = () => {
       setFormData(prev => ({
@@ -176,12 +198,26 @@ const QuestionModal: React.FC<QuestionModalProps> = ({ questionToEdit, onSave, o
       }));
   };
 
+  // Reindex map lokal seiring hapus/geser pernyataan (dipakai untuk trueFalseKey & trueFalsePoints)
+  const reindexAfterRemoval = <T,>(obj: Record<number, T>, removedIndex: number): Record<number, T> => {
+      const out: Record<number, T> = {};
+      Object.entries(obj).forEach(([k, v]) => {
+          const ki = Number(k);
+          if (ki === removedIndex) return;
+          out[ki > removedIndex ? ki - 1 : ki] = v;
+      });
+      return out;
+  };
+
   const removeTrueFalseStatement = (index: number) => {
       setFormData(prev => {
           const newStmts = prev.trueFalseStatements.filter((_, i) => i !== index);
-          const newKey = { ...prev.trueFalseKey };
-          delete newKey[index];
-          return { ...prev, trueFalseStatements: newStmts };
+          return {
+              ...prev,
+              trueFalseStatements: newStmts,
+              trueFalseKey: reindexAfterRemoval(prev.trueFalseKey, index),
+              trueFalsePoints: reindexAfterRemoval(prev.trueFalsePoints, index),
+          };
       });
   };
 
@@ -195,6 +231,13 @@ const QuestionModal: React.FC<QuestionModalProps> = ({ questionToEdit, onSave, o
       setFormData(prev => ({
           ...prev,
           trueFalseKey: { ...prev.trueFalseKey, [index]: isTrue }
+      }));
+  };
+
+  const updateTrueFalsePoint = (index: number, poin: number) => {
+      setFormData(prev => ({
+          ...prev,
+          trueFalsePoints: { ...prev.trueFalsePoints, [index]: poin }
       }));
   };
 
@@ -216,8 +259,19 @@ const QuestionModal: React.FC<QuestionModalProps> = ({ questionToEdit, onSave, o
       const newComplexMcKeys = p.complexMcKeys
         .filter(k => k !== idx)
         .map(k => (k > idx ? k - 1 : k));
-      return { ...p, options: newOpts, mcKey: newMcKey, complexMcKeys: newComplexMcKeys };
+      // Adjust complexMcPoints (poin per opsi ikut bergeser/terhapus)
+      const newComplexMcPoints: Record<number, number> = {};
+      Object.entries(p.complexMcPoints).forEach(([k, v]) => {
+        const ki = Number(k);
+        if (ki === idx) return;
+        newComplexMcPoints[ki > idx ? ki - 1 : ki] = v;
+      });
+      return { ...p, options: newOpts, mcKey: newMcKey, complexMcKeys: newComplexMcKeys, complexMcPoints: newComplexMcPoints };
     });
+  };
+
+  const updatePgkPoint = (idx: number, value: number) => {
+    setFormData(p => ({ ...p, complexMcPoints: { ...p.complexMcPoints, [idx]: value } }));
   };
 
   // --- SUBMIT ---
@@ -257,7 +311,19 @@ const QuestionModal: React.FC<QuestionModalProps> = ({ questionToEdit, onSave, o
         alert('Harap pilih minimal 1 kunci jawaban.');
         return;
       }
-      answerKey = { indices: formData.complexMcKeys };
+      {
+        const hasAnyPgkPoin = formData.complexMcKeys.some(
+          idx => formData.complexMcPoints[idx] !== undefined && formData.complexMcPoints[idx] !== null
+        );
+        answerKey = hasAnyPgkPoin
+          ? {
+              indices: formData.complexMcKeys,
+              points: Object.fromEntries(formData.complexMcKeys.map(idx => [String(idx), formData.complexMcPoints[idx] ?? 0])),
+              mode: formData.complexMcMode,
+              penaltyPerWrong: formData.complexMcPenalty,
+            }
+          : { indices: formData.complexMcKeys };
+      }
     } else if (activeType === 'matching') {
       answerKey = { pairs: formData.matchingPairs };
       metadata = { matchingLeft: formData.matchingLeft, matchingRight: formData.matchingRight };
@@ -277,7 +343,10 @@ const QuestionModal: React.FC<QuestionModalProps> = ({ questionToEdit, onSave, o
           alert('Harap isi minimal 1 pernyataan Benar/Salah.');
           return;
         }
-        answerKey = formData.trueFalseKey;
+        const hasAnyTfPoin = Object.keys(formData.trueFalsePoints).length > 0;
+        answerKey = hasAnyTfPoin
+          ? { tf: formData.trueFalseKey, points: formData.trueFalsePoints }
+          : formData.trueFalseKey;
     }
 
     const payload = {
@@ -320,6 +389,44 @@ const QuestionModal: React.FC<QuestionModalProps> = ({ questionToEdit, onSave, o
               </label>
               <span className="text-xs text-gray-400 font-semibold">{formData.options.length}/8 opsi</span>
             </div>
+            {activeType === 'complex_multiple_choice' && (
+              <div className="flex flex-wrap items-center gap-4 p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                <div className="flex items-center gap-3">
+                  <label className="text-xs font-bold text-gray-600">Mode Penilaian:</label>
+                  <label className="flex items-center gap-1 text-xs cursor-pointer">
+                    <input
+                      type="radio"
+                      name="pgkMode"
+                      checked={formData.complexMcMode === 'partial'}
+                      onChange={() => setFormData(p => ({ ...p, complexMcMode: 'partial' }))}
+                    />
+                    Partial + Penalti
+                  </label>
+                  <label className="flex items-center gap-1 text-xs cursor-pointer">
+                    <input
+                      type="radio"
+                      name="pgkMode"
+                      checked={formData.complexMcMode === 'strict'}
+                      onChange={() => setFormData(p => ({ ...p, complexMcMode: 'strict' }))}
+                    />
+                    Semua-atau-Tidak (Strict)
+                  </label>
+                </div>
+                {formData.complexMcMode === 'partial' && (
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs font-bold text-gray-600">Penalti per opsi salah:</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      value={formData.complexMcPenalty}
+                      onChange={(e) => setFormData(p => ({ ...p, complexMcPenalty: parseFloat(e.target.value) || 0 }))}
+                      className="w-20 p-1 text-xs border border-gray-300 rounded"
+                    />
+                  </div>
+                )}
+              </div>
+            )}
             {formData.options.map((opt, idx) => (
               <div key={idx} className="flex items-start gap-3 p-3 rounded-lg border border-gray-100">
                 <div className="pt-3 flex-shrink-0">
@@ -355,6 +462,20 @@ const QuestionModal: React.FC<QuestionModalProps> = ({ questionToEdit, onSave, o
                     simple
                   />
                 </div>
+                {activeType === 'complex_multiple_choice' && (
+                  <div className="flex-shrink-0 w-20 pt-3">
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      value={formData.complexMcPoints[idx] ?? ''}
+                      onChange={(e) => updatePgkPoint(idx, parseFloat(e.target.value) || 0)}
+                      placeholder="poin"
+                      title="Poin opsi ini (opsional)"
+                      className="w-full p-1.5 text-xs border border-gray-300 rounded text-center"
+                    />
+                  </div>
+                )}
                 {formData.options.length > 2 && (
                   <button
                     type="button"
@@ -377,6 +498,19 @@ const QuestionModal: React.FC<QuestionModalProps> = ({ questionToEdit, onSave, o
                 Tambah Opsi
               </button>
             )}
+            {activeType === 'complex_multiple_choice' && (() => {
+              const hasAnyPgkPoin = formData.complexMcKeys.some(
+                idx => formData.complexMcPoints[idx] !== undefined && formData.complexMcPoints[idx] !== null
+              );
+              if (!hasAnyPgkPoin) return null;
+              const sum = formData.complexMcKeys.reduce((acc, idx) => acc + (formData.complexMcPoints[idx] || 0), 0);
+              if (Math.abs(sum - formData.weight) <= 0.001) return null;
+              return (
+                <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
+                  Total poin opsi benar ({sum}) tidak sama dengan Bobot Soal ({formData.weight}). Ini hanya peringatan — soal tetap bisa disimpan.
+                </div>
+              );
+            })()}
           </div>
         );
 
@@ -394,12 +528,22 @@ const QuestionModal: React.FC<QuestionModalProps> = ({ questionToEdit, onSave, o
                         {formData.matchingLeft.map((item, idx) => (
                             <div key={item.id} className="flex items-center gap-2">
                                 <span className="text-xs font-bold text-blue-400 w-6">{item.id}</span>
-                                <input 
-                                    type="text" 
-                                    value={item.content} 
+                                <input
+                                    type="text"
+                                    value={item.content}
                                     onChange={(e) => updateMatchingContent('left', idx, e.target.value)}
                                     className="flex-grow p-2 text-sm border rounded"
                                     placeholder="Teks pernyataan..."
+                                />
+                                <input
+                                    type="number"
+                                    step="0.1"
+                                    min="0"
+                                    value={item.poin ?? ''}
+                                    onChange={(e) => updateMatchingPoin(idx, parseFloat(e.target.value) || 0)}
+                                    placeholder="poin"
+                                    title="Poin pasangan ini (opsional)"
+                                    className="w-16 flex-shrink-0 p-1.5 text-xs border rounded text-center"
                                 />
                                 <button type="button" onClick={() => removeMatchingItem('left', idx)} className="text-red-400 hover:text-red-600">×</button>
                             </div>
@@ -454,6 +598,17 @@ const QuestionModal: React.FC<QuestionModalProps> = ({ questionToEdit, onSave, o
                     ))}
                 </div>
              </div>
+             {(() => {
+               const hasAnyMatchingPoin = formData.matchingLeft.some(item => typeof item.poin === 'number');
+               if (!hasAnyMatchingPoin) return null;
+               const sum = formData.matchingLeft.reduce((acc, item) => acc + (item.poin || 0), 0);
+               if (Math.abs(sum - formData.weight) <= 0.001) return null;
+               return (
+                 <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
+                   Total poin pasangan ({sum}) tidak sama dengan Bobot Soal ({formData.weight}). Ini hanya peringatan — soal tetap bisa disimpan.
+                 </div>
+               );
+             })()}
           </div>
         );
 
@@ -470,14 +625,15 @@ const QuestionModal: React.FC<QuestionModalProps> = ({ questionToEdit, onSave, o
                     
                     <div className="space-y-3">
                         <div className="grid grid-cols-12 gap-2 text-xs font-bold text-gray-500 uppercase tracking-wider px-2">
-                            <div className="col-span-8">Pernyataan</div>
+                            <div className="col-span-6">Pernyataan</div>
                             <div className="col-span-2 text-center">Jawaban</div>
+                            <div className="col-span-2 text-center">Poin</div>
                             <div className="col-span-2 text-center">Hapus</div>
                         </div>
                         {formData.trueFalseStatements.map((stmt, idx) => (
                             <div key={idx} className="grid grid-cols-12 gap-2 items-start bg-white p-2 rounded-lg border border-gray-200 shadow-sm">
-                                <div className="col-span-8">
-                                    <textarea 
+                                <div className="col-span-6">
+                                    <textarea
                                         rows={2}
                                         className="w-full p-2 text-sm border rounded resize-none focus:ring-1 focus:ring-blue-500 outline-none"
                                         placeholder={`Pernyataan ke-${idx+1}`}
@@ -507,6 +663,18 @@ const QuestionModal: React.FC<QuestionModalProps> = ({ questionToEdit, onSave, o
                                         SALAH
                                     </label>
                                 </div>
+                                <div className="col-span-2 flex items-center justify-center pt-1">
+                                    <input
+                                        type="number"
+                                        step="0.1"
+                                        min="0"
+                                        value={formData.trueFalsePoints[idx] ?? ''}
+                                        onChange={(e) => updateTrueFalsePoint(idx, parseFloat(e.target.value) || 0)}
+                                        placeholder="poin"
+                                        title="Poin baris ini (opsional)"
+                                        className="w-full p-1.5 text-xs border rounded text-center"
+                                    />
+                                </div>
                                 <div className="col-span-2 flex items-center justify-center">
                                     <button type="button" onClick={() => removeTrueFalseStatement(idx)} className="text-red-400 hover:text-red-600 hover:bg-red-50 p-2 rounded-full transition">
                                         <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
@@ -515,6 +683,17 @@ const QuestionModal: React.FC<QuestionModalProps> = ({ questionToEdit, onSave, o
                             </div>
                         ))}
                     </div>
+                    {(() => {
+                      const hasAnyTfPoin = Object.keys(formData.trueFalsePoints).length > 0;
+                      if (!hasAnyTfPoin) return null;
+                      const sum = Object.values(formData.trueFalsePoints).reduce((acc, v) => acc + (v || 0), 0);
+                      if (Math.abs(sum - formData.weight) <= 0.001) return null;
+                      return (
+                        <div className="mt-3 p-2.5 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
+                          Total poin pernyataan ({sum}) tidak sama dengan Bobot Soal ({formData.weight}). Ini hanya peringatan — soal tetap bisa disimpan.
+                        </div>
+                      );
+                    })()}
                 </div>
             </div>
         );
