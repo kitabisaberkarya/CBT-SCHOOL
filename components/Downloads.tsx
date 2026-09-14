@@ -8,18 +8,18 @@ import PlayStoreButton from './PlayStoreButton';
 const Downloads: React.FC = () => {
   const { language } = useLanguage();
 
-  const downloadUrl = "https://drive.google.com/uc?export=download&id=13eocRRYz5SZivVbm7eiTEbDvltO0N5d_";
+  const downloadUrl = "https://drive.google.com/uc?export=download&id=1EjGhqJZeOvXq4p-r8-OeIY5SB3cII-5n";
   const templateSheetUrl = "https://docs.google.com/spreadsheets/d/1TX4pu1sehACBj696DTTtrrZ7owC1o_w99PQl1rfESUY/edit?usp=sharing";
   const templateCsvUrl = "https://docs.google.com/spreadsheets/d/1TX4pu1sehACBj696DTTtrrZ7owC1o_w99PQl1rfESUY/export?format=csv";
 
   const content = {
     id: {
       title: "Download Resource",
-      subtitle: "VHD CBT SCHOOL V4-1-9A",
+      subtitle: "VHD CBT SCHOOL V4-1-9e",
       desc: "Unduh file aplikasi pendukung, Exam Browser Android anti-contek, dan Virtual Machine (VHD/VDI) untuk simulasi mandiri atau server sekolah.",
       btn: "Download Sekarang",
       size: "Ukuran File: 7,7 GB",
-      version: "Versi: 4.1.9a (Stable)",
+      version: "Versi: 4.1.9e (Stable)",
       note: "Catatan: Karena ukuran file besar, klik 'Tetap download' pada halaman Google Drive.",
       demoNote: "Bagi sekolah, instansi, dan lembaga yang ingin mencoba semua fitur, silakan masukkan lisensi demo: CBT-SCHOOL-DEMO",
       features: [
@@ -37,11 +37,11 @@ const Downloads: React.FC = () => {
     },
     en: {
       title: "Download Resource",
-      subtitle: "VHD CBT SCHOOL V4-1-9A",
+      subtitle: "VHD CBT SCHOOL V4-1-9e",
       desc: "Download client support apps, anti-cheating Android Exam Browser, and Virtual Machine (VHD/VDI) for standalone simulation or school server.",
       btn: "Download Now",
       size: "File Size: 7.7 GB",
-      version: "Version: 4.1.9a (Stable)",
+      version: "Version: 4.1.9e (Stable)",
       note: "Note: Due to large size, click 'Download anyway' on the Google Drive page.",
       demoNote: "For schools, institutions, and agencies that want to try all features, please use the demo license: CBT-SCHOOL-DEMO",
       features: [
