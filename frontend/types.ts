@@ -142,6 +142,29 @@ export type CognitiveLevel = 'L1' | 'L2' | 'L3';
 export interface MatchingItem {
   id: string;
   content: string;
+  poin?: number; // Poin manual untuk pasangan ini (opsional; default = bagi rata weight jika tidak diisi)
+}
+
+// ── Bentuk opsional answerKey untuk fitur poin per sub-soal (PGK / Benar-Salah / Menjodohkan) ──
+// Question.answerKey tetap `any` di bawah — interface ini hanya dokumentasi + dipakai via `as` cast
+// di scoring.ts, QuestionModal.tsx, dan StudentAnswerAnalysis.tsx. Semua field baru opsional supaya
+// soal lama (tanpa field ini) tetap ternilai persis seperti sebelum fitur ini ada.
+export interface PgkAnswerKey {
+  indices: number[]; // opsi yang benar (sudah ada sebelumnya)
+  points?: Record<string, number>; // index opsi (string) -> poin; hanya ada jika guru mengisi poin manual
+  penaltyPerWrong?: number; // poin dikurangi per opsi salah yang dipilih (mode 'partial' saja)
+  mode?: 'partial' | 'strict'; // default 'partial' saat `points` ada; tanpa `points` selalu berlaku strict (perilaku lama)
+}
+
+export interface TrueFalseAnswerKeyV2 {
+  tf: Record<number, boolean>; // baris -> jawaban benar (menggantikan bentuk lama yang bare object)
+  points?: Record<string, number>; // baris (string) -> poin; jika tidak ada, fallback bagi rata
+}
+// Bentuk lama (legacy, masih didukung): answerKey langsung berupa Record<number, boolean> tanpa key `tf`.
+
+export interface MatchingAnswerKey {
+  pairs: Record<string, string>; // left id -> right id (tidak berubah)
+  // Poin per pasangan TIDAK disimpan di sini — ada di metadata.matchingLeft[i].poin
 }
 
 export interface Question {
