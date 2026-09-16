@@ -842,8 +842,10 @@ const TestScreen: React.FC<TestScreenProps> = ({ onFinishTest, user, onLogout, q
     // ── SCREENSHOT BLOCKER ──────────────────────────────────────────────────
     // Gunakan DOM manipulation langsung (bukan React state) agar overlay muncul
     // SINKRON sebelum browser sempat menangkap screenshot.
-    // Ref untuk timer overlay agar tidak stack
-    const screenshotBlockTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+    // Timer overlay agar tidak stack — object biasa (bukan useRef), karena hook
+    // tidak boleh dipanggil di dalam callback useEffect; cukup hidup selama satu
+    // eksekusi effect ini (closure), sama seperti ref lain yang dipakai di sini.
+    const screenshotBlockTimerRef: { current: ReturnType<typeof setTimeout> | null } = { current: null };
 
     const triggerScreenshotBlock = (durationMs: number = 3000) => {
         const overlay = document.getElementById('cbt-screenshot-blocker');
