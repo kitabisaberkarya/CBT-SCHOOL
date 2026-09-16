@@ -115,10 +115,13 @@ export function injectLatexIntoHtml(
   let result = html;
   for (const [id, latex] of latexMap) {
     // Marker mungkin ada di dalam tag HTML, perlu escaped atau plain
-    // Gunakan regex untuk menangani spasi
+    // Gunakan regex untuk menangani spasi.
+    // PENTING: (?!\d) mencegah "MATH_1" ikut cocok sebagai prefix dari
+    // "MATH_10", "MATH_11", dst begitu jumlah rumus di dokumen ≥ 10 —
+    // tanpa ini, rumus ke-10 dst akan tertimpa LaTeX rumus ke-1 plus sisa digit.
     const escaped = id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     result = result.replace(
-      new RegExp(`\\s*${escaped}\\s*`, 'g'),
+      new RegExp(`\\s*${escaped}(?!\\d)\\s*`, 'g'),
       latex ? ` $${latex}$ ` : ` [Rumus] `
     );
   }

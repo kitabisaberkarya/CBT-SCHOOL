@@ -90,3 +90,15 @@ export function sanitizeMathHtml(html: string): string {
     .replace(/<iframe[\s\S]*?>/gi, '')
     .replace(/on\w+\s*=\s*["'][^"']*["']/gi, '');
 }
+
+/**
+ * Helper terpadu: render teks soal/opsi dengan KaTeX jika mengandung notasi math,
+ * kembalikan HTML aman untuk dangerouslySetInnerHTML. Teks tanpa notasi math
+ * dikembalikan apa adanya (no-op), aman dipakai di semua tempat yang menampilkan
+ * teks soal/opsi/pernyataan.
+ */
+export function mathHtml(text: string): string {
+  if (!text) return '';
+  if (!containsMath(text)) return text;
+  return sanitizeMathHtml(renderMathInText(text));
+}

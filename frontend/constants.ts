@@ -146,6 +146,6 @@ export const COGNITIVE_LEVEL_LABELS: Record<string, string> = {
 //  APP META
 // ==============================================================================
 
-export const APP_VERSION  = '4.1.8a.150526.0800';
+export const APP_VERSION  = '4.1.9f.160926.1501';
 export const APP_NAME     = 'CBT School Enterprise';
 export const APP_EDITION  = 'VHD Offline Edition 2026';

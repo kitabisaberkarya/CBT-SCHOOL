@@ -8,14 +8,7 @@ import WarningModal from '../components/WarningModal';
 import DisqualificationModal from '../components/DisqualificationModal';
 import { supabase } from '../supabaseClient';
 import { calculateScore } from '../utils/scoring';
-import { renderMathInText, containsMath, sanitizeMathHtml } from '../utils/renderMath';
-
-/** Render teks soal/opsi dengan KaTeX jika mengandung notasi math */
-function mathHtml(text: string): string {
-  if (!text) return '';
-  if (!containsMath(text)) return text;
-  return sanitizeMathHtml(renderMathInText(text));
-}
+import { mathHtml } from '../utils/renderMath';
 
 interface TestScreenProps {
   onFinishTest: (score?: number) => void;
@@ -1396,7 +1389,7 @@ const TestScreen: React.FC<TestScreenProps> = ({ onFinishTest, user, onLogout, q
                                     <input type="radio" checked={isSelected} onChange={() => handleUpdateAnswer(currentQuestion.id, originalIndex)} className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600 border-slate-300" />
                                 </div>
                                 <div className="ml-4 sm:ml-5 flex-1">
-                                    <div className={`${currentTheme.textMain} font-medium sm:font-black leading-relaxed text-base sm:text-lg`} dangerouslySetInnerHTML={{ __html: opt }} />
+                                    <div className={`${currentTheme.textMain} font-medium sm:font-black leading-relaxed text-base sm:text-lg`} dangerouslySetInnerHTML={{ __html: mathHtml(opt) }} />
                                     {currentQuestion.optionImages?.[originalIndex] && (
                                         <img src={currentQuestion.optionImages[originalIndex]} alt={`Gambar opsi ${originalIndex + 1}`} className="mt-2 max-w-xs max-h-48 rounded-lg object-contain" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
                                     )}

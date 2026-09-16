@@ -1,6 +1,7 @@
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Question, Answer } from '../types';
+import { mathHtml } from '../utils/renderMath';
 
 interface TestPreviewModalProps {
   testName: string;
@@ -123,7 +124,7 @@ const TestPreviewModal: React.FC<TestPreviewModalProps> = ({ testName, questions
                                     const next = isSelected ? selections.filter(v => v !== i) : [...selections, i];
                                     handleUpdateAnswer(currentQuestion.id, next);
                                 }} className="w-5 h-5 mt-1 mr-3" />
-                                <div className={currentTheme.textMain} dangerouslySetInnerHTML={{ __html: opt }} />
+                                <div className={currentTheme.textMain} dangerouslySetInnerHTML={{ __html: mathHtml(opt) }} />
                             </label>
                         );
                     })}
@@ -155,7 +156,7 @@ const TestPreviewModal: React.FC<TestPreviewModalProps> = ({ testName, questions
                                 const color = isConnected ? colors[Object.keys(pairs).indexOf(item.id) % colors.length] : (isActive ? '#6366f1' : '#cbd5e1');
                                 return (
                                     <div key={item.id} className={`flex items-center justify-between p-3 border-2 rounded-xl ${currentTheme.matchingItemBg} ${isActive ? 'border-blue-400' : currentTheme.border}`}>
-                                        <div className={`text-sm ${currentTheme.textMain}`}>{item.content}</div>
+                                        <div className={`text-sm ${currentTheme.textMain}`} dangerouslySetInnerHTML={{ __html: mathHtml(item.content) }} />
                                         <button data-dot-id={item.id} onClick={() => handlePointClick(item.id, 'left')} className="w-4 h-4 rounded-full border-2" style={{ backgroundColor: color }} />
                                     </div>
                                 );
@@ -169,7 +170,7 @@ const TestPreviewModal: React.FC<TestPreviewModalProps> = ({ testName, questions
                                 return (
                                     <div key={item.id} className={`flex items-center gap-3 p-3 border-2 rounded-xl ${currentTheme.matchingItemBg} ${currentTheme.border}`}>
                                         <button data-dot-id={item.id} onClick={() => handlePointClick(item.id, 'right')} className="w-4 h-4 rounded-full border-2" style={{ backgroundColor: color }} />
-                                        <div className={`text-sm ${currentTheme.textMain}`}>{item.content}</div>
+                                        <div className={`text-sm ${currentTheme.textMain}`} dangerouslySetInnerHTML={{ __html: mathHtml(item.content) }} />
                                     </div>
                                 );
                             })}
@@ -189,7 +190,7 @@ const TestPreviewModal: React.FC<TestPreviewModalProps> = ({ testName, questions
                     </div>
                     {currentQuestion.options.map((stmt, idx) => (
                         <div key={idx} className={`flex items-center p-3 border-t ${currentTheme.bgCard}`}>
-                            <div className={`flex-1 text-sm ${currentTheme.textMain}`}>{stmt}</div>
+                            <div className={`flex-1 text-sm ${currentTheme.textMain}`} dangerouslySetInnerHTML={{ __html: mathHtml(stmt) }} />
                             <div className="w-16 flex justify-center"><input type="radio" checked={tfAnswers[idx] === true} onChange={() => handleUpdateAnswer(currentQuestion.id, { ...tfAnswers, [idx]: true })} className="w-5 h-5 text-green-600" /></div>
                             <div className="w-16 flex justify-center"><input type="radio" checked={tfAnswers[idx] === false} onChange={() => handleUpdateAnswer(currentQuestion.id, { ...tfAnswers, [idx]: false })} className="w-5 h-5 text-red-600" /></div>
                         </div>
@@ -215,7 +216,7 @@ const TestPreviewModal: React.FC<TestPreviewModalProps> = ({ testName, questions
                         return (
                             <label key={i} className={`flex items-start p-4 border-2 rounded-2xl cursor-pointer transition-all ${isSelected ? currentTheme.optionActiveBg + ' ' + currentTheme.optionActiveBorder : currentTheme.optionBg + ' ' + currentTheme.optionBorder}`}>
                                 <input type="radio" checked={isSelected} onChange={() => handleUpdateAnswer(currentQuestion.id, i)} className="w-5 h-5 mt-1 mr-3 text-blue-600" />
-                                <div className={currentTheme.textMain} dangerouslySetInnerHTML={{ __html: opt }} />
+                                <div className={currentTheme.textMain} dangerouslySetInnerHTML={{ __html: mathHtml(opt) }} />
                             </label>
                         );
                     })}
@@ -287,7 +288,7 @@ const TestPreviewModal: React.FC<TestPreviewModalProps> = ({ testName, questions
                         </div>
 
                         {/* Question Text */}
-                        <div className={`prose max-w-none mb-8 text-lg font-medium ${currentTheme.textMain}`} dangerouslySetInnerHTML={{ __html: currentQuestion.question }} />
+                        <div className={`prose max-w-none mb-8 text-lg font-medium ${currentTheme.textMain}`} dangerouslySetInnerHTML={{ __html: mathHtml(currentQuestion.question) }} />
 
                         {/* Media */}
                         {(currentQuestion.image || currentQuestion.audio || currentQuestion.video) && (
