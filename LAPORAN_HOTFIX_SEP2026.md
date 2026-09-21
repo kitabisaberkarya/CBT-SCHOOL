@@ -1,7 +1,7 @@
 # LAPORAN HOTFIX — CBT School Enterprise (September 2026)
 
 **Versi:** v4.1.9f → **v4.1.9g**
-**Ruang lingkup:** 8 masalah pada `PERBAIKAN_CBT_SCHOOL_SEP2026.md`. Tidak ada refactor/rename/upgrade dependensi di luar yang dibutuhkan untuk memperbaiki masalah ini.
+**Ruang lingkup:** 8 masalah pada `PERBAIKAN_CBT_SCHOOL_SEP2026.md`, ditambah 2 permintaan susulan dari owner (lihat Bagian 7). Tidak ada refactor/rename/upgrade dependensi di luar yang dibutuhkan untuk memperbaiki masalah ini.
 
 ---
 
@@ -107,7 +107,17 @@ Otomatis ikut dijalankan oleh `updater-server` (folder `infra/` dalam paket upda
 
 ---
 
-## 6. Langkah Rollback
+## 6. Permintaan Susulan (di luar 8 masalah awal, diminta owner langsung)
+
+### A. Ubah Password Admin belum berfungsi penuh
+**Root cause:** Form "Ubah Password Admin" (Konfigurasi → Akun) sudah tersambung dan memanggil `supabase.auth.updateUser()` dengan benar — bukan stub. Masalahnya: sistem login admin punya **dua jalur kredensial terpisah** — login email biasa lewat Supabase Auth, dan login manual/QR-kartu yang membaca kolom `users.qr_login_password`/`password_text` secara langsung (tidak lewat Supabase Auth). `handleAdminPasswordChange` hanya meng-update Supabase Auth, sehingga setelah "ganti password", login via kartu/QR tetap memakai password lama — terlihat seperti fitur gagal.
+**Perbaikan:** `screens/AdminDashboard.tsx` — `handleAdminPasswordChange` sekarang juga meng-update `qr_login_password` & `password_text` pada baris admin yang sedang login, jadi kedua jalur login selalu sinkron dengan password terbaru.
+
+### B. Admin tidak bisa menambahkan akun admin baru
+**Root cause:** Tombol "+ Tambah Admin" di Manajemen Pengguna dan RPC `admin_upsert_user` **sudah mendukung** role `admin` (diverifikasi langsung ke fungsi live di database — tidak ada pembatasan role di sana). Yang menghalangi murni di frontend: dropdown role pada `UserModal.tsx` hanya berisi opsi Siswa & Guru, dan seluruh blok field kredensial (username/password manual) hanya muncul untuk `role === 'teacher'`.
+**Perbaikan:** `components/UserModal.tsx` — tambah opsi role "Admin / Pengelola", dan perluas kondisi `isTeacher` menjadi `needsCredentials` (guru ATAU admin) di seluruh form supaya admin baru juga mendapat field username/password manual (bukan default NISN seperti siswa). Tidak ada perubahan SQL/RPC — murni perbaikan UI.
+
+## 7. Langkah Rollback
 
 **Jika update v4.1.9g bermasalah di suatu sekolah:**
 1. Updater otomatis membuat backup `frontend/dist` sebelum apply (`backups/dist/dist_v<versi_lama>_<timestamp>`) dan auto-restore jika `index.html` tidak ditemukan setelah copy.
