@@ -218,6 +218,7 @@ const WordQuestionImportModal: React.FC<WordQuestionImportModalProps> = ({ testT
   const [previewData, setPreviewData] = useState<any[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [errorLog, setErrorLog] = useState<string[]>([]);
+  const [parseSummary, setParseSummary] = useState<{ detected: number; ok: number; problem: number } | null>(null);
   const [mathWarning, setMathWarning] = useState<{ ole: number; omml: number } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -926,6 +927,7 @@ const WordQuestionImportModal: React.FC<WordQuestionImportModalProps> = ({ testT
 
     const questions: any[] = [];
     const errors: string[] = [];
+    let totalGroupsDetected = 0;
 
     const typeMap: Record<number, QuestionType> = {
       1: 'multiple_choice',
@@ -982,22 +984,41 @@ const WordQuestionImportModal: React.FC<WordQuestionImportModalProps> = ({ testT
         return isNaN(n) ? undefined : n;
       };
 
-      // Grouping soal: deteksi soal baru saat kolom NO berubah ke angka berbeda
+      // Grouping soal: deteksi soal baru saat kolom NO berubah ke angka berbeda.
+      // Menerima "1", "1.", "1)" (trailing punctuation dibuang sebelum dicek).
+      // Jika NO kosong di seluruh baris (mis. penomoran otomatis Word / w:numPr
+      // yang tidak tersimpan sebagai teks run), pakai perubahan teks SOAL sebagai
+      // penanda soal baru. Baris judul/pemisah bagian (colspan penuh, teks non-angka
+      // di kolom NO) tetap diabaikan seperti sebelumnya.
       const groups: number[][] = [];
       let cur: number[] | null = null;
-      let prevNo = '';
+      let prevNoKey = '';
+      let prevSoalAnchor = '';
       for (let r = 1; r < textGrid.length; r++) {
-        const noVal = (textGrid[r][COL_NO] ?? '').trim();
-        if (noVal !== '' && /^\d+$/.test(noVal) && noVal !== prevNo) {
+        const rawNo = (textGrid[r][COL_NO] ?? '').trim();
+        const noDigits = rawNo.replace(/[.)]+$/, '').trim();
+        const hasValidNo = noDigits !== '' && /^\d+$/.test(noDigits);
+        const soalVal = (textGrid[r][COL_SOAL] ?? '').trim();
+
+        let isNewGroup = false;
+        if (hasValidNo && noDigits !== prevNoKey) {
+          isNewGroup = true;
+        } else if (!hasValidNo && rawNo === '' && soalVal !== '' && soalVal !== prevSoalAnchor) {
+          isNewGroup = true;
+        }
+
+        if (isNewGroup) {
           cur = [r];
           groups.push(cur);
-          prevNo = noVal;
-        } else if (cur && (noVal === '' || /^\d+$/.test(noVal))) {
-          // Hanya append baris dengan NO kosong (baris opsi) atau angka (jarang)
-          // Skip baris dengan teks non-angka di NO (separator/divider rows)
+          if (hasValidNo) prevNoKey = noDigits;
+          if (soalVal) prevSoalAnchor = soalVal;
+        } else if (cur && (rawNo === '' || hasValidNo)) {
           cur.push(r);
+          if (hasValidNo) prevNoKey = noDigits;
         }
+        // else: NO berisi teks non-angka (baris judul/pemisah bagian) → abaikan
       }
+      totalGroupsDetected += groups.length;
 
       const tableBaseIdx = questions.length;
 
@@ -1146,25 +1167,12 @@ const WordQuestionImportModal: React.FC<WordQuestionImportModalProps> = ({ testT
             }
           }
 
-          // Fallback 2: semua KUNCI sama (merged cell) → identifikasi opsi dari kolom OPSI
-          if (correct.length > 1) {
-            const allSame = new Set(rowIndices.map(r => (textGrid[r][COL_KUNCI] ?? '').trim().toUpperCase())).size === 1;
-            if (allSame) {
-              const opsiLetterRowIdx = rowIndices.findIndex(r =>
-                /^[A-E]$/.test((textGrid[r][COL_OPSI] ?? '').trim().toUpperCase()) &&
-                isCorrectMark((textGrid[r][COL_KUNCI] ?? '').trim().toUpperCase())
-              );
-              if (opsiLetterRowIdx !== -1) {
-                let oi = 0;
-                const optsIdxMap: number[] = rowIndices.map((r) => {
-                  if ((textGrid[r][COL_JAWABAN] ?? '').trim()) return oi++;
-                  return -1;
-                });
-                const mappedIdx = optsIdxMap[opsiLetterRowIdx];
-                if (mappedIdx !== -1) { correct.length = 0; correct.push(mappedIdx); }
-              }
-            }
-          }
+          // CATATAN: Fallback lama yang otomatis menebak 1 opsi saat >1 tanda KUNCI
+          // terdeteksi (mis. akibat sel KUNCI ter-merge) telah dihapus — tebakan itu
+          // sering salah dan gagal secara diam-diam (lihat MASALAH 7 hotfix Sep 2026).
+          // Sekarang soal dengan kunci ambigu (correct.length !== 1 untuk PG Biasa)
+          // dibiarkan jatuh ke validasi di bawah dan ditandai sebagai "perlu diperiksa"
+          // beserta nilai KUNCI aktual, alih-alih diimpor diam-diam dengan jawaban salah.
 
           qObj.options = opts;
           if (jenis === 1) {
@@ -1320,9 +1328,16 @@ const WordQuestionImportModal: React.FC<WordQuestionImportModalProps> = ({ testT
       }
     }
 
-    if (errors.length > 0) { setErrorLog(errors); }
-    else if (mergedQuestions.length === 0) { setErrorLog(['Tidak ada soal yang berhasil diparse dari tabel.']); }
-    else { setPreviewData(mergedQuestions); }
+    setErrorLog(errors);
+    setPreviewData(mergedQuestions);
+    setParseSummary({
+      detected: totalGroupsDetected,
+      ok: mergedQuestions.length,
+      problem: errors.length,
+    });
+    if (mergedQuestions.length === 0 && errors.length === 0) {
+      setErrorLog(['Tidak ada soal yang berhasil diparse dari tabel.']);
+    }
   };
 
   // ── PARSE LEGACY TEXT FORMAT (===== separator) — fallback ────────────────
@@ -1404,6 +1419,7 @@ const WordQuestionImportModal: React.FC<WordQuestionImportModalProps> = ({ testT
     setIsProcessing(true);
     setErrorLog([]);
     setPreviewData([]);
+    setParseSummary(null);
     setMathWarning(null);
 
     try {
@@ -1573,18 +1589,26 @@ const WordQuestionImportModal: React.FC<WordQuestionImportModalProps> = ({ testT
             </div>
           )}
 
-          {/* Error Log */}
+          {/* Ringkasan hasil parsing */}
+          {parseSummary && (
+            <div className={`mb-4 rounded-xl p-3 text-xs font-semibold ${parseSummary.problem > 0 ? 'bg-amber-50 border border-amber-200 text-amber-800' : 'bg-green-50 border border-green-200 text-green-800'}`}>
+              {parseSummary.ok} soal siap dari {parseSummary.detected} soal terdeteksi di dokumen
+              {parseSummary.problem > 0 ? `, ${parseSummary.problem} soal perlu diperiksa.` : '.'}
+            </div>
+          )}
+
+          {/* Error Log — soal bermasalah, ditandai dengan alasan (bukan dilewati diam-diam) */}
           {errorLog.length > 0 && (
             <div className="mb-6 bg-red-50 border border-red-200 rounded-xl p-4">
-              <h4 className="font-bold text-red-700 mb-2 text-sm">Terjadi Kesalahan ({errorLog.length})</h4>
+              <h4 className="font-bold text-red-700 mb-2 text-sm">Soal Perlu Diperiksa ({errorLog.length})</h4>
               <ul className="list-disc list-inside text-xs text-red-600 max-h-32 overflow-y-auto">
                 {errorLog.map((err, i) => <li key={i}>{err}</li>)}
               </ul>
             </div>
           )}
 
-          {/* Preview */}
-          {previewData.length > 0 && errorLog.length === 0 && (
+          {/* Preview — tetap tampil walau ada soal bermasalah di tabel yang sama */}
+          {previewData.length > 0 && (
             <div>
               <h4 className="font-bold text-gray-800 mb-3 flex items-center justify-between text-sm">
                 <span>3. Pratinjau Soal ({previewData.length})</span>

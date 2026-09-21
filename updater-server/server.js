@@ -247,21 +247,49 @@ async function applyUpdate(res, { download_url, version, release_notes, sql_migr
     }
 
     // ── 7. SQL MIGRATION ───────────────────────────────────────────────
-    if (sql_migration && sql_migration.trim().length > 0) {
+    // Auto-migrasi (MASALAH 1, hotfix Sep 2026): setiap paket update BOLEH
+    // menyertakan folder migrations/*.sql (kurasi rilis ini, bukan seluruh
+    // histori MODULE_SQL) — semua file di dalamnya dijalankan berurutan
+    // (nama file) secara idempoten, sehingga kolom/tabel baru tidak pernah
+    // tertinggal di VHD sekolah mana pun walau admin lupa menjalankan SQL manual.
+    // Field sql_migration (opsional, dari payload vendor) tetap didukung untuk
+    // kompatibilitas mundur dan dijalankan SETELAH migrations/*.sql.
+    const migrationsDir = path.join(extractDir, 'migrations');
+    const bundledMigrations = fs.existsSync(migrationsDir)
+      ? fs.readdirSync(migrationsDir).filter(f => f.toLowerCase().endsWith('.sql')).sort()
+      : [];
+
+    if (bundledMigrations.length > 0 || (sql_migration && sql_migration.trim().length > 0)) {
       send('sql_migration', 93, 'Menjalankan migrasi database...');
-      const sqlPath = path.join(tempDir, 'migration.sql');
       try {
-        fs.writeFileSync(sqlPath, sql_migration, 'utf8');
-
-        // Pastikan container supabase-db berjalan
         await runCmd("docker ps --format '{{.Names}}' | grep -q supabase-db");
-
         const { pgUser, pgDb, pgPass } = getDbCredentials();
+
+        for (const fname of bundledMigrations) {
+          const fpath = path.join(migrationsDir, fname);
+          send('sql_migration', 93, `Migrasi: ${fname}...`);
+          await runCmd(
+            `PGPASSWORD="${pgPass}" cat "${fpath}" | docker exec -i supabase-db psql` +
+            ` -U "${pgUser}" -d "${pgDb}" --set ON_ERROR_STOP=0 -q 2>&1 | head -20`
+          );
+        }
+
+        if (sql_migration && sql_migration.trim().length > 0) {
+          const sqlPath = path.join(tempDir, 'migration.sql');
+          fs.writeFileSync(sqlPath, sql_migration, 'utf8');
+          await runCmd(
+            `PGPASSWORD="${pgPass}" cat "${sqlPath}" | docker exec -i supabase-db psql` +
+            ` -U "${pgUser}" -d "${pgDb}" --set ON_ERROR_STOP=0 -q 2>&1 | head -20`
+          );
+        }
+
+        // Selalu reload schema cache PostgREST setelah migrasi apa pun berjalan,
+        // supaya kolom/tabel baru langsung dikenali tanpa restart container manual.
         await runCmd(
-          `PGPASSWORD="${pgPass}" cat "${sqlPath}" | docker exec -i supabase-db psql` +
-          ` -U "${pgUser}" -d "${pgDb}" --set ON_ERROR_STOP=0 -q 2>&1 | head -20`
+          `PGPASSWORD="${pgPass}" docker exec -i supabase-db psql -U "${pgUser}" -d "${pgDb}" ` +
+          `-c "NOTIFY pgrst, 'reload schema';" -q 2>&1 | head -5`
         );
-        send('sql_migrated', 95, 'Migrasi database berhasil.');
+        send('sql_migrated', 95, `Migrasi database berhasil (${bundledMigrations.length} file).`);
       } catch (sqlErr) {
         // Non-fatal: update tetap dilanjutkan, hanya log peringatan
         send('sql_warning', 95,
@@ -271,6 +299,24 @@ async function applyUpdate(res, { download_url, version, release_notes, sql_migr
       }
     } else {
       send('sql_skip', 95, 'Tidak ada migrasi database untuk versi ini.');
+    }
+
+    // ── 7b. INFRA SCRIPTS (opsional) ─────────────────────────────────────
+    // Paket update boleh menyertakan infra/*.sh (mis. fix-startup-order.sh) —
+    // dijalankan sekali, idempoten, untuk perbaikan level sistem (systemd/nginx)
+    // yang tidak bisa lewat migrasi SQL biasa (MASALAH 5, hotfix Sep 2026).
+    const infraDir = path.join(extractDir, 'infra');
+    if (fs.existsSync(infraDir)) {
+      const infraScripts = fs.readdirSync(infraDir).filter(f => f.toLowerCase().endsWith('.sh')).sort();
+      for (const fname of infraScripts) {
+        try {
+          send('infra_script', 96, `Menjalankan skrip infra: ${fname}...`);
+          const fpath = path.join(infraDir, fname);
+          await runCmd(`chmod +x "${fpath}" && bash "${fpath}" 2>&1 | tail -20`);
+        } catch (infraErr) {
+          send('infra_warning', 96, `Peringatan: skrip ${fname} gagal (${infraErr.message.slice(0, 80)}). Lanjutkan.`);
+        }
+      }
     }
 
     // ── 8. TULIS VERSION ───────────────────────────────────────────────

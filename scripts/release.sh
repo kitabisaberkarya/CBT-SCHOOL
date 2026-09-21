@@ -80,7 +80,7 @@ if [ ! -f ".env" ]; then
 fi
 
 log_info "Menjalankan npm run build..."
-npm run build:fast 2>&1 | tail -10
+npm run build 2>&1 | tail -10
 
 if [ ! -d "dist" ] || [ -z "$(ls -A dist)" ]; then
     log_error "Build GAGAL — folder dist/ kosong!"
@@ -107,6 +107,35 @@ log_success "version.txt: $(cat "${FRONTEND_DIR}/dist/version.txt")"
 log_info "Membuat ZIP dari dist/..."
 cd "${FRONTEND_DIR}"
 zip -r "${ZIP_PATH}" dist/ -x "*.DS_Store" "*.map" 2>/dev/null
+
+# Sertakan migrasi SQL khusus rilis ini (auto-migrasi MASALAH 1, hotfix Sep 2026):
+# taruh file .sql idempoten yang perlu jalan otomatis di releases/migrations/
+# sebelum menjalankan script ini. updater-server akan menjalankan semuanya lalu
+# reload schema cache PostgREST — jadi kolom/tabel baru tidak pernah tertinggal
+# di VHD sekolah mana pun. Kosongkan/isi ulang folder ini per rilis.
+MIGRATIONS_SRC="${RELEASES_DIR}/migrations"
+if [ -d "${MIGRATIONS_SRC}" ] && [ -n "$(ls -A "${MIGRATIONS_SRC}"/*.sql 2>/dev/null)" ]; then
+    cd "${RELEASES_DIR}"
+    zip -r "${ZIP_PATH}" migrations/ 2>/dev/null
+    cd "${FRONTEND_DIR}"
+    log_success "Migrasi SQL disertakan: $(ls "${MIGRATIONS_SRC}"/*.sql | wc -l | tr -d ' ') file"
+else
+    log_info "Tidak ada migrasi SQL khusus untuk rilis ini (releases/migrations/ kosong)."
+fi
+
+# Sertakan skrip infra khusus rilis ini (mis. fix-startup-order.sh) — dijalankan
+# sekali oleh updater-server untuk perbaikan level sistem (systemd/nginx) yang
+# tidak bisa lewat migrasi SQL (MASALAH 5, hotfix Sep 2026).
+INFRA_SRC="${RELEASES_DIR}/infra"
+if [ -d "${INFRA_SRC}" ] && [ -n "$(ls -A "${INFRA_SRC}"/*.sh 2>/dev/null)" ]; then
+    cd "${RELEASES_DIR}"
+    zip -r "${ZIP_PATH}" infra/ 2>/dev/null
+    cd "${FRONTEND_DIR}"
+    log_success "Skrip infra disertakan: $(ls "${INFRA_SRC}"/*.sh | wc -l | tr -d ' ') file"
+else
+    log_info "Tidak ada skrip infra khusus untuk rilis ini (releases/infra/ kosong)."
+fi
+
 log_success "ZIP dibuat: ${ZIP_PATH}"
 log_info "Ukuran: $(du -sh "${ZIP_PATH}" | cut -f1)"
 

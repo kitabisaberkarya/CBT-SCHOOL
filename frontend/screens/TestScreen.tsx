@@ -121,6 +121,46 @@ const requestFullScreen = async (isRequestingRef?: React.MutableRefObject<boolea
   }
 };
 
+// Gambar soal/opsi yang gagal dimuat (mis. jaringan HP lambat) dicoba ulang sekali
+// secara otomatis, lalu menampilkan tombol "Muat ulang gambar" jika masih gagal —
+// alih-alih menghilang begitu saja (MASALAH 8, hotfix Sep 2026).
+const RetryableImage: React.FC<{ src?: string | null; alt: string; className?: string }> = ({ src, alt, className }) => {
+  const [attempt, setAttempt] = useState(0);
+  const [failed, setFailed] = useState(false);
+  const autoRetried = useRef(false);
+
+  useEffect(() => { setAttempt(0); setFailed(false); autoRetried.current = false; }, [src]);
+
+  if (!src) return null;
+  if (failed) {
+    return (
+      <button
+        type="button"
+        onClick={() => { setFailed(false); autoRetried.current = false; setAttempt(a => a + 1); }}
+        className="mt-2 text-xs font-semibold text-blue-600 hover:text-blue-800 underline"
+      >
+        Muat ulang gambar
+      </button>
+    );
+  }
+  const cacheBustedSrc = attempt === 0 ? src : `${src}${src.includes('?') ? '&' : '?'}retry=${attempt}`;
+  return (
+    <img
+      src={cacheBustedSrc}
+      alt={alt}
+      className={className}
+      onError={() => {
+        if (!autoRetried.current) {
+          autoRetried.current = true;
+          setTimeout(() => setAttempt(a => a + 1), 800);
+        } else {
+          setFailed(true);
+        }
+      }}
+    />
+  );
+};
+
 const TestScreen: React.FC<TestScreenProps> = ({ onFinishTest, user, onLogout, questions, durationMinutes, config, testId, userId, randomizeAnswers }) => {
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<number, Answer>>({});
@@ -1221,7 +1261,7 @@ const TestScreen: React.FC<TestScreenProps> = ({ onFinishTest, user, onLogout, q
                                 <div className="ml-4 sm:ml-5 flex-1">
                                     <div className={`${currentTheme.textMain} font-medium sm:font-bold leading-relaxed text-base sm:text-lg`} dangerouslySetInnerHTML={{ __html: mathHtml(opt) }} />
                                     {currentQuestion.optionImages?.[originalIndex] && (
-                                        <img src={currentQuestion.optionImages[originalIndex]} alt={`Gambar opsi ${originalIndex + 1}`} className="mt-2 max-w-xs max-h-48 rounded-lg object-contain" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                                        <RetryableImage src={currentQuestion.optionImages[originalIndex]} alt={`Gambar opsi ${originalIndex + 1}`} className="mt-2 max-w-xs max-h-48 rounded-lg object-contain" />
                                     )}
                                 </div>
                             </label>
@@ -1391,7 +1431,7 @@ const TestScreen: React.FC<TestScreenProps> = ({ onFinishTest, user, onLogout, q
                                 <div className="ml-4 sm:ml-5 flex-1">
                                     <div className={`${currentTheme.textMain} font-medium sm:font-black leading-relaxed text-base sm:text-lg`} dangerouslySetInnerHTML={{ __html: mathHtml(opt) }} />
                                     {currentQuestion.optionImages?.[originalIndex] && (
-                                        <img src={currentQuestion.optionImages[originalIndex]} alt={`Gambar opsi ${originalIndex + 1}`} className="mt-2 max-w-xs max-h-48 rounded-lg object-contain" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                                        <RetryableImage src={currentQuestion.optionImages[originalIndex]} alt={`Gambar opsi ${originalIndex + 1}`} className="mt-2 max-w-xs max-h-48 rounded-lg object-contain" />
                                     )}
                                 </div>
                             </label>
@@ -1674,9 +1714,8 @@ const TestScreen: React.FC<TestScreenProps> = ({ onFinishTest, user, onLogout, q
                 {(currentQuestion.image || currentQuestion.audio || currentQuestion.video) && (
                     <div className="mb-6 sm:mb-8 space-y-4 sm:space-y-6">
                         {currentQuestion.image && (
-                            <img src={currentQuestion.image} alt="Soal"
+                            <RetryableImage src={currentQuestion.image} alt="Soal"
                                 className={`max-w-full h-auto rounded-2xl sm:rounded-3xl ${currentTheme.border} border shadow-sm mx-auto block`}
-                                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
                             />
                         )}
                         {currentQuestion.audio && (

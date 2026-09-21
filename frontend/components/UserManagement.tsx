@@ -8,6 +8,7 @@ import PasswordResetModal from './PasswordResetModal';
 import UserSyncModal from './UserSyncModal';
 import TeacherImportModal from './TeacherImportModal';
 import { DEFAULT_PROFILE_IMAGES } from '../constants';
+import { fetchWithRetry } from '../utils/fetchWithRetry';
 
 interface UserManagementProps {
     users?: User[]; // Optional karena kita akan fetch sendiri atau terima dari parent
@@ -19,6 +20,7 @@ interface UserManagementProps {
 const UserManagement: React.FC<UserManagementProps> = ({ isDemoMode = false, onRefresh }) => {
   const [users, setUsers] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'student' | 'teacher' | 'admin'>('student');
   const [searchTerm, setSearchTerm] = useState('');
   const [isSyncingTeacher, setIsSyncingTeacher] = useState(false);
@@ -42,13 +44,20 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDemoMode = false, onR
   // --- FETCH DATA ---
   const fetchData = async () => {
       setIsLoading(true);
+      setLoadError(null);
       try {
           const [usersRes, classesRes, majorsRes, configRes] = await Promise.all([
-              supabase.from('users').select('*').range(0, 9999),
-              supabase.from('master_classes').select('*'),
-              supabase.from('master_majors').select('*'),
-              supabase.from('app_config').select('*').single()
+              fetchWithRetry(() => supabase.from('users').select('*').range(0, 9999)),
+              fetchWithRetry(() => supabase.from('master_classes').select('*')),
+              fetchWithRetry(() => supabase.from('master_majors').select('*')),
+              fetchWithRetry(() => supabase.from('app_config').select('*').single()),
           ]);
+
+          // Jangan perlakukan error sebagai "data kosong" — beda state, beda pesan (MASALAH 3)
+          if (usersRes.error) {
+              console.error('[UserManagement] Gagal memuat users:', usersRes.error);
+              setLoadError(usersRes.error.message || 'Gagal memuat data pengguna dari server.');
+          }
 
           if (usersRes.data) {
               const mappedUsers = usersRes.data.map((u: any) => {
@@ -90,8 +99,9 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDemoMode = false, onR
           if (classesRes.data) setMasterData(prev => ({ ...prev, classes: classesRes.data }));
           if (majorsRes.data) setMasterData(prev => ({ ...prev, majors: majorsRes.data }));
           if (configRes.data) setConfig(prev => ({ ...prev, ...configRes.data, emailDomain: configRes.data.email_domain || '@sekolah.sch.id' }));
-      } catch (err) {
+      } catch (err: any) {
           console.error('[UserManagement] fetchData error:', err);
+          setLoadError(err?.message || 'Gagal memuat data pengguna dari server.');
       } finally {
           setIsLoading(false);
       }
@@ -518,6 +528,14 @@ const UserManagement: React.FC<UserManagementProps> = ({ isDemoMode = false, onR
                                   </div>
                                 </div>
                                 <span className="text-sm text-blue-500 font-medium animate-pulse">Memuat data pengguna...</span>
+                              </div>
+                            </td></tr>
+                        ) : loadError ? (
+                            <tr><td colSpan={5} className="px-6 py-10 text-center">
+                              <div className="flex flex-col items-center gap-2 text-red-600">
+                                <span className="text-sm font-semibold">Gagal memuat data pengguna.</span>
+                                <span className="text-xs text-red-400">{loadError}</span>
+                                <button onClick={() => fetchData()} className="mt-1 text-xs font-bold text-blue-600 hover:text-blue-800 underline">Coba Lagi</button>
                               </div>
                             </td></tr>
                         ) : filteredUsers.length === 0 ? (

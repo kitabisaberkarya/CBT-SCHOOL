@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../supabaseClient';
+import { fetchWithRetry } from '../utils/fetchWithRetry';
 import { Shield, RefreshCw, Filter, ChevronLeft, ChevronRight, Search, AlertCircle, Clock, User, Database, Trash2, PlusCircle, Edit3, LogIn, HardDrive, CalendarX } from 'lucide-react';
 
 interface AuditEntry {
@@ -86,20 +87,32 @@ const AuditLogScreen: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const { data, error: rpcErr } = await supabase.rpc('get_audit_log', {
-        p_limit:    LIMIT + 1,
-        p_offset:   pg * LIMIT,
-        p_action:   filterAction || null,
-        p_user_id:  null,
-        p_days_back: filterDays,
-      });
+      // Retry dengan backoff — menu ini sering diakses tepat setelah VHD boot,
+      // saat backend bisa membalas 502/503 sesaat sebelum benar-benar siap (MASALAH 4/5).
+      const { data, error: rpcErr } = await fetchWithRetry(() =>
+        supabase.rpc('get_audit_log', {
+          p_limit:    LIMIT + 1,
+          p_offset:   pg * LIMIT,
+          p_action:   filterAction || null,
+          p_user_id:  null,
+          p_days_back: filterDays,
+        })
+      );
       if (rpcErr) throw rpcErr;
       const rows = (data || []) as AuditEntry[];
       setHasMore(rows.length > LIMIT);
       setEntries(rows.slice(0, LIMIT));
       setPage(pg);
     } catch (e: any) {
-      setError(e.message || 'Gagal memuat audit log');
+      // Nginx/Kong yang belum siap bisa membalas HTML mentah ("502 Bad Gateway"),
+      // bukan JSON — jangan tampilkan mentah-mentah ke pengguna (MASALAH 4).
+      const rawMsg = String(e?.message || e || '');
+      const looksLikeHtml = /<html|<!doctype/i.test(rawMsg);
+      setError(
+        looksLikeHtml
+          ? 'Server backend belum siap atau sedang gangguan (502 Bad Gateway). Tunggu sebentar lalu coba lagi.'
+          : (rawMsg || 'Gagal memuat audit log')
+      );
     } finally {
       setLoading(false);
     }
@@ -107,7 +120,7 @@ const AuditLogScreen: React.FC = () => {
 
   const fetchStats = useCallback(async () => {
     try {
-      const { data } = await supabase.rpc('get_audit_log_stats');
+      const { data } = await fetchWithRetry(() => supabase.rpc('get_audit_log_stats'));
       if (data) setStats(data as LogStats);
     } catch {}
   }, []);

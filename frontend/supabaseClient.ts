@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { AppConfig, User, Test, Question, ExamTokenSettings, AvailableExam } from './types';
+import { fetchWithRetry } from './utils/fetchWithRetry';
 
 // ==============================================================================
 //  SUPABASE CLIENT — CBT SCHOOL ENTERPRISE VHD EDITION
@@ -82,6 +83,38 @@ const getDynamicAnonKey = (): string => {
 const finalSupabaseUrl = getDynamicSupabaseUrl();
 const finalAnonKey = getDynamicAnonKey();
 
+// ==============================================================================
+//  NORMALISASI URL MEDIA (MASALAH 8 — hotfix Sep 2026)
+//  URL gambar/logo lama bisa tersimpan dengan host absolut (IP LAN atau localhost
+//  admin saat upload), sehingga gagal dimuat saat diakses dari IP/domain lain
+//  (mis. siswa via domain Cloudflare Tunnel HTTPS → mixed-content diblokir browser).
+//  Fungsi ini menulis ulang bagian host dari URL storage Supabase agar selalu
+//  memakai origin yang sedang aktif untuk viewer saat ini, apa pun host yang
+//  tersimpan di database.
+// ==============================================================================
+const STORAGE_PATH_MARKER = '/storage/v1/object/public/';
+
+export const resolveMediaUrl = <T extends string | null | undefined>(url: T): T => {
+  if (!url) return url;
+  if (!/^https?:\/\//i.test(url)) return url; // relative/base64/data-uri — biarkan apa adanya
+  const idx = url.indexOf(STORAGE_PATH_MARKER);
+  if (idx === -1) return url; // bukan URL storage Supabase (mis. gambar eksternal) — biarkan
+  return (`${finalSupabaseUrl}${url.slice(idx)}`) as T;
+};
+
+const resolveMediaUrlsInHtml = <T extends string | null | undefined>(html: T): T => {
+  if (!html || !html.includes(STORAGE_PATH_MARKER)) return html;
+  return (html.replace(
+    /https?:\/\/[^"'\s)]+\/storage\/v1\/object\/public\/[^"'\s)]+/g,
+    (fullUrl) => `${finalSupabaseUrl}${fullUrl.slice(fullUrl.indexOf(STORAGE_PATH_MARKER))}`
+  )) as T;
+};
+
+const resolveMediaUrlList = (urls: any): any => {
+  if (!Array.isArray(urls)) return urls;
+  return urls.map((u) => (typeof u === 'string' ? resolveMediaUrl(u) : u));
+};
+
 if (!finalAnonKey) {
   console.warn('[Supabase] Anon Key kosong. Pastikan file .env sudah dikonfigurasi dengan benar.');
 }
@@ -115,18 +148,18 @@ export const supabase = createClient(finalSupabaseUrl, finalAnonKey, {
 
 export const getConfig = async (defaultConfig: AppConfig): Promise<AppConfig> => {
   try {
-    const { data, error } = await supabase
-      .from('app_config')
-      .select('*')
-      .limit(1)
-      .single();
+    // Retry dengan backoff — config sering diminta tepat setelah VHD boot,
+    // saat PostgREST/Kong mungkin belum sepenuhnya siap (MASALAH 5).
+    const { data, error } = await fetchWithRetry(() =>
+      supabase.from('app_config').select('*').limit(1).single()
+    );
 
     if (error || !data) return defaultConfig;
 
     return {
       schoolName:              data.school_name          ?? defaultConfig.schoolName,
-      logoUrl:                 data.logo_url             ?? defaultConfig.logoUrl,
-      leftLogoUrl:             data.left_logo_url        || '',
+      logoUrl:                 resolveMediaUrl(data.logo_url) ?? defaultConfig.logoUrl,
+      leftLogoUrl:             resolveMediaUrl(data.left_logo_url) || '',
       primaryColor:            data.primary_color        ?? defaultConfig.primaryColor,
       enableAntiCheat:         data.enable_anti_cheat    ?? defaultConfig.enableAntiCheat,
       antiCheatViolationLimit: data.anti_cheat_violation_limit ?? defaultConfig.antiCheatViolationLimit,
@@ -137,8 +170,8 @@ export const getConfig = async (defaultConfig: AppConfig): Promise<AppConfig> =>
       headmasterName:          data.headmaster_name      || '',
       headmasterNip:           data.headmaster_nip       || '',
       cardIssueDate:           data.card_issue_date      || '',
-      signatureUrl:            data.signature_url        || '',
-      stampUrl:                data.stamp_url            || '',
+      signatureUrl:            resolveMediaUrl(data.signature_url) || '',
+      stampUrl:                resolveMediaUrl(data.stamp_url) || '',
       emailDomain:             data.email_domain         || defaultConfig.emailDomain,
       defaultPaperSize:        data.default_paper_size   || 'A4',
       schoolAddress:           data.school_address       || '',
@@ -247,12 +280,12 @@ export const getTestByToken = async (token: string, user: User): Promise<Test | 
       questions: (questionsData || []).map((q: any) => ({
         id:                 q.id,
         type:               q.type as any,
-        question:           q.question,
-        image:              q.image_url,
-        audio:              q.audio_url,
-        video:              q.video_url,
-        options:            q.options        || [],
-        optionImages:       q.option_images  || [],
+        question:           resolveMediaUrlsInHtml(q.question),
+        image:              resolveMediaUrl(q.image_url),
+        audio:              resolveMediaUrl(q.audio_url),
+        video:              resolveMediaUrl(q.video_url),
+        options:            (q.options || []).map((o: any) => typeof o === 'string' ? resolveMediaUrlsInHtml(o) : o),
+        optionImages:       resolveMediaUrlList(q.option_images || []),
         correctAnswerIndex: q.correct_answer_index || 0,
         answerKey:          q.answer_key,
         metadata:           q.metadata,
@@ -274,12 +307,15 @@ export const getTestByToken = async (token: string, user: User): Promise<Test | 
 
 export const getExamTokenSettings = async (): Promise<ExamTokenSettings | null> => {
   try {
-    const { data, error } = await supabase
-      .from('exam_token_settings')
-      .select('*')
-      .limit(1)
-      .maybeSingle();
-    if (error || !data) return null;
+    // Retry dengan backoff — menu ini sering diakses tepat setelah VHD boot,
+    // saat PostgREST/Kong mungkin belum sepenuhnya siap (MASALAH 2/5).
+    const { data, error } = await fetchWithRetry(() =>
+      supabase.from('exam_token_settings').select('*').limit(1).maybeSingle()
+    );
+    if (error || !data) {
+      if (error) console.error('[getExamTokenSettings] Gagal memuat pengaturan token:', error);
+      return null;
+    }
     return {
       id: data.id,
       mode: data.mode as 'auto' | 'manual',
@@ -288,7 +324,8 @@ export const getExamTokenSettings = async (): Promise<ExamTokenSettings | null> 
       lastGeneratedAt: data.last_generated_at,
       isActive: data.is_active,
     };
-  } catch {
+  } catch (err) {
+    console.error('[getExamTokenSettings] Exception:', err);
     return null;
   }
 };
@@ -304,12 +341,13 @@ export const updateExamTokenSettings = async (
     if (settings.isActive !== undefined) dbData.is_active = settings.isActive;
     if (settings.lastGeneratedAt !== undefined) dbData.last_generated_at = settings.lastGeneratedAt;
 
-    const { error } = await supabase
-      .from('exam_token_settings')
-      .update(dbData)
-      .not('id', 'is', null);
+    const { error } = await fetchWithRetry(() =>
+      supabase.from('exam_token_settings').update(dbData).not('id', 'is', null)
+    );
+    if (error) console.error('[updateExamTokenSettings] Gagal menyimpan pengaturan token:', error);
     return !error;
-  } catch {
+  } catch (err) {
+    console.error('[updateExamTokenSettings] Exception:', err);
     return false;
   }
 };
@@ -446,12 +484,12 @@ export const loadExamById = async (
       questions: (questionsData || []).map((q: any) => ({
         id:                 q.id,
         type:               q.type as any,
-        question:           q.question,
-        image:              q.image_url,
-        audio:              q.audio_url,
-        video:              q.video_url,
-        options:            q.options        || [],
-        optionImages:       q.option_images  || [],
+        question:           resolveMediaUrlsInHtml(q.question),
+        image:              resolveMediaUrl(q.image_url),
+        audio:              resolveMediaUrl(q.audio_url),
+        video:              resolveMediaUrl(q.video_url),
+        options:            (q.options || []).map((o: any) => typeof o === 'string' ? resolveMediaUrlsInHtml(o) : o),
+        optionImages:       resolveMediaUrlList(q.option_images || []),
         correctAnswerIndex: q.correct_answer_index || 0,
         answerKey:          q.answer_key,
         metadata:           q.metadata,
