@@ -775,6 +775,18 @@ const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
   const handleAdminPasswordChange = async (newPassword: string): Promise<boolean> => {
     const { error } = await supabase.auth.updateUser({ password: newPassword });
     if(error) { showToast(`Gagal: ${error.message}. Anda mungkin perlu login ulang dulu.`, 'error'); return false; }
+
+    // Sinkronkan juga ke kolom login manual/QR (public.users) — tanpa ini, password
+    // baru hanya berlaku untuk login email biasa dan login via kartu/QR tetap memakai
+    // password lama, membuat fitur ini terlihat "tidak berfungsi".
+    const { error: syncError } = await supabase
+      .from('users')
+      .update({ qr_login_password: newPassword, password_text: newPassword })
+      .eq('id', user.id);
+    if (syncError) {
+      console.error('[handleAdminPasswordChange] Gagal sinkron password login manual/QR:', syncError);
+    }
+
     showToast('Password admin berhasil diubah.', 'success');
     return true;
   };

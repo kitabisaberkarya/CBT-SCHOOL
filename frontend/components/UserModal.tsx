@@ -33,14 +33,18 @@ const UserModal: React.FC<UserModalProps> = ({ userToEdit, masterData, onSave, o
   const photoInputRef = useRef<HTMLInputElement>(null);
 
   const isTeacher = formData.role === 'teacher';
+  const isAdminRole = formData.role === 'admin';
+  // Guru & Admin sama-sama butuh kredensial login manual (username/email + password),
+  // beda dengan siswa yang login pakai NISN dan password default.
+  const needsCredentials = isTeacher || isAdminRole;
   const isEditing = !!userToEdit;
 
   // Auto-generate username siswa dari NISN + domain (cegah double @@)
   useEffect(() => {
-    if (!isTeacher && !isEditing && formData.nisn) {
+    if (!needsCredentials && !isEditing && formData.nisn) {
       setFormData(prev => ({ ...prev, username: prev.nisn + '@' + cleanDomain }));
     }
-  }, [formData.nisn, isTeacher, isEditing, cleanDomain]);
+  }, [formData.nisn, needsCredentials, isEditing, cleanDomain]);
 
   // Compress foto ke base64 via Canvas (max 200x200px, JPEG 80%)
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -82,7 +86,7 @@ const UserModal: React.FC<UserModalProps> = ({ userToEdit, masterData, onSave, o
     setFormData(prev => ({
       ...prev,
       role: newRole,
-      class: newRole === 'teacher' ? 'STAFF' : '',
+      class: (newRole === 'teacher' || newRole === 'admin') ? 'STAFF' : '',
       major: '',
     }));
   };
@@ -93,9 +97,9 @@ const UserModal: React.FC<UserModalProps> = ({ userToEdit, masterData, onSave, o
     // --- Password validation ---
     if (!isEditing) {
       // New user
-      if (isTeacher) {
+      if (needsCredentials) {
         if (!formData.password) {
-          alert('Password guru wajib diisi.');
+          alert(isAdminRole ? 'Password admin wajib diisi.' : 'Password guru wajib diisi.');
           return;
         }
         if (formData.password !== confirmPassword) {
@@ -117,8 +121,8 @@ const UserModal: React.FC<UserModalProps> = ({ userToEdit, masterData, onSave, o
     // Determine final password
     let finalPassword: string | null = null;
     if (!isEditing) {
-      finalPassword = isTeacher
-        ? formData.password                     // Teacher: manual password (required)
+      finalPassword = needsCredentials
+        ? formData.password                     // Guru/Admin: manual password (required)
         : (formData.password || formData.nisn); // Student: entered or default NISN
     } else {
       finalPassword = formData.password || null; // Edit: null = keep old
@@ -134,9 +138,9 @@ const UserModal: React.FC<UserModalProps> = ({ userToEdit, masterData, onSave, o
           : DEFAULT_PROFILE_IMAGES.STUDENT_NEUTRAL;
     }
 
-    // Default major for teacher
+    // Default major for teacher/admin
     let finalMajor = formData.major;
-    if (isTeacher && !finalMajor) finalMajor = 'Guru Mapel';
+    if (needsCredentials && !finalMajor) finalMajor = isAdminRole ? 'Administrator' : 'Guru Mapel';
 
     const dataToSave = {
       ...formData,
@@ -162,8 +166,10 @@ const UserModal: React.FC<UserModalProps> = ({ userToEdit, masterData, onSave, o
         <div className="p-5 border-b flex justify-between items-center bg-gray-50 rounded-t-2xl">
           <div>
             <h3 className="text-xl font-bold text-gray-800">{title}</h3>
-            {isTeacher && !isEditing && (
-              <p className="text-xs text-purple-600 mt-0.5 font-medium">Mode: Akun Guru — Email & Password ditentukan manual</p>
+            {needsCredentials && !isEditing && (
+              <p className="text-xs text-purple-600 mt-0.5 font-medium">
+                Mode: Akun {isAdminRole ? 'Admin' : 'Guru'} — Username & Password ditentukan manual
+              </p>
             )}
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-800">
@@ -186,6 +192,7 @@ const UserModal: React.FC<UserModalProps> = ({ userToEdit, masterData, onSave, o
               >
                 <option value="student">Siswa / Peserta Ujian</option>
                 <option value="teacher">Guru / Pengawas</option>
+                <option value="admin">Admin / Pengelola</option>
               </select>
             </div>
 
@@ -199,14 +206,14 @@ const UserModal: React.FC<UserModalProps> = ({ userToEdit, masterData, onSave, o
                 onChange={handleChange}
                 className="mt-1 w-full p-2 border rounded-md"
                 required
-                placeholder={isTeacher ? 'Contoh: Budi Santoso, S.Pd' : 'Nama Siswa'}
+                placeholder={needsCredentials ? (isAdminRole ? 'Contoh: Ari Wijaya, S.Kom' : 'Contoh: Budi Santoso, S.Pd') : 'Nama Siswa'}
               />
             </div>
 
             {/* NIP / NISN + Jenis Kelamin */}
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700">{isTeacher ? 'NIP / Kode Guru' : 'NISN'}</label>
+                <label className="block text-sm font-medium text-gray-700">{needsCredentials ? (isAdminRole ? 'NIP / Kode Admin' : 'NIP / Kode Guru') : 'NISN'}</label>
                 <input
                   type="text"
                   name="nisn"
@@ -214,7 +221,7 @@ const UserModal: React.FC<UserModalProps> = ({ userToEdit, masterData, onSave, o
                   onChange={handleChange}
                   className="mt-1 w-full p-2 border rounded-md font-mono"
                   required
-                  placeholder={isTeacher ? 'Contoh: pakbudi' : '1234567890'}
+                  placeholder={needsCredentials ? (isAdminRole ? 'Contoh: adminbaru' : 'Contoh: pakbudi') : '1234567890'}
                 />
               </div>
               <div>
@@ -226,17 +233,17 @@ const UserModal: React.FC<UserModalProps> = ({ userToEdit, masterData, onSave, o
               </div>
             </div>
 
-            {/* Teacher-specific: Email Login (editable) */}
-            {isTeacher && (
+            {/* Teacher/Admin-specific: Login credentials (editable) */}
+            {needsCredentials && (
               <div className="bg-purple-50 p-4 rounded-xl border border-purple-200 space-y-3">
                 <h4 className="text-sm font-bold text-purple-800 flex items-center gap-2">
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
-                  Kredensial Login Guru
+                  Kredensial Login {isAdminRole ? 'Admin' : 'Guru'}
                 </h4>
 
                 {/* Email Login — editable */}
                 <div>
-                  <label className="block text-xs font-bold text-purple-700 mb-1">Username Login <span className="text-purple-400 font-normal">(bebas, contoh: pakbudi atau pakbudi@sekolah.id)</span></label>
+                  <label className="block text-xs font-bold text-purple-700 mb-1">Username Login <span className="text-purple-400 font-normal">(bebas, contoh: {isAdminRole ? 'admin2' : 'pakbudi'} atau {isAdminRole ? 'admin2' : 'pakbudi'}@sekolah.id)</span></label>
                   <input
                     type="text"
                     name="username"
@@ -244,9 +251,9 @@ const UserModal: React.FC<UserModalProps> = ({ userToEdit, masterData, onSave, o
                     onChange={handleChange}
                     className="w-full p-2 border border-purple-300 rounded-md font-mono text-sm bg-white focus:ring-2 focus:ring-purple-500"
                     required
-                    placeholder={`contoh: pakbudi atau pakbudi@teacher.${cleanDomain}`}
+                    placeholder={isAdminRole ? `contoh: admin2 atau admin2@${cleanDomain}` : `contoh: pakbudi atau pakbudi@teacher.${cleanDomain}`}
                   />
-                  <p className="text-xs text-purple-500 mt-1">Ini yang digunakan guru untuk login ke panel guru.</p>
+                  <p className="text-xs text-purple-500 mt-1">Ini yang digunakan {isAdminRole ? 'admin' : 'guru'} untuk login ke panel {isAdminRole ? 'admin' : 'guru'}.</p>
                 </div>
 
                 {/* Status + Mapel */}
@@ -256,8 +263,8 @@ const UserModal: React.FC<UserModalProps> = ({ userToEdit, masterData, onSave, o
                     <input type="text" name="class" value={formData.class || 'STAFF'} onChange={handleChange} className="w-full p-2 border rounded text-sm text-gray-600 bg-white" placeholder="STAFF" />
                   </div>
                   <div>
-                    <label className="block text-xs font-bold text-purple-700 mb-1">Mata Pelajaran / Jabatan</label>
-                    <input type="text" name="major" value={formData.major} onChange={handleChange} className="w-full p-2 border rounded text-sm bg-white focus:ring-purple-500" placeholder="Contoh: Matematika" />
+                    <label className="block text-xs font-bold text-purple-700 mb-1">{isAdminRole ? 'Jabatan' : 'Mata Pelajaran / Jabatan'}</label>
+                    <input type="text" name="major" value={formData.major} onChange={handleChange} className="w-full p-2 border rounded text-sm bg-white focus:ring-purple-500" placeholder={isAdminRole ? 'Contoh: Administrator' : 'Contoh: Matematika'} />
                   </div>
                 </div>
 
@@ -303,7 +310,7 @@ const UserModal: React.FC<UserModalProps> = ({ userToEdit, masterData, onSave, o
             )}
 
             {/* Student-specific fields */}
-            {!isTeacher && (
+            {!needsCredentials && (
               <>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
@@ -355,7 +362,8 @@ const UserModal: React.FC<UserModalProps> = ({ userToEdit, masterData, onSave, o
                     className="w-20 h-20 rounded-full object-cover border-2 border-gray-200 shadow-sm"
                     onError={(e) => {
                       const img = e.target as HTMLImageElement;
-                      const fb = formData.role === 'teacher' ? DEFAULT_PROFILE_IMAGES.TEACHER
+                      const fb = formData.role === 'admin' ? DEFAULT_PROFILE_IMAGES.ADMIN
+                        : formData.role === 'teacher' ? DEFAULT_PROFILE_IMAGES.TEACHER
                         : formData.gender === 'Perempuan' ? DEFAULT_PROFILE_IMAGES.STUDENT_FEMALE
                         : DEFAULT_PROFILE_IMAGES.STUDENT_MALE;
                       if (img.src !== window.location.origin + fb) img.src = fb;
@@ -405,7 +413,7 @@ const UserModal: React.FC<UserModalProps> = ({ userToEdit, masterData, onSave, o
             </div>
 
             {/* Info box for student */}
-            {!isTeacher && !isEditing && (
+            {!needsCredentials && !isEditing && (
               <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-md text-xs text-yellow-800">
                 Password awal siswa otomatis diatur sama dengan <strong>NISN</strong>. Siswa dapat menggantinya setelah login.
               </div>
