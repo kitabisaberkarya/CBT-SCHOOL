@@ -71,17 +71,33 @@ export const ContentProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [loading, setLoading] = useState(true);
   const [isAdminOpen, setIsAdminOpen] = useState(false);
   
-  // 1. Hero Section
-  const [heroImage, setHeroImageState] = useState(INITIAL_HERO_IMAGE);
-  const [heroImage2, setHeroImage2State] = useState("https://images.unsplash.com/photo-1522202176988-66273c2fd55f?q=80&w=1742&auto=format&fit=crop");
-  const [heroImage3, setHeroImage3State] = useState("https://images.unsplash.com/photo-1517048676732-d65bc937f952?q=80&w=1740&auto=format&fit=crop");
-  const [heroVideo, setHeroVideoState] = useState("");
+  // 1. Hero Section (with localStorage fallback for instant persistence)
+  const [heroImage, setHeroImageState] = useState(() => {
+    return localStorage.getItem('cbt_hero_image') || INITIAL_HERO_IMAGE;
+  });
+  const [heroImage2, setHeroImage2State] = useState(() => {
+    return localStorage.getItem('cbt_hero_image2') || "https://images.unsplash.com/photo-1522202176988-66273c2fd55f?q=80&w=1742&auto=format&fit=crop";
+  });
+  const [heroImage3, setHeroImage3State] = useState(() => {
+    return localStorage.getItem('cbt_hero_image3') || "https://images.unsplash.com/photo-1517048676732-d65bc937f952?q=80&w=1740&auto=format&fit=crop";
+  });
+  const [heroVideo, setHeroVideoState] = useState(() => {
+    return localStorage.getItem('cbt_hero_video') || "";
+  });
 
-  const [heroContent, setHeroContentState] = useState<HeroContent>({
-    title: "CBT SCHOOL",
-    subtitle: "Hemat, Aman, Berintegritas",
-    description: "Transformasi sistem evaluasi sekolah Anda dengan platform ujian digital berbasis web yang modern.",
-    ctaText: "Lihat Penawaran"
+  const [heroContent, setHeroContentState] = useState<HeroContent>(() => {
+    const saved = localStorage.getItem('cbt_hero_content');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {}
+    }
+    return {
+      title: "CBT SCHOOL",
+      subtitle: "Hemat, Aman, Berintegritas",
+      description: "Transformasi sistem evaluasi sekolah Anda dengan platform ujian digital berbasis web yang modern.",
+      ctaText: "Lihat Penawaran"
+    };
   });
 
   // 2. Features & Docs
@@ -96,8 +112,17 @@ export const ContentProvider: React.FC<{ children: React.ReactNode }> = ({ child
   // 4. Contact
   const [contacts, setContacts] = useState<ContactInfo[]>(COMPANY_CONTACTS);
 
-  // 5. Clients
-  const [clients, setClients] = useState<Client[]>(CLIENTS_DATA);
+  // 5. Clients (with localStorage fallback for instant persistence)
+  const [clients, setClients] = useState<Client[]>(() => {
+    const saved = localStorage.getItem('cbt_clients_data');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length >= CLIENTS_DATA.length) return parsed;
+      } catch (e) {}
+    }
+    return CLIENTS_DATA;
+  });
 
   // --- FETCH DATA FROM SUPABASE ---
   useEffect(() => {
@@ -185,11 +210,13 @@ export const ContentProvider: React.FC<{ children: React.ReactNode }> = ({ child
       // 6. Fetch Clients
       const { data: clientsData } = await supabase.from('clients').select('*').order('created_at', { ascending: true });
       if (clientsData && clientsData.length > 0) {
-        setClients(clientsData.map((c: any) => ({
+        const formatted = clientsData.map((c: any) => ({
           id: c.id,
           name: c.name,
           logoUrl: c.logo_url
-        })));
+        }));
+        setClients(formatted);
+        localStorage.setItem('cbt_clients_data', JSON.stringify(formatted));
       }
 
     } catch (error) {
@@ -206,38 +233,63 @@ export const ContentProvider: React.FC<{ children: React.ReactNode }> = ({ child
     return `https://wa.me/${waNumber}`;
   };
 
-  // --- UPDATERS (Write to Supabase) ---
+  // --- UPDATERS (Write to Supabase + LocalStorage Cache) ---
 
   const setHeroImage = async (url: string) => {
     setHeroImageState(url);
-    await supabase.from('hero').update({ image_url: url }).eq('id', 1);
+    try {
+      localStorage.setItem('cbt_hero_image', url);
+      await supabase.from('hero').update({ image_url: url }).eq('id', 1);
+    } catch (err) {
+      console.warn("Supabase update hero image error:", err);
+    }
   };
 
   const setHeroImage2 = async (url: string) => {
     setHeroImage2State(url);
-    await supabase.from('hero').update({ image_url_2: url }).eq('id', 1);
+    try {
+      localStorage.setItem('cbt_hero_image2', url);
+      await supabase.from('hero').update({ image_url_2: url }).eq('id', 1);
+    } catch (err) {
+      console.warn("Supabase update hero image2 error:", err);
+    }
   };
 
   const setHeroImage3 = async (url: string) => {
     setHeroImage3State(url);
-    await supabase.from('hero').update({ image_url_3: url }).eq('id', 1);
+    try {
+      localStorage.setItem('cbt_hero_image3', url);
+      await supabase.from('hero').update({ image_url_3: url }).eq('id', 1);
+    } catch (err) {
+      console.warn("Supabase update hero image3 error:", err);
+    }
   };
 
   const setHeroVideo = async (url: string) => {
     setHeroVideoState(url);
-    // Explicitly handle empty string to save as NULL or empty string in DB
-    const valueToSave = url === "" ? null : url;
-    await supabase.from('hero').update({ video_url: valueToSave }).eq('id', 1);
+    try {
+      localStorage.setItem('cbt_hero_video', url || '');
+      // Explicitly handle empty string to save as NULL or empty string in DB
+      const valueToSave = url === "" ? null : url;
+      await supabase.from('hero').update({ video_url: valueToSave }).eq('id', 1);
+    } catch (err) {
+      console.warn("Supabase update hero video error:", err);
+    }
   };
 
   const setHeroContent = async (content: HeroContent) => {
     setHeroContentState(content);
-    await supabase.from('hero').update({
-      title: content.title,
-      subtitle: content.subtitle,
-      description: content.description,
-      cta_text: content.ctaText
-    }).eq('id', 1);
+    try {
+      localStorage.setItem('cbt_hero_content', JSON.stringify(content));
+      await supabase.from('hero').update({
+        title: content.title,
+        subtitle: content.subtitle,
+        description: content.description,
+        cta_text: content.ctaText
+      }).eq('id', 1);
+    } catch (err) {
+      console.warn("Supabase update hero content error:", err);
+    }
   };
 
   const updateFeature = async (id: string, updates: Partial<Feature>) => {
@@ -323,17 +375,37 @@ export const ContentProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const addClient = async (name: string, logoUrl: string) => {
     const tempId = Date.now();
     const newClient: Client = { id: tempId, name, logoUrl };
-    setClients(prev => [...prev, newClient]);
+    setClients(prev => {
+      const updated = [...prev, newClient];
+      localStorage.setItem('cbt_clients_data', JSON.stringify(updated));
+      return updated;
+    });
 
-    const { data, error } = await supabase.from('clients').insert([{ name, logo_url: logoUrl }]).select().single();
-    if (data && !error) {
-        setClients(prev => prev.map(c => c.id === tempId ? { id: data.id, name: data.name, logoUrl: data.logo_url } : c));
+    try {
+      const { data, error } = await supabase.from('clients').insert([{ name, logo_url: logoUrl }]).select().single();
+      if (data && !error) {
+        setClients(prev => {
+          const updated = prev.map(c => c.id === tempId ? { id: data.id, name: data.name, logoUrl: data.logo_url } : c);
+          localStorage.setItem('cbt_clients_data', JSON.stringify(updated));
+          return updated;
+        });
+      }
+    } catch (err) {
+      console.warn("Supabase add client error:", err);
     }
   };
 
   const deleteClient = async (id: number) => {
-    setClients(prev => prev.filter(c => c.id !== id));
-    await supabase.from('clients').delete().eq('id', id);
+    setClients(prev => {
+      const updated = prev.filter(c => c.id !== id);
+      localStorage.setItem('cbt_clients_data', JSON.stringify(updated));
+      return updated;
+    });
+    try {
+      await supabase.from('clients').delete().eq('id', id);
+    } catch (err) {
+      console.warn("Supabase delete client error:", err);
+    }
   };
 
   const uploadImage = async (file: File, folder: string): Promise<string | null> => {

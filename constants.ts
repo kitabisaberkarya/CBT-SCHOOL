@@ -9,22 +9,6 @@ export const COMPANY_CONTACTS: ContactInfo[] = [
     phone: "0821-3489-4442",
     whatsappUrl: "https://wa.me/6282134894442?text=Halo%20Admin%20CBT%20School,%20saya%20tertarik%20dengan%20penawaran%20aplikasi%20ini.",
     imageUrl: "https://res.cloudinary.com/dt1nrarpq/image/upload/v1763714368/software-engineer_xgdvou.png"
-  },
-  {
-    id: "c2",
-    name: "Nudik Setyawan Purnomo",
-    role: "Tim HelpDesk CBT SCHOOL",
-    phone: "+62 812-1606-7318",
-    whatsappUrl: "https://wa.me/6281216067318?text=Halo%20Pak%20Nudik,%20saya%20tertarik%20dengan%20penawaran%20aplikasi%20CBT%20School.",
-    imageUrl: "https://res.cloudinary.com/dt1nrarpq/image/upload/v1763714368/software-engineer_xgdvou.png" // Placeholder image
-  },
-  {
-    id: "c3",
-    name: "Mulyono, S.Pd",
-    role: "Tim HelpDesk CBT SCHOOL",
-    phone: "0852-1459-6325",
-    whatsappUrl: "https://wa.me/6285214596325",
-    imageUrl: "https://res.cloudinary.com/dt1nrarpq/image/upload/v1763714368/software-engineer_xgdvou.png"
   }
 ];
 
@@ -127,11 +111,32 @@ export const COMPARISON_DATA: ComparisonRow[] = [
 ];
 
 export const CLIENTS_DATA: Client[] = [
-  { id: 1, name: "SMK NEGERI 8 SURABAYA", logoUrl: "https://imersa.co.id/toko/logo/images/logo-smk-8-surabaya.png" },
-  { id: 2, name: "SMK DR. SOETOMO SURABAYA", logoUrl: "https://res.cloudinary.com/dt1nrarpq/image/upload/v1757492045/Logo_Smekdors_wkmxjo.png" },
-  { id: 3, name: "SMP NEGERI DEMAK", logoUrl: "https://res.cloudinary.com/dt1nrarpq/image/upload/v1771116105/Desain_tanpa_judul_6_qslcij.png" },
-  { id: 4, name: "SMAN 2 TUBAN", logoUrl: "https://res.cloudinary.com/dt1nrarpq/image/upload/v1771398439/logo_jpg-removebg-preview_ttel5m.png" },
-  { id: 5, name: "YAYASAN IBNU SINA PEMATANG SIANTAR", logoUrl: "https://res.cloudinary.com/dt1nrarpq/image/upload/v1772947981/llo_hrr6gk.png" },
+  { id: 1, name: "SMK DARUS SHOLAWAT", logoUrl: "https://res.cloudinary.com/ddgjbfcyi/image/upload/v1789285438/8e9f8291-da24-486f-abac-4badd4e9fab5_raq1wc.jpg" },
+  { id: 2, name: "SMA Kristen Petra Kediri", logoUrl: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSyj7TI8zuxnt9gE2EuPqnJ5QTdq1FiJCSTHT7H-cwLgjPONCRlDqTtVlU&s=10" },
+  { id: 3, name: "SMK NEGERI 1 CERME GRESIK", logoUrl: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSQHEC3G-9rtai1-9x1jzSgHvRAOlou1EkpsPZjGKY0Xj5KghNLZ6qOYfA&s=10" },
+  { id: 4, name: "SMK TARBIYATUL ISLAM NWDI WANASABA", logoUrl: "https://ytinwdiwanasaba.com/uploads/asset_6a34f923d56fc9.61781074.png" },
+  { id: 5, name: "MI Islamiyah Kalimukti", logoUrl: "https://secure.gravatar.com/blavatar/8056d308224b21b5e53cff8a7eea4c9f849a04f4f8522c984039b96ffed40aec?s=240" },
+  { id: 6, name: "SRMA 19 BANTUL", logoUrl: "https://res.cloudinary.com/dt1nrarpq/image/upload/v1771116105/Desain_tanpa_judul_6_qslcij.png" },
+  { id: 7, name: "SMA NEGERI 2 TUBAN", logoUrl: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcT1nCQ8Cw8ovYz_E3GWC7M56pESapXlOMgJ1GpgJCxm7sV8iEjNiSTeLLU&s=10" },
+  { id: 8, name: "SMAN 1 MOJOSARI", logoUrl: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRCwyTLYPdmz3QY65EzOlJpJYMw1jLtfIiBE5YsRMQlbg&s=10" },
+  { id: 9, name: "MAS Serba Bakti", logoUrl: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcS6iT3X7VxI2GKugrvxDNdMjE-TdL8jyYI02j_VQpjQXLJyEs5j1qDs5vWL&s=10" },
+  { id: 10, name: "SD Negeri 1 Saumlaki", logoUrl: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQsZVnk6N4rimpICcZpTeibwDhdstvw7R2FcKDLykKZZQ&s=10" },
+  { id: 11, name: "SMPN 2 KARANGAN", logoUrl: "https://res.cloudinary.com/dt1nrarpq/image/upload/v1757492045/Logo_Smekdors_wkmxjo.png" },
+  { id: 12, name: "SMA TERPADU RIYADLUL HUDA", logoUrl: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcT_tAKfo4jslPm62hhekRi-QWlxVKq04j7smtyZddTAT_px_RrWJpiWC5M&s=10" },
+  { id: 13, name: "SMA Negeri 1 Kejuruan Muda", logoUrl: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSbZU9Kxy9VNMH7tmF0GyzvSAl4bzsrk_jEmjnx7TEW0Q&s=10" },
+  { id: 14, name: "SMK NEGERI 1 BANCAK", logoUrl: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSr90SUqy9PEzBk7c_fh-QeFbAMlTPqoESYeuy9y_rTx7M2spMHfzeKDdbW&s=10" },
+  { id: 15, name: "SMP Muhammadiyah 5 Surabaya", logoUrl: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTMDo1J6iEY2GET1cuZ52TAFibrKwZ10MnhDFG07EXK7A&s=10" },
+  { id: 16, name: "SMK NEGERI 1 WONOASRI", logoUrl: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTwouxmD4uFMQLtjjZCCQ7_934y35Xc4RI4e4nnYXBcFA&s=10" },
+  { id: 17, name: "SMA DIPONEGORO 1 JAKARTA", logoUrl: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcR_A-iWU81Jckz8Oeh9PL8z9Q6a0NdMp7dnw_6L_N7gIA&s=10" },
+  { id: 18, name: "SMP WIJAYA SURABAYA", logoUrl: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQ64KTuweQrLcNQVVjiZ14qNjsZqMg1e92I64EJ2uUmqjQ0w86kQT7J6Mqv&s=10" },
+  { id: 19, name: "SMA BINA PRATAMA", logoUrl: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRrYQT4AKqJIEZMAygShoA5BejXN-aR0eIYFCU6tDPSxunDGNuxEZTwVo8&s=10" },
+  { id: 20, name: "SMK MHI BANGSALSARI JEMBER", logoUrl: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSwJ6LUABrcfd_6w2pYESE6QZFgd4yTFa8Sm8nh_-3zkoMPXh2QXppCwUg&s=10" },
+  { id: 21, name: "SMKN 1 TANJUNG PURA", logoUrl: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQHu9NLJAQYL03tXUWfAoL1KvFv4uHt20VCSPV6yyjP3Q&s=10" },
+  { id: 22, name: "SMKS Barunawati Surabaya", logoUrl: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTPahu_QXgjcpINCxLOcuGs7DhsYQCHfXZftsEOK90VlQ&s=10" },
+  { id: 23, name: "SMK NEGERI 8 SURABAYA", logoUrl: "https://imersa.co.id/toko/logo/images/logo-smk-8-surabaya.png" },
+  { id: 24, name: "SMK DR. SOETOMO SURABAYA", logoUrl: "https://res.cloudinary.com/dt1nrarpq/image/upload/v1757492045/Logo_Smekdors_wkmxjo.png" },
+  { id: 25, name: "SMP NEGERI DEMAK", logoUrl: "https://res.cloudinary.com/dt1nrarpq/image/upload/v1771116105/Desain_tanpa_judul_6_qslcij.png" },
+  { id: 26, name: "YAYASAN IBNU SINA PEMATANG SIANTAR", logoUrl: "https://res.cloudinary.com/dt1nrarpq/image/upload/v1772947981/llo_hrr6gk.png" }
 ];
 
 export const TECH_STACK = [

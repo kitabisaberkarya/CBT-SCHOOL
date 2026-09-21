@@ -2,10 +2,12 @@ import React from 'react';
 import { useContent } from '../context/ContentContext';
 import { useLanguage } from '../context/LanguageContext';
 import { Calendar } from 'lucide-react';
+import PlayStoreButton from './PlayStoreButton';
+import { EXAM_BROWSER_APK_URL } from './ExamBrowserCard';
 
 const CTA: React.FC = () => {
   const { contacts } = useContent();
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const adminContact = contacts[0];
 
   return (
@@ -21,7 +23,7 @@ const CTA: React.FC = () => {
           {t('cta.desc')}
         </p>
         
-        <div className="flex flex-col sm:flex-row justify-center gap-4">
+        <div className="flex flex-col sm:flex-row flex-wrap justify-center items-center gap-4">
           <a 
             href={adminContact.whatsappUrl}
             target="_blank"
@@ -57,6 +59,13 @@ const CTA: React.FC = () => {
             <Calendar className="mr-2 w-5 h-5" />
             {t('cta.btn_demo')}
           </a>
+          <PlayStoreButton 
+            href={EXAM_BROWSER_APK_URL}
+            size="md"
+            variant="dark"
+            subText="UNDUH APK SISWA"
+            mainText="Exam Browser CBT"
+          />
         </div>
       </div>
     </section>

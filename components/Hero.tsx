@@ -1,13 +1,18 @@
 
 import React, { useState, useEffect } from 'react';
-import { ArrowRight, ChevronRight, Users, PlayCircle } from 'lucide-react';
+import { ArrowRight, ChevronRight, Users, PlayCircle, ShieldCheck, Sparkles, Smartphone } from 'lucide-react';
 import { useContent } from '../context/ContentContext';
 import { useLanguage } from '../context/LanguageContext';
+import PlayStoreButton from './PlayStoreButton';
+import { EXAM_BROWSER_APK_URL } from './ExamBrowserCard';
+import { parseVideoUrl } from '../utils/videoHelper';
 
 const Hero: React.FC = () => {
   const { heroImage, heroImage2, heroImage3, heroVideo, heroContent } = useContent();
   const { t, language } = useLanguage();
   const [currentSlide, setCurrentSlide] = useState(0);
+
+  const videoInfo = parseVideoUrl(heroVideo);
 
   // Content Selection: Use Context (Database) for ID, use Translation for EN
   const displayContent = language === 'id' ? heroContent : {
@@ -17,16 +22,16 @@ const Hero: React.FC = () => {
     ctaText: t('hero.cta_primary')
   };
 
-  // Daftar gambar untuk slider
+  // Daftar gambar untuk slider (filter valid URLs only)
   const sliderImages = [
-    heroImage, 
-    heroImage2, 
-    heroImage3
+    heroImage || "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?q=80&w=1740&auto=format&fit=crop", 
+    heroImage2 || "https://images.unsplash.com/photo-1522202176988-66273c2fd55f?q=80&w=1742&auto=format&fit=crop", 
+    heroImage3 || "https://images.unsplash.com/photo-1517048676732-d65bc937f952?q=80&w=1740&auto=format&fit=crop"
   ];
 
-  // Auto-play logic (Only if video is NOT showing)
+  // Auto-play logic (Only if video is NOT active)
   useEffect(() => {
-    if (heroVideo) return; // Disable slider interval if video exists
+    if (heroVideo && heroVideo.trim()) return; // Disable slider interval if video exists
     const timer = setInterval(() => {
       setCurrentSlide((prev) => (prev + 1) % sliderImages.length);
     }, 4000); 
@@ -61,7 +66,7 @@ const Hero: React.FC = () => {
               {displayContent.description}
             </p>
             
-            <div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start">
+            <div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start mb-6">
               <a 
                 href="#pricing" 
                 className="group bg-secondary hover:bg-blue-600 text-white px-8 py-4 rounded-full font-semibold transition-all shadow-lg shadow-blue-500/25 flex items-center justify-center"
@@ -77,6 +82,25 @@ const Hero: React.FC = () => {
                 <ChevronRight className="ml-2 w-5 h-5 text-slate-500 dark:text-slate-400 group-hover:text-slate-900 dark:group-hover:text-white" />
               </a>
             </div>
+
+            {/* PlayStore Style Exam Browser Download Badge */}
+            <div className="pt-2 flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-4">
+              <PlayStoreButton 
+                href={EXAM_BROWSER_APK_URL}
+                size="md"
+                variant="dark"
+                subText="UNDUH APK ANDROID"
+                mainText="Exam Browser CBT"
+              />
+              <div className="text-left text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                <ShieldCheck className="w-4 h-4 text-emerald-500 flex-shrink-0" />
+                <span>
+                  {language === 'id' 
+                    ? "Fitur Anti-Contek & Lockdown Screen v1.2.0" 
+                    : "Anti-Cheating & Screen Lockdown v1.2.0"}
+                </span>
+              </div>
+            </div>
           </div>
 
           {/* Right Content: Video OR 3D Animated Image Slider */}
@@ -84,8 +108,25 @@ const Hero: React.FC = () => {
             <div className="relative rounded-2xl p-2 glass-card border border-white/10 shadow-2xl animate-[float_6s_ease-in-out_infinite]">
               <div className="absolute inset-0 bg-gradient-to-tr from-secondary/20 to-transparent rounded-2xl blur-xl -z-10"></div>
               
-              {heroVideo ? (
-                // --- VIDEO PLAYER MODE ---
+              {videoInfo.isEmbed ? (
+                // --- YOUTUBE / VIMEO EMBED PLAYER MODE ---
+                <div className="relative w-full aspect-video rounded-xl overflow-hidden bg-black shadow-inner">
+                  <iframe 
+                    key={videoInfo.embedUrl}
+                    src={videoInfo.embedUrl}
+                    title="Video Demo CBT School"
+                    className="w-full h-full border-0"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                    allowFullScreen
+                  />
+                  <div className="absolute top-4 right-4 z-20 pointer-events-none">
+                    <div className="bg-red-600/90 text-white text-xs font-bold px-3 py-1 rounded-full flex items-center shadow-lg animate-pulse">
+                      <PlayCircle size={14} className="mr-1" /> LIVE DEMO
+                    </div>
+                  </div>
+                </div>
+              ) : videoInfo.isDirectVideo ? (
+                // --- DIRECT VIDEO PLAYER MODE ---
                 <div className="relative w-full aspect-video rounded-xl overflow-hidden bg-black shadow-inner">
                   <video 
                     key={heroVideo} // Force re-render when video URL changes
@@ -97,7 +138,7 @@ const Hero: React.FC = () => {
                     controls
                     className="w-full h-full object-cover"
                   />
-                  {/* Optional Overlay when paused or initial load aesthetics */}
+                  {/* Overlay badge */}
                   <div className="absolute top-4 right-4 z-20 pointer-events-none">
                     <div className="bg-red-600/90 text-white text-xs font-bold px-3 py-1 rounded-full flex items-center shadow-lg animate-pulse">
                       <PlayCircle size={14} className="mr-1" /> LIVE DEMO

@@ -1,8 +1,10 @@
 import React from 'react';
 import { TECH_STACK } from '../constants';
-import { CheckCircle2 } from 'lucide-react';
+import { CheckCircle2, ShieldCheck, Sparkles, Smartphone } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
 import { DETAILS_TECH_EN } from '../data/translations';
+import PlayStoreButton from './PlayStoreButton';
+import { EXAM_BROWSER_APK_URL } from './ExamBrowserCard';
 
 const Details: React.FC = () => {
   const { t, language } = useLanguage();
@@ -10,8 +12,18 @@ const Details: React.FC = () => {
   const techStack = language === 'id' ? TECH_STACK : DETAILS_TECH_EN;
 
   const protectionPoints = language === 'id' 
-    ? ['Deteksi Pindah Tab (Alt+Tab)', 'Deteksi Split Screen Mobile', 'Disable Klik Kanan & Copy-Paste', 'Timer Server-side (Anti manipulasi waktu)']
-    : ['Tab Switching Detection (Alt+Tab)', 'Mobile Split Screen Detection', 'Disable Right Click & Copy-Paste', 'Server-side Timer (Anti-time manipulation)'];
+    ? [
+        'Didukung Exam Browser Khusus Android (Anti Split-screen & Anti Floating)',
+        'Deteksi Pindah Tab (Alt+Tab) & Mode Fullscreen Wajib',
+        'Disable Klik Kanan, Blokir Screenshot & Copy-Paste',
+        'Timer Server-side (Anti manipulasi waktu di perangkat siswa)'
+      ]
+    : [
+        'Dedicated Android Exam Browser Support (Anti Split-screen & Anti Floating)',
+        'Tab Switching Detection (Alt+Tab) & Forced Fullscreen Mode',
+        'Disable Right Click, Block Screenshot & Copy-Paste',
+        'Server-side Timer (Anti-time manipulation on student devices)'
+      ];
 
   return (
     <section id="details" className="py-24 relative overflow-hidden bg-white dark:bg-[#0b1221] transition-colors duration-300">
@@ -61,14 +73,34 @@ const Details: React.FC = () => {
               <p className="text-slate-600 dark:text-slate-400 mb-6">
                 {t('details.anti_cheat_desc')}
               </p>
-              <ul className="space-y-3">
+              <ul className="space-y-3 mb-6">
                 {protectionPoints.map((item, i) => (
-                  <li key={i} className="flex items-center text-slate-700 dark:text-slate-300">
-                    <CheckCircle2 className="w-5 h-5 text-green-500 dark:text-green-400 mr-3" />
-                    {item}
+                  <li key={i} className="flex items-center text-slate-700 dark:text-slate-300 text-sm sm:text-base">
+                    <CheckCircle2 className="w-5 h-5 text-green-500 dark:text-green-400 mr-3 flex-shrink-0" />
+                    <span>{item}</span>
                   </li>
                 ))}
               </ul>
+
+              {/* Exam Browser PlayStore Callout */}
+              <div className="p-4 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200/80 dark:border-indigo-800/40 flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center flex-shrink-0">
+                    <Smartphone className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h5 className="text-xs font-bold text-slate-900 dark:text-white">Exam Browser APK v1.2.0</h5>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">{language === 'id' ? 'Khusus Android Siswa (Anti-Contek)' : 'For Student Android (Anti-Cheat)'}</p>
+                  </div>
+                </div>
+                <PlayStoreButton 
+                  href={EXAM_BROWSER_APK_URL}
+                  size="sm"
+                  variant="dark"
+                  subText="UNDUH APK"
+                  mainText="Exam Browser"
+                />
+              </div>
             </div>
             
             <div className="border-t md:border-t-0 md:border-l border-slate-200 dark:border-white/10 pt-8 md:pt-0 md:pl-12">

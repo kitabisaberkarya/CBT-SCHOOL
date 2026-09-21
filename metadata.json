@@ -1,5 +1,6 @@
 {
   "name": "CBT SCHOOL Proposal",
   "description": "A modern, professional landing page proposal for the CBT SCHOOL application.",
-  "requestFramePermissions": []
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

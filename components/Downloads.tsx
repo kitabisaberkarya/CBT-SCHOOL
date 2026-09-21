@@ -1,23 +1,25 @@
 import React from 'react';
-import { Download, FileArchive, HardDrive, ShieldCheck, Zap, FileSpreadsheet, ExternalLink, FileText } from 'lucide-react';
+import { Download, FileArchive, HardDrive, ShieldCheck, Zap, FileSpreadsheet, ExternalLink, FileText, Smartphone } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
 import NetworkGuide from './NetworkGuide';
+import ExamBrowserCard from './ExamBrowserCard';
+import PlayStoreButton from './PlayStoreButton';
 
 const Downloads: React.FC = () => {
   const { language } = useLanguage();
 
-  const downloadUrl = "https://drive.google.com/uc?export=download&id=13eocRRYz5SZivVbm7eiTEbDvltO0N5d_";
+  const downloadUrl = "https://drive.google.com/uc?export=download&id=1EjGhqJZeOvXq4p-r8-OeIY5SB3cII-5n";
   const templateSheetUrl = "https://docs.google.com/spreadsheets/d/1TX4pu1sehACBj696DTTtrrZ7owC1o_w99PQl1rfESUY/edit?usp=sharing";
   const templateCsvUrl = "https://docs.google.com/spreadsheets/d/1TX4pu1sehACBj696DTTtrrZ7owC1o_w99PQl1rfESUY/export?format=csv";
 
   const content = {
     id: {
       title: "Download Resource",
-      subtitle: "VHD CBT SCHOOL V4-1-9A",
-      desc: "Unduh file Virtual Machine (VHD/VDI) untuk simulasi mandiri atau instalasi server lokal. File ini sudah terkonfigurasi dengan sistem CBT School terbaru.",
+      subtitle: "VHD CBT SCHOOL V4-1-9e",
+      desc: "Unduh file aplikasi pendukung, Exam Browser Android anti-contek, dan Virtual Machine (VHD/VDI) untuk simulasi mandiri atau server sekolah.",
       btn: "Download Sekarang",
       size: "Ukuran File: 7,7 GB",
-      version: "Versi: 4.1.9a (Stable)",
+      version: "Versi: 4.1.9e (Stable)",
       note: "Catatan: Karena ukuran file besar, klik 'Tetap download' pada halaman Google Drive.",
       demoNote: "Bagi sekolah, instansi, dan lembaga yang ingin mencoba semua fitur, silakan masukkan lisensi demo: CBT-SCHOOL-DEMO",
       features: [
@@ -35,11 +37,11 @@ const Downloads: React.FC = () => {
     },
     en: {
       title: "Download Resource",
-      subtitle: "VHD CBT SCHOOL V4-1-9A",
-      desc: "Download the Virtual Machine (VHD/VDI) file for standalone simulation or local server installation. This file is pre-configured with the latest CBT School system.",
+      subtitle: "VHD CBT SCHOOL V4-1-9e",
+      desc: "Download client support apps, anti-cheating Android Exam Browser, and Virtual Machine (VHD/VDI) for standalone simulation or school server.",
       btn: "Download Now",
       size: "File Size: 7.7 GB",
-      version: "Version: 4.1.9a (Stable)",
+      version: "Version: 4.1.9e (Stable)",
       note: "Note: Due to large size, click 'Download anyway' on the Google Drive page.",
       demoNote: "For schools, institutions, and agencies that want to try all features, please use the demo license: CBT-SCHOOL-DEMO",
       features: [
@@ -69,6 +71,20 @@ const Downloads: React.FC = () => {
           <p className="text-slate-600 dark:text-slate-400 max-w-2xl mx-auto">
             {c.desc}
           </p>
+        </div>
+
+        {/* 1. Exam Browser Android APK Download Card (Play Store Style CardView) */}
+        <div className="max-w-5xl mx-auto mb-16" data-aos="fade-up">
+          <ExamBrowserCard variant="full" />
+        </div>
+
+        {/* Section divider with label */}
+        <div className="flex items-center justify-center max-w-4xl mx-auto my-12" data-aos="fade-up">
+          <div className="h-px bg-slate-200 dark:bg-white/10 flex-grow"></div>
+          <span className="px-4 text-xs uppercase tracking-widest font-bold text-slate-400 dark:text-slate-500 bg-slate-50 dark:bg-dark">
+            {language === 'id' ? 'Resource Server & Template Data' : 'Server Resources & Templates'}
+          </span>
+          <div className="h-px bg-slate-200 dark:bg-white/10 flex-grow"></div>
         </div>
 
         {/* Main VM Download Card */}
