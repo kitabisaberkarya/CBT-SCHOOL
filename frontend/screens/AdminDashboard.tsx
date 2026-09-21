@@ -778,10 +778,30 @@ const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
     // dan SENGAJA melakukan supabase.auth.signOut() saat berhasil lewat jalur itu —
     // jadi mayoritas admin TIDAK punya sesi Supabase Auth aktif. Update kolom DB ini
     // harus jadi sumber kebenaran utama & wajib berhasil; Supabase Auth hanya best-effort.
+    //
+    // Jika admin login lewat jalur offline-fallback (App.tsx) dan lookup DB saat login
+    // sempat gagal, user.id bisa berupa placeholder "offline-admin-id" (bukan UUID asli)
+    // — bukan id baris users yang sesungguhnya. Cari ulang lewat username sebelum
+    // menulis, supaya tidak gagal dengan "invalid input syntax for type uuid".
+    let targetId = user.id;
+    if (targetId === 'offline-admin-id') {
+      const { data: adminRow, error: lookupError } = await supabase
+        .from('users')
+        .select('id')
+        .eq('username', user.username)
+        .eq('role', 'admin')
+        .maybeSingle();
+      if (lookupError || !adminRow) {
+        showToast('Gagal: akun admin tidak ditemukan di database untuk update password.', 'error');
+        return false;
+      }
+      targetId = adminRow.id;
+    }
+
     const { error: dbError } = await supabase
       .from('users')
       .update({ qr_login_password: newPassword, password_text: newPassword })
-      .eq('id', user.id);
+      .eq('id', targetId);
 
     if (dbError) {
       showToast(`Gagal: ${dbError.message}`, 'error');
