@@ -53,7 +53,7 @@ const QuestionModal: React.FC<QuestionModalProps> = ({ questionToEdit, onSave, o
     question: questionToEdit.question,
     topic: questionToEdit.topic || '',
     difficulty: questionToEdit.difficulty || 'Medium',
-    weight: questionToEdit.weight || 1,
+    weight: questionToEdit.weight ?? 1,
     options: (questionToEdit.type === 'multiple_choice' || questionToEdit.type === 'complex_multiple_choice') && questionToEdit.options?.length
       ? [...questionToEdit.options]
       : initialFormData.options,
@@ -139,7 +139,12 @@ const QuestionModal: React.FC<QuestionModalProps> = ({ questionToEdit, onSave, o
 
   const handleMetadataChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: name === 'weight' ? parseFloat(value) || 1 : value }));
+    setFormData(prev => {
+      if (name !== 'weight') return { ...prev, [name]: value };
+      // Pengecekan eksplisit, bukan falsy — "0" harus tetap 0, bukan dipaksa jadi 1.
+      const n = parseFloat(value);
+      return { ...prev, weight: Number.isNaN(n) ? 0 : n };
+    });
   };
 
   // --- MATCHING LOGIC ---
@@ -770,7 +775,7 @@ const QuestionModal: React.FC<QuestionModalProps> = ({ questionToEdit, onSave, o
                 </div>
                 <div>
                     <label className="block text-[10px] font-extrabold text-gray-500 uppercase tracking-widest mb-1">Bobot Soal</label>
-                    <input type="number" name="weight" value={formData.weight} onChange={handleMetadataChange} className="w-full p-2.5 border border-gray-300 rounded-lg text-sm bg-white" min="0.5" step="0.5" placeholder="cth: 1, 1.5, 2.5" />
+                    <input type="number" name="weight" value={formData.weight} onChange={handleMetadataChange} className="w-full p-2.5 border border-gray-300 rounded-lg text-sm bg-white" min="0" step="0.5" placeholder="cth: 0, 1, 1.5, 2.5" />
                 </div>
             </section>
 

@@ -90,7 +90,7 @@ const StudentAnswerAnalysis: React.FC<StudentAnswerAnalysisProps> = ({ tests, us
             metadata,
             options: q.options ?? [],
             type: q.type,
-            weight: q.weight || 1,
+            weight: q.weight ?? 1,
           };
         });
         setQuestions(parsedQuestions);
@@ -218,13 +218,13 @@ const StudentAnswerAnalysis: React.FC<StudentAnswerAnalysisProps> = ({ tests, us
   }, []);
 
   const pgkResult = useCallback((raw: string | null, q: QuestionMeta) =>
-    scorePgk(parseJsonRaw<number[]>(raw), q.answerKey, q.weight || 1), [parseJsonRaw]);
+    scorePgk(parseJsonRaw<number[]>(raw), q.answerKey, q.weight ?? 1), [parseJsonRaw]);
 
   const tfResult = useCallback((raw: string | null, q: QuestionMeta) =>
-    scoreTrueFalse(parseJsonRaw<Record<number, boolean>>(raw), q.answerKey, q.weight || 1), [parseJsonRaw]);
+    scoreTrueFalse(parseJsonRaw<Record<number, boolean>>(raw), q.answerKey, q.weight ?? 1), [parseJsonRaw]);
 
   const matchingResult = useCallback((raw: string | null, q: QuestionMeta) =>
-    scoreMatching(parseJsonRaw<Record<string, string>>(raw), q.answerKey, q.metadata, q.weight || 1), [parseJsonRaw]);
+    scoreMatching(parseJsonRaw<Record<string, string>>(raw), q.answerKey, q.metadata, q.weight ?? 1), [parseJsonRaw]);
 
   // ─── Helper: format kunci jawaban PG Kompleks → "A,B,D" ──────────────
   const formatComplexMcKey = useCallback((answerKey: any): string => {
@@ -243,7 +243,7 @@ const StudentAnswerAnalysis: React.FC<StudentAnswerAnalysisProps> = ({ tests, us
 
     questions.forEach(q => {
       const ans = row.answers[q.id];
-      const weight = q.weight || 1;
+      const weight = q.weight ?? 1;
       const hasAnswer = ans && (ans.idx !== null || ans.raw !== null);
 
       // Soal tidak diterima siswa (questionsToDisplay / soal tidak tampil) → skip
@@ -288,7 +288,7 @@ const StudentAnswerAnalysis: React.FC<StudentAnswerAnalysisProps> = ({ tests, us
         const hasAnswer = ans && (ans.idx !== null || ans.raw !== null);
         if (hasAnswer) {
           answered++;
-          const weight = q.weight || 1;
+          const weight = q.weight ?? 1;
           if (q.type === 'true_false') {
             if (tfResult(ans.raw, q).earned >= weight - 0.001) correct++;
           } else if (q.type === 'complex_multiple_choice') {
@@ -996,7 +996,7 @@ const StudentAnswerAnalysis: React.FC<StudentAnswerAnalysisProps> = ({ tests, us
                         const isPg      = q.type === 'multiple_choice';
                         const isEssay   = q.type === 'essay';
                         const isAutoType = q.type === 'complex_multiple_choice' || q.type === 'true_false' || q.type === 'matching';
-                        const weight = q.weight || 1;
+                        const weight = q.weight ?? 1;
 
                         let earned = 0;
                         if (isPg) {

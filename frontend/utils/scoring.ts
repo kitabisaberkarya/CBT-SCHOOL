@@ -121,7 +121,9 @@ export const calculateScore = (questions: Question[], answers: Record<number, An
     let totalWeight = 0;
 
     questions.forEach(q => {
-        const weight = q.weight || 1;
+        // Pengecekan eksplisit, bukan falsy — soal berbobot 0 (sengaja) harus tetap
+        // dihitung sebagai 0, bukan dipaksa jadi 1 (lihat juga QuestionModal.tsx).
+        const weight = q.weight ?? 1;
         const userAnswer = answers[q.id];
 
         try {

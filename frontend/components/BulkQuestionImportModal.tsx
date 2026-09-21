@@ -378,7 +378,8 @@ const BulkQuestionImportModal: React.FC<BulkQuestionImportModalProps> = ({ testT
                 answer_key: null,
                 cognitive_level: (getCell(10) || 'L1') as CognitiveLevel,
                 difficulty: (getCell(11) || 'Medium') as QuestionDifficulty,
-                weight: parseFloat(getCell(12)) || 1,
+                // Pengecekan eksplisit — bobot "0" harus tetap 0, bukan dipaksa jadi 1.
+                weight: Number.isNaN(parseFloat(getCell(12))) ? 1 : parseFloat(getCell(12)),
                 topic: getCell(13) || 'Umum',
                 ...(mediaUrl ? { image_url: mediaUrl } : {}),
             };

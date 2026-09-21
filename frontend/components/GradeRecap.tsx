@@ -425,7 +425,7 @@ const GradeRecap: React.FC<GradeRecapProps> = ({ tests, users, examSessions, sch
               answerKey: typeof answerKey === 'string' ? answerKey : JSON.stringify(answerKey),
               answerText: txt,
               currentScore: a.manual_score ?? null,
-              weight: q?.weight || 1,
+              weight: q?.weight ?? 1,
             };
           }),
         });
@@ -729,12 +729,12 @@ const GradeRecap: React.FC<GradeRecapProps> = ({ tests, users, examSessions, sch
               const isSaving = savingEssay === s.student.sessionId;
 
               // Hitung ringkasan kontribusi essay untuk panduan per-siswa
-              const totalEssayWeight = s.answers.reduce((sum, a) => sum + (a.weight || 1), 0);
+              const totalEssayWeight = s.answers.reduce((sum, a) => sum + (a.weight ?? 1), 0);
               const essayPoinRows = s.answers.map(a => {
                 const raw = essayScores[a.answerId] ?? (a.currentScore !== null && a.currentScore !== undefined ? String(a.currentScore) : '');
                 const numVal = parseFloat(raw);
-                const poin = !isNaN(numVal) ? (numVal / 100) * (a.weight || 1) : null;
-                return { weight: a.weight || 1, raw, poin };
+                const poin = !isNaN(numVal) ? (numVal / 100) * (a.weight ?? 1) : null;
+                return { weight: a.weight ?? 1, raw, poin };
               });
               const totalEssayPoin = essayPoinRows.every(r => r.poin !== null)
                 ? essayPoinRows.reduce((sum, r) => sum + (r.poin ?? 0), 0)
@@ -779,7 +779,7 @@ const GradeRecap: React.FC<GradeRecapProps> = ({ tests, users, examSessions, sch
                       const isSalah = currentVal === '0';
                       const isPartial = currentVal !== '' && !isBenar && !isSalah;
                       const isGraded = currentVal !== '';
-                      const poinKontribusi = !isNaN(numVal) ? ((numVal / 100) * (ans.weight || 1)).toFixed(2) : null;
+                      const poinKontribusi = !isNaN(numVal) ? ((numVal / 100) * (ans.weight ?? 1)).toFixed(2) : null;
                       return (
                         <div key={ans.answerId} className="px-6 py-5">
                           {/* Header soal */}

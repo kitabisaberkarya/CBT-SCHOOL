@@ -336,7 +336,8 @@ TOPIK: PKN Demokrasi
         answer_key: null,
         cognitive_level: (getValue('LEVEL') || 'L1') as CognitiveLevel,
         difficulty: (getValue('KESULITAN') || 'Medium') as QuestionDifficulty,
-        weight: parseFloat(getValue('BOBOT')) || 1,
+        // Pengecekan eksplisit — BOBOT="0" harus tetap 0, bukan dipaksa jadi 1.
+        weight: Number.isNaN(parseFloat(getValue('BOBOT'))) ? 1 : parseFloat(getValue('BOBOT')),
         topic: getValue('TOPIK') || 'Umum',
         ...getMediaFields(mediaUrl),
       };
