@@ -23,7 +23,11 @@ import { useCbtschoolLicense } from './src/hooks/useCbtschoolLicense';
 // --- OFFLINE FALLBACK CREDENTIALS (dibaca dari .env.local per VHD instance) ---
 // Sesuaikan .env.local per deployment sekolah. Lihat .env.example untuk panduan.
 const OFFLINE_ADMIN_EMAIL      = import.meta.env.VITE_OFFLINE_ADMIN_EMAIL      || 'admin@cbtschool.com';
-const OFFLINE_ADMIN_PASSWORD   = import.meta.env.VITE_OFFLINE_ADMIN_PASSWORD   || '1234567890';
+// SECURITY: TIDAK ADA default password di sini (dulu '1234567890') — itu backdoor
+// publik yang selalu login sebagai admin di VHD mana pun yang tidak set env ini,
+// walau admin sudah ganti password aslinya. Wajib diisi eksplisit per VHD jika
+// fitur offline-fallback ini memang dibutuhkan; jika kosong, jalur ini nonaktif.
+const OFFLINE_ADMIN_PASSWORD   = import.meta.env.VITE_OFFLINE_ADMIN_PASSWORD   || '';
 const OFFLINE_TEACHER_EMAIL    = import.meta.env.VITE_OFFLINE_TEACHER_EMAIL    || 'guru@cbtschool.com';
 const OFFLINE_TEACHER_PASSWORD = import.meta.env.VITE_OFFLINE_TEACHER_PASSWORD || '1234567890';
 const OFFLINE_STUDENT_NISN     = import.meta.env.VITE_OFFLINE_STUDENT_NISN     || '';
@@ -564,8 +568,10 @@ const App: React.FC = () => {
       setIsAuthLoading(true);
 
       // FALLBACK FOR OFFLINE VHD / DISCONNECTED STATE (Admin)
-      // Credentials dikonfigurasi via .env.local per VHD instance
-      if (email === OFFLINE_ADMIN_EMAIL && password === OFFLINE_ADMIN_PASSWORD) {
+      // Credentials dikonfigurasi via .env.local per VHD instance. OFFLINE_ADMIN_PASSWORD
+      // wajib non-kosong (di-set eksplisit) agar jalur ini bisa dipakai sama sekali —
+      // mencegah password kosong tak sengaja "cocok" dengan input kosong.
+      if (OFFLINE_ADMIN_PASSWORD && email === OFFLINE_ADMIN_EMAIL && password === OFFLINE_ADMIN_PASSWORD) {
           // Jalankan Auth + DB lookup PARALEL agar login cepat
           const [authResult, dbResult] = await Promise.allSettled([
               supabase.auth.signInWithPassword({ email, password }),
