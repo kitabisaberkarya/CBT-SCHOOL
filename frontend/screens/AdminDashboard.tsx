@@ -773,18 +773,27 @@ const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
   // --- CRUD Handlers ---
   
   const handleAdminPasswordChange = async (newPassword: string): Promise<boolean> => {
-    const { error } = await supabase.auth.updateUser({ password: newPassword });
-    if(error) { showToast(`Gagal: ${error.message}. Anda mungkin perlu login ulang dulu.`, 'error'); return false; }
-
-    // Sinkronkan juga ke kolom login manual/QR (public.users) — tanpa ini, password
-    // baru hanya berlaku untuk login email biasa dan login via kartu/QR tetap memakai
-    // password lama, membuat fitur ini terlihat "tidak berfungsi".
-    const { error: syncError } = await supabase
+    // PENTING: login admin utama (lihat handleAdminLogin di App.tsx) memverifikasi
+    // password lewat kolom users.qr_login_password/password_text secara langsung,
+    // dan SENGAJA melakukan supabase.auth.signOut() saat berhasil lewat jalur itu —
+    // jadi mayoritas admin TIDAK punya sesi Supabase Auth aktif. Update kolom DB ini
+    // harus jadi sumber kebenaran utama & wajib berhasil; Supabase Auth hanya best-effort.
+    const { error: dbError } = await supabase
       .from('users')
       .update({ qr_login_password: newPassword, password_text: newPassword })
       .eq('id', user.id);
-    if (syncError) {
-      console.error('[handleAdminPasswordChange] Gagal sinkron password login manual/QR:', syncError);
+
+    if (dbError) {
+      showToast(`Gagal: ${dbError.message}`, 'error');
+      return false;
+    }
+
+    // Best-effort: sinkron ke Supabase Auth juga jika kebetulan ada sesi aktif.
+    // Gagal di sini (mis. "Auth session missing!") BUKAN kegagalan fitur ini,
+    // karena kolom DB di atas sudah cukup untuk login admin berikutnya.
+    const { error: authError } = await supabase.auth.updateUser({ password: newPassword });
+    if (authError) {
+      console.warn('[handleAdminPasswordChange] Sinkron ke Supabase Auth dilewati (kemungkinan tidak ada sesi aktif):', authError.message);
     }
 
     showToast('Password admin berhasil diubah.', 'success');

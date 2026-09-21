@@ -84,8 +84,15 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ config, onStudentLogin, onAdm
   };
 
   // Helper untuk Admin Modal (Hidden Feature via Logo Click)
+  // "admin" (username default di modal) diterjemahkan ke email admin baku
+  // admin@cbtschool.com — sama seperti default OFFLINE_ADMIN_EMAIL di App.tsx dan
+  // yang dipakai RLS policy admin di seluruh sistem. Sebelumnya hardcode ke email
+  // satu sekolah tertentu (admin@official.sman1mojosari.com) yang TIDAK cocok
+  // dengan username admin sesungguhnya di database manapun (termasuk sekolah itu
+  // sendiri), sehingga login lewat "klik logo 5x" selalu gagal mencocokkan
+  // password yang baru diubah admin.
   const handleAdminModalLogin = async (u: string, p: string) => {
-      const email = u.toLowerCase() === 'admin' ? 'admin@official.sman1mojosari.com' : u;
+      const email = u.toLowerCase() === 'admin' ? 'admin@cbtschool.com' : u;
       const err = await onAdminLogin(email, p);
       return !err;
   };
