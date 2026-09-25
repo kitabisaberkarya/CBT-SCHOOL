@@ -59,6 +59,21 @@ const formatStartDate = (isoString: string) => {
 const UbkMonitor: React.FC<UbkMonitorProps> = ({ users, tests }) => {
   const [activeTab, setActiveTab] = useState<'exam' | 'login'>('exam');
 
+  // Mode tampilan Pantau Progres Ujian: 'card' (default, seperti sebelumnya) atau
+  // 'list' (tabel padat — lebih banyak ruang untuk nama siswa, lebih mudah dipantau
+  // saat jumlah siswa banyak). Diingat per-browser agar pilihan admin tidak reset.
+  const [viewMode, setViewMode] = useState<'card' | 'list'>(() => {
+      try {
+          const saved = localStorage.getItem('cbt_ubk_view_mode');
+          return saved === 'list' ? 'list' : 'card';
+      } catch (_) { return 'card'; }
+  });
+
+  const setViewModePersist = (mode: 'card' | 'list') => {
+      setViewMode(mode);
+      try { localStorage.setItem('cbt_ubk_view_mode', mode); } catch (_) {}
+  };
+
   const [activeSessions, setActiveSessions] = useState<StudentSession[]>([]);
   const [lockedUsers, setLockedUsers] = useState<LockedUser[]>([]);
 
@@ -738,20 +753,45 @@ const UbkMonitor: React.FC<UbkMonitorProps> = ({ users, tests }) => {
       </div>
 
       {/* TABS NAVIGATION */}
-      <div className="flex space-x-1 bg-gray-200 p-1 rounded-xl mb-6 w-full md:w-fit">
-          <button
-            onClick={() => setActiveTab('exam')}
-            className={`flex-1 md:flex-none px-6 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'exam' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-          >
-            Pantau Progres Ujian
-          </button>
-          <button
-            onClick={() => setActiveTab('login')}
-            className={`flex-1 md:flex-none px-6 py-2 rounded-lg text-sm font-bold transition-all flex items-center justify-center space-x-2 ${activeTab === 'login' ? 'bg-white text-yellow-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
-            <span>Status Login / Device</span>
-          </button>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
+          <div className="flex space-x-1 bg-gray-200 p-1 rounded-xl w-full md:w-fit">
+              <button
+                onClick={() => setActiveTab('exam')}
+                className={`flex-1 md:flex-none px-6 py-2 rounded-lg text-sm font-bold transition-all ${activeTab === 'exam' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+              >
+                Pantau Progres Ujian
+              </button>
+              <button
+                onClick={() => setActiveTab('login')}
+                className={`flex-1 md:flex-none px-6 py-2 rounded-lg text-sm font-bold transition-all flex items-center justify-center space-x-2 ${activeTab === 'login' ? 'bg-white text-yellow-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
+                <span>Status Login / Device</span>
+              </button>
+          </div>
+
+          {/* Toggle Mode Tampilan — hanya relevan untuk tab Pantau Progres Ujian
+              (tab Status Login/Device sudah berbentuk tabel) */}
+          {activeTab === 'exam' && (
+              <div className="flex items-center gap-1.5 bg-gray-200 p-1 rounded-xl w-full sm:w-fit">
+                  <button
+                    onClick={() => setViewModePersist('card')}
+                    title="Tampilan kartu"
+                    className={`flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-all ${viewMode === 'card' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                  >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zM14 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM14 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z" /></svg>
+                      <span>Kartu</span>
+                  </button>
+                  <button
+                    onClick={() => setViewModePersist('list')}
+                    title="Tampilan daftar (list) — lebih ringkas dan lebih mudah dipantau untuk banyak siswa"
+                    className={`flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-xs font-bold transition-all ${viewMode === 'list' ? 'bg-white text-indigo-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                  >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
+                      <span>Daftar</span>
+                  </button>
+              </div>
+          )}
       </div>
 
       {/* FILTERS */}
@@ -838,25 +878,71 @@ const UbkMonitor: React.FC<UbkMonitorProps> = ({ users, tests }) => {
       {/* VIEW CONTENT */}
       {activeTab === 'exam' ? (
           <>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                {(paginatedData as StudentSession[]).map(item => (
-                    <SessionCard
-                        key={item.id}
-                        session={item}
-                        isSelected={selectedIds.has(item.id)}
-                        onSelect={() => toggleSelect(item.id)}
-                        onForceFinish={() => setModalState({ type: 'finish', session: item })}
-                        onReset={() => setModalState({ type: 'reset', session: item })}
-                        onResume={() => setModalState({ type: 'resume', session: item })}
-                        onAddTime={() => setAddTimeModal({ session: item, minutes: 10 })}
-                        onReopen={() => setReopenModal({ session: item, minutes: 10 })}
-                        onFullReset={() => setModalState({ type: 'full_reset', session: item })}
-                        onSuspend={() => setModalState({ type: 'suspend', session: item })}
-                        onUnsuspend={() => setModalState({ type: 'unsuspend', session: item })}
-                        onDisqualify={() => setModalState({ type: 'disqualify', session: item })}
-                    />
-                ))}
-            </div>
+            {viewMode === 'card' ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                    {(paginatedData as StudentSession[]).map(item => (
+                        <SessionCard
+                            key={item.id}
+                            session={item}
+                            isSelected={selectedIds.has(item.id)}
+                            onSelect={() => toggleSelect(item.id)}
+                            onForceFinish={() => setModalState({ type: 'finish', session: item })}
+                            onReset={() => setModalState({ type: 'reset', session: item })}
+                            onResume={() => setModalState({ type: 'resume', session: item })}
+                            onAddTime={() => setAddTimeModal({ session: item, minutes: 10 })}
+                            onReopen={() => setReopenModal({ session: item, minutes: 10 })}
+                            onFullReset={() => setModalState({ type: 'full_reset', session: item })}
+                            onSuspend={() => setModalState({ type: 'suspend', session: item })}
+                            onUnsuspend={() => setModalState({ type: 'unsuspend', session: item })}
+                            onDisqualify={() => setModalState({ type: 'disqualify', session: item })}
+                        />
+                    ))}
+                </div>
+            ) : (
+                <div className="bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden">
+                    <div className="overflow-x-auto">
+                        <table className="min-w-full divide-y divide-gray-200">
+                            <thead className="bg-gray-50">
+                                <tr>
+                                    <th className="px-3 py-3 w-8">
+                                        <button
+                                            onClick={selectAll}
+                                            title="Pilih semua di halaman ini"
+                                            className="w-4 h-4 rounded border-2 border-gray-300 hover:border-indigo-400 transition-all block"
+                                        />
+                                    </th>
+                                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider min-w-[220px]">Siswa</th>
+                                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Mapel</th>
+                                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Status</th>
+                                    <th className="px-4 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider min-w-[140px]">Progres</th>
+                                    <th className="px-4 py-3 text-center text-xs font-bold text-gray-500 uppercase tracking-wider">Sisa Waktu</th>
+                                    <th className="px-4 py-3 text-center text-xs font-bold text-gray-500 uppercase tracking-wider">Pelanggaran</th>
+                                    <th className="px-4 py-3 text-right text-xs font-bold text-gray-500 uppercase tracking-wider">Aksi</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100">
+                                {(paginatedData as StudentSession[]).map(item => (
+                                    <SessionListRow
+                                        key={item.id}
+                                        session={item}
+                                        isSelected={selectedIds.has(item.id)}
+                                        onSelect={() => toggleSelect(item.id)}
+                                        onForceFinish={() => setModalState({ type: 'finish', session: item })}
+                                        onReset={() => setModalState({ type: 'reset', session: item })}
+                                        onResume={() => setModalState({ type: 'resume', session: item })}
+                                        onAddTime={() => setAddTimeModal({ session: item, minutes: 10 })}
+                                        onReopen={() => setReopenModal({ session: item, minutes: 10 })}
+                                        onFullReset={() => setModalState({ type: 'full_reset', session: item })}
+                                        onSuspend={() => setModalState({ type: 'suspend', session: item })}
+                                        onUnsuspend={() => setModalState({ type: 'unsuspend', session: item })}
+                                        onDisqualify={() => setModalState({ type: 'disqualify', session: item })}
+                                    />
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            )}
             {(paginatedData as StudentSession[]).length === 0 && (
                 <div className="w-full bg-white border-2 border-dashed border-gray-300 rounded-2xl p-12 text-center">
                     <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -1278,6 +1364,147 @@ const SessionCard: React.FC<SessionCardProps> = ({ session, isSelected, onSelect
                 )}
             </div>
         </div>
+    );
+};
+
+// Tombol aksi kecil untuk tampilan daftar (list) — ikon saja + tooltip agar baris tetap ringkas
+const ListActionButton: React.FC<{
+    onClick: () => void;
+    title: string;
+    colorClass: string;
+    disabled?: boolean;
+    children: React.ReactNode;
+}> = ({ onClick, title, colorClass, disabled, children }) => (
+    <button
+        onClick={onClick}
+        disabled={disabled}
+        title={title}
+        className={`w-8 h-8 flex-shrink-0 rounded-lg flex items-center justify-center transition-all disabled:opacity-30 disabled:cursor-not-allowed ${colorClass}`}
+    >
+        {children}
+    </button>
+);
+
+type SessionListRowProps = SessionCardProps;
+
+// Baris tabel untuk mode tampilan "Daftar" — lebih padat, memberi lebih banyak ruang
+// horizontal untuk nama siswa dibanding mode kartu, memudahkan admin memindai banyak
+// siswa sekaligus. Aksi yang tersedia identik dengan SessionCard, hanya bentuknya ikon.
+const SessionListRow: React.FC<SessionListRowProps> = ({ session, isSelected, onSelect, onForceFinish, onReset, onResume, onAddTime, onReopen, onFullReset, onSuspend, onUnsuspend, onDisqualify }) => {
+    const { user, test, status, progress, timeLeft, violations, currentQuestionNumber, isSuspended } = session;
+    const totalQuestions = test.questions.length;
+    const progressPercentage = totalQuestions > 0 ? (progress / totalQuestions) * 100 : 0;
+
+    const statusStyles = {
+        'Mengerjakan': { bg: 'bg-blue-100', text: 'text-blue-800' },
+        'Selesai': { bg: 'bg-green-100', text: 'text-green-800' },
+        'Diskualifikasi': { bg: 'bg-red-100', text: 'text-red-800' },
+    };
+
+    let statusBadge = <span className={`px-2 py-1 rounded-full text-[11px] font-bold whitespace-nowrap ${statusStyles[status].bg} ${statusStyles[status].text}`}>{status}</span>;
+    if (isSuspended) {
+        statusBadge = <span className="bg-gray-200 text-gray-700 px-2 py-1 rounded-full text-[11px] font-bold border border-gray-300 whitespace-nowrap">Ditangguhkan</span>;
+    } else if (violations > 0 && status === 'Mengerjakan') {
+        statusBadge = <span className="bg-orange-100 text-orange-700 px-2 py-1 rounded-full text-[11px] font-bold border border-orange-200 whitespace-nowrap">Melanggar ({violations})</span>;
+    }
+
+    return (
+        <tr className={`hover:bg-gray-50 transition-colors ${isSuspended ? 'bg-gray-50/60' : ''} ${isSelected ? 'bg-indigo-50/60' : ''}`}>
+            <td className="px-3 py-3">
+                <button
+                    onClick={onSelect}
+                    className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-all ${isSelected ? 'bg-indigo-600 border-indigo-600' : 'border-gray-300 hover:border-indigo-400'}`}
+                    title={isSelected ? 'Batalkan pilihan' : 'Pilih siswa ini'}
+                >
+                    {isSelected && (
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-2.5 w-2.5 text-white" viewBox="0 0 20 20" fill="currentColor">
+                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                        </svg>
+                    )}
+                </button>
+            </td>
+            <td className="px-4 py-3">
+                <div className="flex items-center gap-3 min-w-[200px]">
+                    <img src={user.photoUrl} alt={user.fullName} className="w-9 h-9 rounded-full object-cover border border-gray-200 flex-shrink-0" onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = DEFAULT_PROFILE_IMAGES.STUDENT_NEUTRAL; }} />
+                    <div className="min-w-0">
+                        <p className="font-bold text-gray-800 text-sm truncate" title={user.fullName}>{user.fullName}</p>
+                        <p className="text-xs text-gray-400 truncate">{user.class} &middot; {user.nisn}</p>
+                    </div>
+                    {status === 'Mengerjakan' && (
+                        <span className="flex-shrink-0 flex h-2 w-2">
+                            <span className="animate-ping absolute inline-flex h-2 w-2 rounded-full bg-green-400 opacity-75"></span>
+                            <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                        </span>
+                    )}
+                </div>
+            </td>
+            <td className="px-4 py-3">
+                <p className="text-sm text-gray-600 truncate max-w-[160px]" title={test.details.subject}>{test.details.subject}</p>
+            </td>
+            <td className="px-4 py-3">{statusBadge}</td>
+            <td className="px-4 py-3 min-w-[140px]">
+                <div className="flex items-center gap-2">
+                    <div className="flex-1 bg-slate-100 rounded-full h-2 overflow-hidden border border-slate-200/50">
+                        <div
+                            className={`h-full rounded-full bg-gradient-to-r ${status === 'Selesai' ? 'from-green-500 to-emerald-400' : status === 'Diskualifikasi' ? 'from-red-500 to-pink-500' : 'from-blue-500 to-cyan-400'} transition-all duration-1000 ease-out`}
+                            style={{ width: `${progressPercentage}%` }}
+                        />
+                    </div>
+                    <span className="text-xs font-bold text-slate-600 whitespace-nowrap">{progress}/{totalQuestions}</span>
+                </div>
+                {status === 'Mengerjakan' && currentQuestionNumber != null && (
+                    <span className="text-[10px] text-blue-600 font-black tracking-tighter">Soal ke-{currentQuestionNumber}</span>
+                )}
+            </td>
+            <td className="px-4 py-3 text-center">
+                <span className={`font-mono font-bold text-sm whitespace-nowrap ${timeLeft < 300 && status === 'Mengerjakan' ? 'text-orange-500 animate-pulse' : 'text-gray-700'}`}>{formatTime(timeLeft)}</span>
+            </td>
+            <td className="px-4 py-3 text-center">
+                <span className={`font-mono font-bold text-sm ${violations > 0 ? 'text-red-600' : 'text-gray-400'}`}>{violations}</span>
+            </td>
+            <td className="px-4 py-3">
+                <div className="flex items-center justify-end gap-1.5 flex-wrap">
+                    {(status === 'Diskualifikasi' || (status === 'Mengerjakan' && violations > 0)) && (
+                        <ListActionButton onClick={onResume} title="Lanjutkan ujian" colorClass="bg-green-100 text-green-700 hover:bg-green-200">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                        </ListActionButton>
+                    )}
+                    {status === 'Mengerjakan' && (
+                        <>
+                            <ListActionButton onClick={onAddTime} title="Tambah waktu (+10 menit)" colorClass="bg-blue-100 text-blue-700 hover:bg-blue-200">
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                            </ListActionButton>
+                            <ListActionButton onClick={onForceFinish} title="Selesaikan ujian" colorClass="bg-red-100 text-red-600 hover:bg-red-200">
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                            </ListActionButton>
+                            <ListActionButton onClick={onDisqualify} title="Diskualifikasi siswa" colorClass="bg-red-700 text-white hover:bg-red-800">
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>
+                            </ListActionButton>
+                        </>
+                    )}
+                    {status === 'Selesai' && (
+                        <ListActionButton onClick={onReopen} title="Buka kembali ujian" colorClass="bg-orange-100 text-orange-600 hover:bg-orange-200">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z" /></svg>
+                        </ListActionButton>
+                    )}
+                    <ListActionButton onClick={onReset} title="Reset device login" colorClass="bg-yellow-100 text-yellow-700 hover:bg-yellow-200">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 11V7a4 4 0 118 0m-4 8v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2z" /></svg>
+                    </ListActionButton>
+                    <ListActionButton onClick={onFullReset} title="Mulai dari awal (hapus semua jawaban)" colorClass="bg-purple-100 text-purple-700 hover:bg-purple-200">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                    </ListActionButton>
+                    {isSuspended ? (
+                        <ListActionButton onClick={onUnsuspend} title="Aktifkan kembali akses siswa" colorClass="bg-emerald-100 text-emerald-700 hover:bg-emerald-200">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                        </ListActionButton>
+                    ) : (
+                        <ListActionButton onClick={onSuspend} title="Tangguhkan akses siswa" colorClass="bg-gray-200 text-gray-700 hover:bg-gray-300">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>
+                        </ListActionButton>
+                    )}
+                </div>
+            </td>
+        </tr>
     );
 };
 

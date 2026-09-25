@@ -372,9 +372,9 @@ const SequentialUpdatePanel: React.FC<SequentialUpdatePanelProps> = ({
         <div className="p-5">
           {/* Lisensi tidak aktif */}
           {!canUpdate && (
-            <div className="flex flex-col items-center py-8 gap-3 text-slate-400">
-              <Shield className="w-10 h-10 opacity-40" />
-              <p className="text-sm font-medium text-center">
+            <div className="flex flex-col items-center py-6 gap-2.5 text-slate-400 border-2 border-dashed border-slate-200 rounded-xl">
+              <Shield className="w-8 h-8 opacity-40" />
+              <p className="text-sm font-medium text-center max-w-xs">
                 {isDemoMode
                   ? 'Fitur update tidak tersedia di mode demo.'
                   : 'Aktivasi lisensi resmi untuk mengakses update.'}

@@ -1504,7 +1504,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = (props) => {
 
                     {/* ── DEMO: Feature grid ── */}
                     {isDemoMode && (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
                             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
                                 <p className="text-xs font-bold text-emerald-600 uppercase tracking-wider mb-4 flex items-center gap-2">
                                     <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" /> Tersedia di Demo
