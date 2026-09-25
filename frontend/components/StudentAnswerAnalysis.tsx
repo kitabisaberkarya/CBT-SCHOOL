@@ -15,7 +15,7 @@ interface StudentRow {
   fullName: string;
   studentClass: string;
   nisn: string;
-  answers: Record<number, { idx: number | null; raw: string | null }>; // questionId → answer
+  answers: Record<number, { idx: number | null; raw: string | null; manualScore: number | null }>; // questionId → answer
   submittedAt: string;
 }
 
@@ -127,7 +127,7 @@ const StudentAnswerAnalysis: React.FC<StudentAnswerAnalysisProps> = ({ tests, us
         // bukan di selected_answer_index. Kita harus cek ketiga kolom secara berurutan.
         const { data: answers, error: ansErr } = await supabase
           .from('student_answers')
-          .select('session_id, question_id, selected_answer_index, answer_value')
+          .select('session_id, question_id, selected_answer_index, answer_value, manual_score')
           .in('session_id', sessionIds);
 
         if (ansErr) {
@@ -136,10 +136,10 @@ const StudentAnswerAnalysis: React.FC<StudentAnswerAnalysisProps> = ({ tests, us
         }
 
         // 5. Build answer map: sessionId → { questionId → {idx, raw} }
-        const answerMap: Record<string, Record<number, { idx: number | null; raw: string | null }>> = {};
+        const answerMap: Record<string, Record<number, { idx: number | null; raw: string | null; manualScore: number | null }>> = {};
         sessionIds.forEach((sid: string) => {
           answerMap[sid] = {};
-          parsedQuestions.forEach(q => { answerMap[sid][q.id] = { idx: null, raw: null }; });
+          parsedQuestions.forEach(q => { answerMap[sid][q.id] = { idx: null, raw: null, manualScore: null }; });
         });
         (answers ?? []).forEach((ans: any) => {
           if (!answerMap[ans.session_id]) return;
@@ -160,7 +160,9 @@ const StudentAnswerAnalysis: React.FC<StudentAnswerAnalysisProps> = ({ tests, us
             }
           }
 
-          answerMap[ans.session_id][ans.question_id] = { idx, raw };
+          const manualScore = ans.manual_score !== null && ans.manual_score !== undefined ? Number(ans.manual_score) : null;
+
+          answerMap[ans.session_id][ans.question_id] = { idx, raw, manualScore };
         });
 
         // 6. Build student rows with user info
@@ -241,25 +243,35 @@ const StudentAnswerAnalysis: React.FC<StudentAnswerAnalysisProps> = ({ tests, us
     let totalScore = 0; // skor berbobot
     let totalWeight = 0;
 
+    // Jika test memakai subset acak soal (questionsToDisplay < total soal), kita
+    // tidak tahu persis soal mana yang diterima siswa ini — pertahankan heuristik
+    // lama (skip soal tanpa jawaban). Tanpa subset acak (mayoritas kasus, semua
+    // siswa menerima semua soal), soal yang dikosongkan HARUS tetap masuk penyebut
+    // sebagai 0 — identik dengan formula scoring.ts yang dipakai saat submit &
+    // ditampilkan di Rekapitulasi Nilai. Tanpa ini, nilai di layar ini bisa
+    // ter-inflate dibanding nilai sesungguhnya untuk siswa yang tidak menjawab semua soal.
+    const usesRandomSubset = !!(selectedTest?.details?.questionsToDisplay &&
+        selectedTest.details.questionsToDisplay > 0 &&
+        selectedTest.details.questionsToDisplay < questions.length);
+
     questions.forEach(q => {
       const ans = row.answers[q.id];
       const weight = q.weight ?? 1;
-      const hasAnswer = ans && (ans.idx !== null || ans.raw !== null);
+      const hasAnswer = ans && (ans.idx !== null || ans.raw !== null || ans.manualScore !== null);
 
-      // Soal tidak diterima siswa (questionsToDisplay / soal tidak tampil) → skip
-      if (!hasAnswer) return;
-
-      if (q.type === 'essay') {
-        // Essay SELALU masuk penyebut (identik dengan scoring.ts).
-        // Nilai = 0 di layar ini (tidak ada manual_score) — konsisten dgn sebelumnya.
-        totalWeight += weight;
-        return;
-      }
+      if (usesRandomSubset && !hasAnswer) return;
 
       totalWeight += weight;
 
       let earned = 0;
-      if (q.type === 'true_false') {
+      if (q.type === 'essay') {
+        // Pakai manual_score jika guru sudah mengoreksi (identik dgn scoring.ts) —
+        // sebelumnya essay selalu dianggap 0 di layar ini walau sudah dinilai guru,
+        // yang membuat nilai di sini lebih rendah dari Rekapitulasi Nilai.
+        if (ans.manualScore !== null && ans.manualScore !== undefined) {
+          earned = (ans.manualScore / 100) * weight;
+        }
+      } else if (q.type === 'true_false') {
         earned = tfResult(ans.raw, q).earned;
       } else if (q.type === 'complex_multiple_choice') {
         earned = pgkResult(ans.raw, q).earned;

@@ -606,7 +606,7 @@ const TestScreen: React.FC<TestScreenProps> = ({ onFinishTest, user, onLogout, q
   }, [sessionId, userId]);
 
   // Realtime listener untuk aksi admin dari Pemantauan Ujian
-  // Mendeteksi: Finish, Lanjutkan (Safe), Mulai dari Awal, +Waktu
+  // Mendeteksi: Finish, Diskualifikasi, Lanjutkan (Safe), Mulai dari Awal, +Waktu
   useEffect(() => {
     if (!sessionId) return;
     const channel = supabase
@@ -623,6 +623,15 @@ const TestScreen: React.FC<TestScreenProps> = ({ onFinishTest, user, onLogout, q
           // Admin force-finish → langsung ke halaman hasil
           if (n.status === 'Selesai') {
               onFinishTest(n.score ?? undefined);
+              return;
+          }
+
+          // Admin mendiskualifikasi siswa dari Pemantauan Ujian (mis. setelah
+          // melihat pelanggaran). Tanpa cabang ini, siswa tetap bisa lanjut
+          // mengerjakan karena state lokal tidak pernah tahu statusnya berubah.
+          if (n.status === 'Diskualifikasi' && !isDisqualifiedRef.current) {
+              setViolationCount(n.violations ?? violationCountRef.current);
+              setIsDisqualified(true);
               return;
           }
 
