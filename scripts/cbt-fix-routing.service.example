@@ -1,0 +1,8 @@
+[Unit]
+Description=CBT School — Perbaiki policy routing dual-NIC (subnet collision)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/cbt-fix-routing.sh
