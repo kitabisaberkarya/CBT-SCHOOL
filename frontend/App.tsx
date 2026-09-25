@@ -732,12 +732,26 @@ const App: React.FC = () => {
                   setIsAuthLoading(false);
                   return "";
               }
+
+              // SECURITY: Username admin ditemukan di DB tapi password TIDAK cocok.
+              // JANGAN lanjut ke fallback Supabase Auth di bawah — akun GoTrue untuk
+              // admin ini nyaris tidak pernah tersinkron (handleAdminPasswordChange
+              // hanya bisa update GoTrue best-effort saat ada sesi aktif, yang mana
+              // hampir tidak pernah terjadi untuk admin). Akibatnya password GoTrue
+              // bisa tetap berupa password default/lama SELAMANYA walau admin sudah
+              // ganti password di DB — celah ini yang dipakai untuk login backdoor
+              // "klik logo 5x" pakai password lama meski sudah diganti.
+              setIsAuthLoading(false);
+              return "Password salah. Coba lagi atau hubungi administrator.";
           }
       } catch(e) {
           // DB tidak tersedia — lanjut ke Supabase Auth
       }
 
-      // ADMIN: Direct Supabase Auth
+      // ADMIN: Direct Supabase Auth — HANYA dipakai jika tidak ada baris admin yang
+      // cocok di public.users sama sekali (mis. DB sempat tidak terjangkau). Untuk
+      // username admin yang DIKENAL, penolakan sudah terjadi di atas agar password
+      // GoTrue yang basi tidak bisa dipakai sebagai backdoor permanen.
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       setIsAuthLoading(false);
       if (error) return error.message;
