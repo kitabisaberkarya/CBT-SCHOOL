@@ -443,6 +443,12 @@ const ConfigurationScreen: React.FC<ConfigurationScreenProps> = (props) => {
                                       <input type="text" name="kopHeader2" id="kopHeader2" value={formData.kopHeader2 || ''} onChange={handleChange} className="mt-1 w-full p-2 border rounded-md" placeholder="DINAS PENDIDIKAN" />
                                   </div>
                                   <div><label htmlFor="schoolAddress" className="block text-xs font-medium text-gray-500 uppercase">Alamat Lengkap</label><input type="text" name="schoolAddress" id="schoolAddress" value={formData.schoolAddress || ''} onChange={handleChange} className="mt-1 w-full p-2 border rounded-md"/></div>
+                                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                      <div><label htmlFor="schoolPhone" className="block text-xs font-medium text-gray-500 uppercase">Telepon</label><input type="text" name="schoolPhone" id="schoolPhone" value={formData.schoolPhone || ''} onChange={handleChange} className="mt-1 w-full p-2 border rounded-md" placeholder="(0321) 123456"/></div>
+                                      <div><label htmlFor="schoolEmail" className="block text-xs font-medium text-gray-500 uppercase">Email</label><input type="text" name="schoolEmail" id="schoolEmail" value={formData.schoolEmail || ''} onChange={handleChange} className="mt-1 w-full p-2 border rounded-md" placeholder="info@sekolah.sch.id"/></div>
+                                      <div><label htmlFor="schoolWebsite" className="block text-xs font-medium text-gray-500 uppercase">Website</label><input type="text" name="schoolWebsite" id="schoolWebsite" value={formData.schoolWebsite || ''} onChange={handleChange} className="mt-1 w-full p-2 border rounded-md" placeholder="www.sekolah.sch.id"/></div>
+                                  </div>
+                                  <p className="text-xs text-gray-500">Telepon, Email, dan Website tampil di baris kontak KOP. Jika semuanya kosong, KOP menampilkan teks contoh "Website: www.sekolah.sch.id".</p>
                               </div>
                           </div>
                           
