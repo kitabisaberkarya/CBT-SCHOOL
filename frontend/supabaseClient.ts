@@ -143,6 +143,46 @@ export const supabase = createClient(finalSupabaseUrl, finalAnonKey, {
 });
 
 // ==============================================================================
+//  BACKEND READINESS (MASALAH 8, v4.2.2)
+// ==============================================================================
+// Setelah VHD boot, nginx sudah melayani halaman dalam ±30 detik, tapi Supabase
+// (Kong/PostgREST/GoTrue) di VHD lambat baru siap 2-5 menit kemudian. Selama
+// jeda itu semua request API dibalas 502 — login admin/guru/siswa pasti gagal
+// dan config sekolah jatuh ke default. Fungsi ini menahan aplikasi di layar
+// loading sampai REST dan Auth benar-benar menjawab (status < 500). Di kondisi
+// normal (server sudah siap) hanya 2 request kecil dan langsung lanjut.
+const probeBackend = async (path: string): Promise<boolean> => {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 4000);
+  try {
+    const res = await fetch(`${finalSupabaseUrl}${path}`, {
+      headers: { apikey: finalAnonKey, Authorization: `Bearer ${finalAnonKey}` },
+      cache: 'no-store',
+      signal: ctrl.signal,
+    });
+    return res.status < 500;
+  } catch {
+    return false; // koneksi ditolak / timeout → belum siap
+  } finally {
+    clearTimeout(timer);
+  }
+};
+
+export const waitForBackend = async (onWaiting?: (elapsedSec: number) => void): Promise<void> => {
+  const start = Date.now();
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const [restOk, authOk] = await Promise.all([
+      probeBackend('/rest/v1/app_config?select=school_name&limit=1'),
+      probeBackend('/auth/v1/health'),
+    ]);
+    if (restOk && authOk) return;
+    onWaiting?.(Math.round((Date.now() - start) / 1000));
+    await new Promise(resolve => setTimeout(resolve, 2000));
+  }
+};
+
+// ==============================================================================
 //  APP CONFIG
 // ==============================================================================
 

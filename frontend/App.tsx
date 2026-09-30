@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { supabase, getConfig, getTestByToken, getAvailableExamsForStudent, loadExamById } from './supabaseClient';
+import { supabase, getConfig, getTestByToken, getAvailableExamsForStudent, loadExamById, waitForBackend } from './supabaseClient';
 import LoginScreen from './screens/LoginScreen';
 import ConfirmationScreen from './screens/ConfirmationScreen';
 import TestScreen from './screens/TestScreen';
@@ -64,6 +64,8 @@ const resolveAdminPhoto = (photoUrl: string | null | undefined, fallback: string
 
 const App: React.FC = () => {
   const [isConfigLoading, setIsConfigLoading] = useState(true);
+  // Detik menunggu Supabase siap setelah VHD boot (0 = tidak sedang menunggu)
+  const [backendWaitSec, setBackendWaitSec] = useState(0);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [config, setConfig] = useState<AppConfig | null>(null);
   
@@ -91,6 +93,11 @@ const App: React.FC = () => {
 
   useEffect(() => {
     const fetchAppConfig = async () => {
+      // Tahan di layar loading sampai database siap (MASALAH 8) — tanpa ini,
+      // login yang dicoba di menit-menit awal setelah VHD boot selalu gagal 502.
+      await waitForBackend(setBackendWaitSec);
+      setBackendWaitSec(0);
+
       // FAST LOAD: Timeout 300ms for instant feel
       const timeoutPromise = new Promise(resolve => setTimeout(resolve, 300));
       
@@ -814,8 +821,10 @@ const App: React.FC = () => {
   if (isConfigLoading || isAuthLoading) {
     return (
       <LoadingScreen
-        message="Memuat aplikasi ujian..."
-        subMessage="Menyiapkan sistem CBT"
+        message={backendWaitSec > 0 ? 'Server sedang disiapkan...' : 'Memuat aplikasi ujian...'}
+        subMessage={backendWaitSec > 0
+          ? `Menunggu database siap (${backendWaitSec} detik). Halaman akan terbuka otomatis.`
+          : 'Menyiapkan sistem CBT'}
         logoUrl={config?.logoUrl}
         primaryColor={config?.primaryColor || '#2563eb'}
         schoolName={config?.schoolName}
